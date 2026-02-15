@@ -1,0 +1,966 @@
+<script>
+  // =======================================================================
+  //  1. CONFIGURATION & VARIABLES GLOBALES
+  // =======================================================================
+  Chart.register(ChartDataLabels);
+  Chart.defaults.color = '#333';
+  
+  // Variables de données
+  window.rawData = {}; 
+  window.normalizedData = []; 
+  window.extraContactData = {}; 
+  window.extraCAData = {}; 
+  window.extraCapacityData = {}; 
+  
+  // --- NOUVEAU : CONTEXTE SÉCURITÉ ---
+  let currentUserContext = null; 
+  // -----------------------------------
+
+  // Instances Graphiques
+  window.kpiChartInstance = null; 
+  window.laboChartInstance = null; 
+  window.historyChartInstance = null;
+  window.caChartInstance = null;
+  window.isHonorairesLoaded = false;
+  
+  window.monthOrder = ["JAN", "FEV", "MAR", "AVR", "MAI", "JUIN", "JUIL", "AOU", "SEP", "OCT", "NOV", "DEC"];
+  window.quarters = { "T1": ["JAN", "FEV", "MAR"], "T2": ["AVR", "MAI", "JUIN"], "T3": ["JUIL", "AOU", "SEP"], "T4": ["OCT", "NOV", "DEC"] };
+  window.monthToQuarterMap = { "JAN":"T1", "FEV":"T1", "MAR":"T1", "AVR":"T2", "MAI":"T2", "JUIN":"T2", "JUIL":"T3", "AOU":"T3", "SEP":"T3", "OCT":"T4", "NOV":"T4", "DEC":"T4" };
+  window.ENTITY_ORDER = ["HIA CIOA", "CIT", "CID", "PIL", "HPG", "ALHIKMA"];
+  const FAMILIES_ORDER = ["Hospitalisation", "Bloc", "Salle de cathé et rythmologie", "Radiothérapie", "Chimiothérapie", "Médecine nucléaire", "Dialyse", "Hôpital du jour", "Radiologie", "Laboratoire", "Consultation", "Urgence", "Centre de rééducation", "Curiethérapie et CHIP"];
+  const DEFAULT_FAMILY = "Hospitalisation";
+  const TOTAL_REGION_LABEL = "Région Grand-Sud";
+
+  // --- UTILITAIRES GLOBAUX ---
+  window.isFilterValueValid = function(v) { return v !== null && v !== undefined && String(v).trim() !== '' && String(v).trim() !== '-'; };
+  window.formatValue = function(v) { if (v === 'N/A' || v === '--' || v == null || isNaN(v)) return '--'; return Math.round(parseFloat(v)).toLocaleString('fr-FR'); };
+  window.formatMoney = function(v) { return (v === undefined || v === null) ? "0" : Math.round(v).toLocaleString('fr-FR') + " "; };
+  window.formatDecimal = function(value) { if (value === 'N/A' || value === '--' || value == null || isNaN(value) || !isFinite(value)) return '--'; return parseFloat(value).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }); };
+
+  // =======================================================================
+  //  2. GESTION CONNEXION & SÉCURITÉ (NOUVEAU)
+  // =======================================================================
+
+  document.addEventListener('DOMContentLoaded', () => {
+      // On prépare juste l'interface, pas de chargement de données ici.
+      // Le chargement se fait via attemptLogin().
+      console.log("Application prête à la connexion.");
+  });
+
+  function attemptLogin() {
+      const errorMsg = document.getElementById('loginError');
+      const googleBtn = document.querySelector('.google-btn');
+      
+      // Feedback visuel
+      if(errorMsg) errorMsg.style.display = 'none';
+      if(googleBtn) {
+          googleBtn.style.opacity = "0.7";
+          googleBtn.style.pointerEvents = "none";
+          const span = googleBtn.querySelector('span');
+          if(span) span.textContent = "Authentification en cours...";
+      }
+
+      // Appel au backend (Authentification auto via Session.getActiveUser)
+      google.script.run
+          .withSuccessHandler(initializeDashboardWithSecurity)
+          .withFailureHandler(e => {
+              if(googleBtn) {
+                  googleBtn.style.opacity = "1";
+                  googleBtn.style.pointerEvents = "auto";
+                  const span = googleBtn.querySelector('span');
+                  if(span) span.textContent = "Se connecter avec Google";
+              }
+              if(errorMsg) {
+                  errorMsg.textContent = "Accès refusé : " + e.message;
+                  errorMsg.style.display = 'block';
+              }
+          })
+          .getDashboardData();
+  }
+
+  function initializeDashboardWithSecurity(data) {
+      // 1. Initialisation standard
+      initializeDashboard(data);
+      
+      // 2. Enregistrement du contexte utilisateur
+      if(data.userContext) {
+          currentUserContext = data.userContext;
+          applySecurityRules(); // Applique les restrictions immédiatement
+      }
+
+      // 3. Transition UI : Cacher Login -> Afficher App
+      const loginPage = document.getElementById('loginPage');
+      const appContainer = document.getElementById('appContainer');
+      
+      if(loginPage) {
+          loginPage.style.opacity = '0';
+          setTimeout(() => loginPage.style.display = 'none', 300);
+      }
+      
+      if(appContainer) {
+          appContainer.style.display = 'flex';
+          // Redimensionnement nécessaire des charts
+          setTimeout(() => {
+              if(window.kpiChartInstance) window.kpiChartInstance.resize();
+              window.dispatchEvent(new Event('resize'));
+          }, 300);
+      }
+  }
+
+  function applySecurityRules() {
+      if (!currentUserContext) return;
+
+      const role = currentUserContext.role;
+      const entity = currentUserContext.entity;
+
+      // A. RÈGLE ADMIN (Import)
+      if (role !== 'ADMIN') {
+          const btnUpdate = document.getElementById('btnUpdate');
+          if(btnUpdate) btnUpdate.style.display = 'none';
+          
+          const idsToHide = ['recouvImportZone', 'depenseImportZone', 'honoImportZone'];
+          idsToHide.forEach(id => {
+              const el = document.getElementById(id);
+              if(el) el.style.display = 'none';
+          });
+
+          // Fallback pour les inputs fichiers sans ID wrapper propre
+          ['fileExpenses', 'fileHonoraires', 'fileRecouv'].forEach(inputId => {
+              const input = document.getElementById(inputId);
+              if(input && input.parentNode) input.parentNode.style.display = 'none';
+          });
+          
+          const btnObj = document.querySelector('button[onclick="triggerObjRealImport()"]');
+          if(btnObj) btnObj.style.display = 'none';
+      }
+
+      // B. RÈGLE ENTITÉ (Verrouillage Filtre)
+      if (entity !== 'ALL') {
+          const selectEntite = document.getElementById('entite');
+          if (selectEntite) {
+              selectEntite.value = entity;
+              selectEntite.disabled = true;
+              selectEntite.style.backgroundColor = "#e9ecef";
+              selectEntite.style.color = "#555";
+              selectEntite.style.cursor = "not-allowed";
+              selectEntite.style.border = "1px solid #ccc";
+              
+              // Force la synchro des filtres locaux
+              syncFilters('entite');
+          }
+          
+          // Badge visuel dans le header
+          const headerTitle = document.querySelector('header h2');
+          if(headerTitle && !document.getElementById('entityBadge')) {
+              headerTitle.innerHTML += ` <span id="entityBadge" style="font-size:0.6em; background:rgba(255,255,255,0.2); padding:2px 8px; border-radius:10px; vertical-align:middle;">${entity}</span>`;
+          }
+      }
+  }
+
+  // =======================================================================
+  //  3. CONFIGURATION D'EXPORTATION INTELLIGENTE
+  // =======================================================================
+  
+  function hasDataFor(familleKeyword, elementKeyword = null) {
+      const entite = document.getElementById('entite') ? document.getElementById('entite').value : '';
+      return window.normalizedData.some(row => {
+          if (entite && row[0] !== entite) return false;
+          const rowFam = String(row[2] || "").toUpperCase();
+          const rowSub = String(row[3] || "").toUpperCase();
+          const rowEl = String(row[4] || "").toUpperCase();
+
+          if (!rowFam.includes(familleKeyword.toUpperCase())) return false;
+          if (elementKeyword) {
+              const kw = elementKeyword.toUpperCase();
+              return rowSub.includes(kw) || rowEl.includes(kw);
+          }
+          return true;
+      });
+  }
+
+  function setFlashFilters(fam, subFam, element) {
+      if(typeof selectFamily === 'function') selectFamily(fam);
+      
+      setTimeout(() => {
+          const sfSelect = document.getElementById('sousFamille');
+          
+          if(subFam && sfSelect) {
+              let foundSF = false;
+              for(let opt of sfSelect.options) {
+                  if(opt.value.toUpperCase().includes(subFam.toUpperCase())) {
+                      sfSelect.value = opt.value;
+                      sfSelect.dispatchEvent(new Event('change'));
+                      foundSF = true; break;
+                  }
+              }
+              if(!foundSF) { sfSelect.value = ""; sfSelect.dispatchEvent(new Event('change')); }
+          } else if (sfSelect) {
+              sfSelect.value = ""; sfSelect.dispatchEvent(new Event('change'));
+          }
+
+          if(element) {
+              setTimeout(() => {
+                  const elSelect = document.getElementById('element');
+                  if(elSelect) {
+                      for(let opt of elSelect.options) {
+                          if(opt.value.toUpperCase().includes(element.toUpperCase())) {
+                              elSelect.value = opt.value;
+                              elSelect.dispatchEvent(new Event('change'));
+                              break;
+                          }
+                      }
+                  }
+              }, 300);
+          }
+      }, 150);
+  }
+
+  function forceSwitchFamily(main, sub) { if(typeof switchFamily === 'function') switchFamily(main, sub); }
+
+  const EXPORT_CONFIG = {
+      "FLASH_1": {
+          title: "1. HOSPITALISATION",
+          targetId: "view-flash",
+          items: [
+              { name: "1.1 Vue Globale Hospitalisation", condition: () => hasDataFor('Hospitalisation'), action: () => setFlashFilters('Hospitalisation', '', '') },
+              { name: "1.2 Réanimation (Globale)", condition: () => hasDataFor('Hospitalisation', 'RÉANIMATION'), action: () => setFlashFilters('Hospitalisation', 'RÉANIMATION', '') },
+              { name: "1.2.1 Réanimation Polyvalente", condition: () => hasDataFor('Hospitalisation', 'POLY'), action: () => setFlashFilters('Hospitalisation', 'RÉANIMATION', 'Poly') },
+              { name: "1.2.2 Réanimation CCV", condition: () => hasDataFor('Hospitalisation', 'CCV'), action: () => setFlashFilters('Hospitalisation', 'RÉANIMATION', 'CCV') },
+              { name: "1.2.3 Réanimation Néo-natale", condition: () => hasDataFor('Hospitalisation', 'NEO') || hasDataFor('Hospitalisation', 'NÉO'), action: () => setFlashFilters('Hospitalisation', 'RÉANIMATION', 'Néo') },            
+              { name: "1.3 Soins Intensifs (Global)", condition: () => hasDataFor('Hospitalisation', 'SOINS INTENSIFS'), action: () => setFlashFilters('Hospitalisation', 'SOINS INTENSIFS', '') },
+              { name: "1.3.1 USI Polyvalente", condition: () => hasDataFor('Hospitalisation', 'USI') && (hasDataFor('Hospitalisation', 'POLY') || hasDataFor('Hospitalisation', 'USIP')), action: () => setFlashFilters('Hospitalisation', 'SOINS INTENSIFS', 'Poly') },
+              { name: "1.3.2 USI Oncologie", condition: () => hasDataFor('Hospitalisation', 'USI') && (hasDataFor('Hospitalisation', 'ONCO') || hasDataFor('Hospitalisation', 'USIO')), action: () => setFlashFilters('Hospitalisation', 'SOINS INTENSIFS', 'Onco') },
+              { name: "1.3.3 USI CCV (Cardio)", condition: () => hasDataFor('Hospitalisation', 'USI') && (hasDataFor('Hospitalisation', 'CCV') || hasDataFor('Hospitalisation', 'USIC')), action: () => setFlashFilters('Hospitalisation', 'SOINS INTENSIFS', 'CCV') },
+              { name: "1.4 Maternité", condition: () => hasDataFor('Hospitalisation', 'MATERNIT'), action: () => setFlashFilters('Hospitalisation', 'MATERNITE', '') },
+              { name: "1.5 HMC", condition: () => hasDataFor('Hospitalisation', 'HMC'), action: () => setFlashFilters('Hospitalisation', 'HMC', '') }
+          ]
+      },
+      "FLASH_2": {
+          title: "2. BLOC & CATHÉTÉRISME",
+          targetId: "view-flash",
+          items: [
+              { name: "2.1 Bloc Opératoire", condition: () => hasDataFor('Bloc'), action: () => setFlashFilters('Bloc', '', '') },
+              { name: "2.2 Cathétérisme", condition: () => hasDataFor('cathé'), action: () => setFlashFilters('Salle de cathé et rythmologie', '', '') }
+          ]
+      },
+      "FLASH_3": {
+          title: "3. RADIOTHÉRAPIE & CHIMIOTHÉRAPIE",
+          targetId: "view-flash",
+          items: [
+              { name: "3.1 Radiothérapie (Passage)", condition: () => hasDataFor('Radiothérapie', 'Passage'), action: () => setFlashFilters('Radiothérapie', 'Passage sur la machine') },
+              { name: "3.2 Radiothérapie (Technique)", condition: () => hasDataFor('Radiothérapie', 'Technique'), action: () => setFlashFilters('Radiothérapie', 'technique') },
+              { name: "3.3 Chimiothérapie (Séances)", condition: () => hasDataFor('Chimiothérapie', 'Passage'), action: () => setFlashFilters('Chimiothérapie', "Passage au niveau de l'HDJ") },
+              { name: "3.4 Chimiothérapie (Nouveaux Cas)", condition: () => hasDataFor('Chimiothérapie', 'Nouveaux cas'), action: () => setFlashFilters('Chimiothérapie', 'Nouveaux cas') }
+          ]
+      },
+      "FLASH_4": {
+          title: "4. RADIOLOGIE & LABORATOIRE",
+          targetId: "view-flash",
+          items: [
+              { name: "4.1 Imagerie (Radio)", condition: () => hasDataFor('Radiologie'), action: () => setFlashFilters('Radiologie', '', '') },
+              { name: "4.2 Laboratoire", condition: () => hasDataFor('Laboratoire'), action: () => setFlashFilters('Laboratoire', '', '') }
+          ]
+      },
+      "FLASH_5": {
+          title: "5. EXTERNES",
+          targetId: "view-flash",
+          items: [
+              { name: "5.1 Urgences", condition: () => hasDataFor('Urgence'), action: () => setFlashFilters('Urgence', '', '') },
+              { name: "5.2 Consultations", condition: () => hasDataFor('Consultation'), action: () => setFlashFilters('Consultation', '', '') },
+              { name: "5.3 Hôpital du Jour", condition: () => hasDataFor('Hôpital du jour'), action: () => setFlashFilters('Hôpital du jour', '', '') }
+          ]
+      },
+      "FLASH_6": {
+          title: "6. SERVICES ANNEXES",
+          targetId: "view-flash",
+          items: [
+              { name: "6.1 Médecine Nucléaire", condition: () => hasDataFor('Médecine nucléaire'), action: () => setFlashFilters('Médecine nucléaire', '', '') },
+              { name: "6.2 Dialyse - Séances", condition: () => hasDataFor('Dialyse', 'Passage'), action: () => setFlashFilters('Dialyse', '', "Passage au niveau de l'HDJ") },
+              { name: "6.3 Dialyse - Nouveaux Cas", condition: () => hasDataFor('Dialyse', 'Nouveaux cas'), action: () => setFlashFilters('Dialyse', '', "Nouveaux cas") }
+          ]
+      },
+      "BUDGET_GROUP": {
+          title: "7. CA vs BUDGET",
+          targetId: "view-ca-budget",
+          items: [
+              { name: "7.1 Analyse CA (Tendance)", action: () => { if(typeof setBudgetMode === 'function') setBudgetMode('trend'); }, captureId: "view-ca-budget" },
+              { name: "7.2 Comparaison vs Budget", action: () => { if(typeof setBudgetMode === 'function') setBudgetMode('comparison'); }, captureId: "view-ca-budget" }
+          ]
+      },
+      "DEPENSES_GROUP": {
+          title: "8. DÉPENSES",
+          targetId: "view-depenses",
+          items: [ 
+              { name: "8.1 Vue Globale Dépenses", action: () => { if(typeof updateExpensesView === 'function') updateExpensesView(); }, captureId: "view-depenses", hideIds: ["depenseTable"] },
+              { name: "8.2 Top Bénéficiaires (Tableau)", action: () => { if(typeof updateExpensesView === 'function') updateExpensesView(); }, captureId: "depenseTable" }
+          ]
+      },
+      "RECOUV_GROUP": {
+          title: "9. RECOUVREMENT",
+          targetId: "view-recouvrement",
+          items: [
+              { name: "9.1 Synthèse & KPIs", action: () => forceSwitchFamily('Recouvrement', 'Dossiers non réglés'), captureId: "view-recouvrement", hideIds: ["recouvTopTable", "blockClassifOrg", "blockClassifNature", "recouvPieBlock", "rowAlertsRecouv", "rowAlertsExped"] },
+              { name: "9.2 Répartition Organisme", action: () => forceSwitchFamily('Recouvrement', 'Dossiers non réglés'), captureId: "view-recouvrement", hideIds: ["recouvChartBlock", "recouvTopTable", "rowAlertsRecouv", "rowAlertsExped"] },
+              { name: "9.3 Top Factures", action: () => { forceSwitchFamily('Recouvrement', 'Dossiers non réglés'); if(typeof renderTopFacturesTable==='function') renderTopFacturesTable('MONTANT'); }, captureId: "recouvTopTable" },
+              { name: "9.4 Dossiers non soldés", action: () => forceSwitchFamily('Recouvrement', 'Dossiers non soldés') },
+              { name: "9.5 Suivi des retours", action: () => forceSwitchFamily('Recouvrement', 'Suivi des retours') },
+              { name: "9.6 Objectif vs Réalisation", action: () => forceSwitchFamily('Recouvrement', 'Objectif vs Réalisation') }
+          ]
+      },
+      "EXPED_GROUP": {
+          title: "10. EXPÉDITION",
+          targetId: "view-recouvrement",
+          items: [
+              { name: "10.1 Synthèse & KPIs", action: () => forceSwitchFamily('Expédition', 'Dossiers non expédiés'), captureId: "view-recouvrement", hideIds: ["recouvTopTable", "blockClassifOrg", "blockClassifNature", "recouvPieBlock"] },
+              { name: "10.2 Répartition par Nature", action: () => forceSwitchFamily('Expédition', 'Dossiers non expédiés'), captureId: "view-recouvrement", hideIds: ["recouvChartBlock", "recouvTopTable", "rowAlertsRecouv", "rowAlertsExped"] },
+              { name: "10.3 Top Dossiers", action: () => forceSwitchFamily('Expédition', 'Dossiers non expédiés'), captureId: "recouvTopTable" },
+              { name: "10.4 Objectif vs Réalisation", action: () => forceSwitchFamily('Expédition', 'Objectif vs Réalisation') }
+          ]
+      },
+      "HONORAIRES_GROUP": {
+          title: "11. HONORAIRES",
+          targetId: "view-honoraires",
+          items: [ 
+              { name: "11.1 Vue Globale Honoraires", action: () => { if(typeof updateHonorairesView === 'function') updateHonorairesView('INIT'); }, captureId: "view-honoraires", hideIds: ["honoMainTable"] },
+              { name: "11.2 Analyse TOP 10 Médecins", action: () => { if(typeof updateHonoViewMode==='function') updateHonoViewMode('MEDECIN'); }, captureId: "honoMainTable" },
+              { name: "11.3 TOP 10 Spécialités", action: () => { if(typeof updateHonoViewMode==='function') updateHonoViewMode('SPECIALITE'); }, captureId: "honoMainTable" },
+              { name: "11.4 Balance Âgée", action: () => { if(typeof updateHonoViewMode==='function') updateHonoViewMode('AGEING'); }, captureId: "honoMainTable" }
+          ]
+      },
+      "RH_GROUP": {
+        title: "12. RESSOURCES HUMAINES",
+        targetId: "view-rh",
+        items: [
+            { 
+                name: "12.1 Vue Globale RH", 
+                action: () => { if(typeof enterRhMode_ === 'function') enterRhMode_(); }, 
+                captureId: "view-rh" 
+                // Nous avons retiré 'hideIds' pour que tout soit capturé en une seule fois
+            }
+        ]
+    }
+  };
+
+  // =======================================================================
+  //  4. UI & NAVIGATION
+  // =======================================================================
+  function toggleSidebar() { document.querySelector('.app-layout').classList.toggle('collapsed'); }
+  function toggleDarkMode() {
+      document.body.classList.toggle('dark-mode');
+      const isDark = document.body.classList.contains('dark-mode');
+      [window.kpiChartInstance, window.laboChartInstance, window.caChartInstance, window.recouvChartBarInstance, window.recouvChartPieInstance, window.expensesChartInstance, window.expensesPieInstance, window.chartHonoEvolInstance, window.chartHonoTypeOrgInstance, window.objRealChartInstance].forEach(chart => {
+          if(chart && chart.options) {
+              if(chart.options.scales?.x) chart.options.scales.x.grid.color = isDark ? '#444' : '#eee';
+              if(chart.options.scales?.y) chart.options.scales.y.grid.color = isDark ? '#444' : '#eee';
+              if(chart.options.plugins?.legend) chart.options.plugins.legend.labels.color = isDark ? '#ddd' : '#666';
+              chart.update();
+          }
+      });
+  }
+
+  function switchTab(tabId) {
+      document.querySelectorAll('.nav-tab-btn').forEach(btn => btn.classList.remove('active'));
+      const activeBtn = Array.from(document.querySelectorAll('.nav-tab-btn')).find(b => b.textContent.toLowerCase().includes(tabId.split('-')[0]));
+      if(activeBtn) activeBtn.classList.add('active');
+      document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+      document.getElementById('view-' + tabId).classList.add('active');
+      const sidebar = document.getElementById('sidebar');
+      const globalFilters = document.getElementById('globalFilters');
+      
+      if(tabId === 'flash') { 
+          sidebar.style.display = 'flex'; globalFilters.style.visibility = 'visible';
+          if(window.kpiChartInstance) window.kpiChartInstance.resize(); 
+          if(typeof drawCharts === "function") drawCharts(); 
+      } else if(tabId === 'ca-budget') {
+          sidebar.style.display = 'none'; globalFilters.style.visibility = 'visible';
+          if(window.caChartInstance) window.caChartInstance.resize();
+          if(typeof updateCaBudgetView === "function") updateCaBudgetView();
+      } else if(tabId === 'honoraires') {
+          sidebar.style.display = 'none'; globalFilters.style.visibility = 'visible';
+          if (!window.isHonorairesLoaded && typeof loadHonorairesData === "function") { loadHonorairesData(); window.isHonorairesLoaded = true; }
+      } else { 
+          sidebar.style.display = 'none'; globalFilters.style.visibility = 'visible';
+          if(tabId === 'depenses' && typeof updateExpensesView === "function") updateExpensesView();
+          if(tabId === 'recouvrement' && typeof updateRecouvDashboard === "function") updateRecouvDashboard();
+      }
+  }
+  
+  window.onclick = function(event) { if (event.target == document.getElementById("historyModal")) document.getElementById("historyModal").style.display='none'; }
+  
+  function loadData() { 
+      // Fonction conservée pour le bouton "Actualiser"
+      document.getElementById('loadingOverlay').style.display = 'flex';
+      // On passe le contexte utilisateur actuel pour revalider
+      const email = currentUserContext ? currentUserContext.email : null;
+      google.script.run
+          .withSuccessHandler(initializeDashboard) // Réutilise la fonction init standard
+          .withFailureHandler(showError)
+          .getDashboardData(email); 
+  }
+
+  function updateData() { 
+      document.getElementById('loadingOverlay').style.display = 'flex'; document.getElementById('loadingText').textContent = 'Mise à jour...';
+      const btn = document.getElementById('btnUpdate'); if(btn) btn.classList.add('spin-anim'); 
+      google.script.run.withSuccessHandler(s => { 
+          if(btn) btn.classList.remove('spin-anim'); if(s.includes('succès')) loadData(); else { alert(s); document.getElementById('loadingOverlay').style.display='none'; }
+      }).withFailureHandler(e => { if(btn) btn.classList.remove('spin-anim'); showError(e); }).clientNormalizeData(); 
+  }
+
+  function initializeDashboard(data) { 
+      document.getElementById('loadingOverlay').style.display = 'none'; window.rawData = data; 
+      
+      // Stockage du contexte si présent (rechargement)
+      if(data.userContext) currentUserContext = data.userContext;
+
+      if (data && data.normalizedData) { window.normalizedData = data.normalizedData.slice(1).filter(r => Array.isArray(r) && r.length>0 && r[0]); window.extraContactData=data.contactData||{}; window.extraCAData=data.caData||{}; window.extraCapacityData=data.capacity||{}; }
+      else if (Array.isArray(data)) window.normalizedData = data.slice(1).filter(r => Array.isArray(r) && r.length>0 && r[0]); 
+      
+      if(typeof populateFilters === "function") populateFilters(); 
+      document.getElementById('updateStatus').textContent = 'Prêt';
+      
+      // Ré-applique les règles de sécurité après chargement
+      if (typeof applySecurityRules === 'function') applySecurityRules();
+
+      switchTab('flash');
+  }
+
+  function showError(e) { document.getElementById('loadingOverlay').style.display = 'none'; alert("Erreur : " + e.message); }
+  
+  function updateMonthOptions() {
+      const trim = document.getElementById('trimestre').value;
+      const ms = document.getElementById('mois'); const cur = ms.value; ms.innerHTML = '<option value="">TOUT</option>';
+      let list = window.monthOrder; if (trim && window.quarters[trim]) list = window.quarters[trim];
+      list.forEach(m => ms.add(new Option(m, m)));
+      ms.value = list.includes(cur) ? cur : '';
+      const lm = document.getElementById('localMois'); if(lm) { lm.innerHTML = ms.innerHTML; lm.value = ms.value; }
+  }
+
+function syncFilters(src) {
+      const he = document.getElementById('entite');
+      const ht = document.getElementById('trimestre');
+      const hm = document.getElementById('mois');
+      const ha = document.getElementById('annee');
+
+      const le = document.getElementById('localEntite');
+      const lt = document.getElementById('localTrimestre');
+      const lm = document.getElementById('localMois');
+      const la = document.getElementById('localAnnee');
+
+      const lbe = document.getElementById('localBudgetEntite');
+      const lba = document.getElementById('localBudgetAnnee');
+      const lbt = document.getElementById('localBudgetTrimestre');
+      const lbm = document.getElementById('localBudgetMois');
+
+      const re = document.getElementById('recouvFilterEntite');
+      const ra = document.getElementById('recouvFilterAnnee');
+      const rt = document.getElementById('recouvFilterTrim');
+      const rm = document.getElementById('recouvFilterMois');
+
+      const de = document.getElementById('depenseFilterEntite');
+      const da = document.getElementById('depenseFilterAnnee'); 
+      const dt = document.getElementById('depenseFilterTrim');
+      const dm = document.getElementById('depenseFilterMois');
+
+      const hoe = document.getElementById('honoFilterEntite');
+      const hoa = document.getElementById('honoFilterAnnee');
+      const hot = document.getElementById('honoFilterTrim');
+      const hom = document.getElementById('honoFilterMois');
+      
+      // AJOUT POUR LE MODULE RH
+      const rhe = document.getElementById('rhEntite');
+      const rha = document.getElementById('rhAnnee');
+      const rht = document.getElementById('rhTrimestre');
+      const rhm = document.getElementById('rhMois');
+      
+      if(src === 'entite' || src === 'trimestre' || src === 'mois' || src === 'annee') { 
+          if(le && he) le.value = he.value; 
+          if(la && ha) la.value = ha.value; 
+          if(lt && ht) { lt.value = ht.value; updateMonthOptions(); } 
+          if(lm && hm) lm.value = hm.value; 
+
+          if(lbe && he) lbe.value = he.value;
+          if(lba && ha) lba.value = ha.value;
+          if(lbt && ht) lbt.value = ht.value;
+          if(lbm && hm) lbm.value = hm.value;
+
+          if(re && he) { re.value = he.value; if(re.onchange) re.onchange(); } 
+          if(ra && ha) { ra.value = ha.value; }
+          if(rt && ht) { rt.value = ht.value; if(rt.onchange) rt.onchange(); } 
+          if(rm && hm) { rm.value = hm.value; }
+
+          if(de && he) { de.value = he.value; if(de.onchange) de.onchange(); }
+          if(dt && ht) { dt.value = ht.value; if(dt.onchange) dt.onchange(); }
+          if(dm && hm) { dm.value = hm.value; }
+          if(src === 'annee' && ha && da) { da.value = ha.value; if(da.onchange) da.onchange(); }
+
+          if(hoe && he) { hoe.value = he.value; if(hoe.onchange) hoe.onchange(); }
+          if(hoa && ha) { hoa.value = ha.value; }
+          if(hot && ht) { hot.value = ht.value; if(hot.onchange) hot.onchange(); }
+          if(hom && hm) { hom.value = hm.value; }
+          
+          // SYNCHRONISATION RH
+          if(rhe && he) { rhe.value = he.value; if(rhe.onchange) rhe.onchange(); }
+          if(rha && ha) { rha.value = ha.value; if(rha.onchange) rha.onchange(); }
+          if(rht && ht) { rht.value = ht.value; if(rht.onchange) rht.onchange(); }
+          if(rhm && hm) { rhm.value = hm.value; if(rhm.onchange) rhm.onchange(); }
+      }
+      
+      if(src && src.startsWith('local')) { 
+          if(src==='localEntite' && he && le) he.value = le.value; 
+          if(src==='localAnnee' && ha && la) ha.value = la.value;
+          if(src==='localTrimestre' && ht && lt) { ht.value = lt.value; updateMonthOptions(); } 
+          if(src==='localMois' && hm && lm) hm.value = lm.value; 
+      }
+      
+      const at = document.querySelector('.view-section.active');
+      if(at) {
+          if(at.id === 'view-ca-budget' && typeof updateCaBudgetView === "function") updateCaBudgetView();
+          else if (at.id === 'view-depenses' && typeof updateExpensesView === "function") updateExpensesView();
+          else if (at.id === 'view-recouvrement' && typeof updateRecouvDashboard === "function") updateRecouvDashboard();
+          else if (at.id === 'view-honoraires' && typeof updateHonorairesView === "function") updateHonorairesView();
+          else if (at.id === 'view-flash' && typeof drawCharts === "function") drawCharts(); 
+          // RH est géré par ses propres listeners (onchange)
+      }
+  }
+
+  // =======================================================================
+  //  MOTEUR D'EXPORTATION AVANCÉ
+  // =======================================================================
+
+  function applyGlobalFiltersToView(viewId) {
+      const gEntite = document.getElementById('entite').value;
+      const gTrim = document.getElementById('trimestre').value;
+      const gMois = document.getElementById('mois').value;
+      const gAnnee = document.getElementById('annee').value;
+
+      const setVal = (id, val) => { 
+          const el = document.getElementById(id); 
+          if(el) { el.value = val; el.dispatchEvent(new Event('change')); } 
+      };
+      
+      try {
+          if (viewId === 'view-flash') { setVal('localEntite', gEntite); setVal('localAnnee', gAnnee); setVal('localTrimestre', gTrim); setVal('localMois', gMois); } 
+          else if (viewId === 'view-ca-budget') { setVal('localBudgetEntite', gEntite); setVal('localBudgetTrimestre', gTrim); setVal('localBudgetMois', gMois); } 
+          else if (viewId === 'view-recouvrement') { setVal('recouvFilterEntite', gEntite); setVal('recouvFilterTrim', gTrim); setVal('recouvFilterMois', gMois); setVal('recouvFilterAnnee', gAnnee); } 
+          else if (viewId === 'view-depenses') { setVal('depenseFilterEntite', gEntite); setVal('depenseFilterTrim', gTrim); setVal('depenseFilterMois', gMois); } 
+          else if (viewId === 'view-honoraires') { setVal('honoFilterEntite', gEntite); setVal('honoFilterTrim', gTrim); setVal('honoFilterMois', gMois); setVal('honoFilterAnnee', gAnnee); }
+      } catch(e) { console.error(e); }
+  }
+
+  function toggleGroupList(header) {
+      const body = header.nextElementSibling;
+      const icon = header.querySelector('.toggle-icon');
+      if (body.style.display === 'block') { body.style.display = 'none'; icon.classList.remove('rotated'); } 
+      else { body.style.display = 'block'; icon.classList.add('rotated'); }
+  }
+  
+  function moveUp(btn) { 
+      const itemRow = btn.closest('.export-item');
+      if (itemRow) { if (itemRow.previousElementSibling) itemRow.parentNode.insertBefore(itemRow, itemRow.previousElementSibling); }
+      else { const group = btn.closest('.export-group'); if (group && group.previousElementSibling) group.parentNode.insertBefore(group, group.previousElementSibling); }
+  }
+  function moveDown(btn) { 
+      const itemRow = btn.closest('.export-item');
+      if (itemRow) { if (itemRow.nextElementSibling) itemRow.parentNode.insertBefore(itemRow.nextElementSibling, itemRow); }
+      else { const group = btn.closest('.export-group'); if (group && group.nextElementSibling) group.parentNode.insertBefore(group.nextElementSibling, group); }
+  }
+
+  function openGlobalExportModal() {
+      const modal = document.getElementById('exportModal');
+      const container = document.getElementById('exportCheckboxesArea');
+      container.innerHTML = ''; 
+
+      Object.keys(EXPORT_CONFIG).forEach(key => {
+          const config = EXPORT_CONFIG[key];
+          const availableItems = config.items.filter(item => !item.condition || item.condition());
+
+          if (availableItems.length === 0) return; 
+
+          const groupDiv = document.createElement('div');
+          groupDiv.className = 'export-group';
+          
+          const headerDiv = document.createElement('div');
+          headerDiv.className = 'export-group-header';
+          headerDiv.innerHTML = `
+              <i class="fas fa-chevron-right toggle-icon" onclick="toggleGroupList(this.parentNode)"></i>
+              <div class="export-group-title">
+                  <input type="checkbox" class="export-checkbox group-master" data-group="${key}" checked onclick="toggleGroup(this); event.stopPropagation();">
+                  <span onclick="toggleGroupList(this.parentNode.parentNode)">${config.title}</span>
+              </div>
+              <div class="export-group-controls">
+                  <div class="sort-btn" onclick="moveUp(this)" title="Monter Groupe"><i class="fas fa-arrow-up"></i></div>
+                  <div class="sort-btn" onclick="moveDown(this)" title="Descendre Groupe"><i class="fas fa-arrow-down"></i></div>
+              </div>
+          `;
+          groupDiv.appendChild(headerDiv);
+
+          const bodyDiv = document.createElement('div');
+          bodyDiv.className = 'export-group-body';
+          
+          const currentView = document.querySelector('.view-section.active').id;
+          if(config.targetId === currentView) { bodyDiv.style.display = 'block'; headerDiv.querySelector('.toggle-icon').classList.add('rotated'); }
+
+          availableItems.forEach((item, idx) => {
+              const originalIndex = config.items.indexOf(item);
+              const itemDiv = document.createElement('div');
+              itemDiv.className = 'export-item';
+              itemDiv.innerHTML = `
+                  <div style="flex:1; display:flex; align-items:center;">
+                      <input type="checkbox" class="export-checkbox item-check" value="${key}|${originalIndex}" data-title="${item.name}" data-group-ref="${key}" checked>
+                      <span>${item.name}</span>
+                  </div>
+                  <div class="export-group-controls" style="opacity:0.5; transform:scale(0.8);">
+                      <div class="sort-btn" onclick="moveUp(this)"><i class="fas fa-arrow-up"></i></div>
+                      <div class="sort-btn" onclick="moveDown(this)"><i class="fas fa-arrow-down"></i></div>
+                  </div>
+              `;
+              bodyDiv.appendChild(itemDiv);
+          });
+          groupDiv.appendChild(bodyDiv);
+          container.appendChild(groupDiv);
+      });
+      modal.style.display = 'flex';
+  }
+
+  function toggleGroup(master) {
+      const groupContainer = master.closest('.export-group');
+      const inputs = groupContainer.querySelectorAll(`.item-check`);
+      inputs.forEach(inp => inp.checked = master.checked);
+  }
+
+  async function processDynamicExport(format) {
+      const container = document.getElementById('exportCheckboxesArea');
+      const checkboxes = Array.from(container.querySelectorAll('.item-check:checked'));
+      if (checkboxes.length === 0) { alert("Sélectionnez au moins un élément."); return; }
+      
+      const includeCover = document.getElementById('chkCover').checked;
+      const includeSeparators = document.getElementById('chkSeparators').checked;
+      const modal = document.getElementById('exportModal');
+      const loadingHeader = modal.querySelector('h3');
+      const originalText = loadingHeader.innerHTML;
+      loadingHeader.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Génération...`;
+
+      let pptx, pdf;
+      const entiteVal = document.getElementById('entite').value;
+      const entiteName = entiteVal === "" ? "REGION GRAND SUD" : entiteVal; 
+      
+      let respName = "", dirMedName = "";
+      if (entiteVal && window.extraContactData[entiteVal]) {
+          respName = window.extraContactData[entiteVal].respExploit || "";
+          dirMedName = window.extraContactData[entiteVal].dirMedical || "";
+      }
+
+      const periodName = (document.getElementById('mois').value ? document.getElementById('mois').value : (document.getElementById('trimestre').value || "Année")) + " " + new Date().getFullYear();
+      const dateGen = new Date().toLocaleDateString('fr-FR');
+
+      if (format === 'ppt') {
+          pptx = new PptxGenJS();
+          pptx.layout = 'LAYOUT_16x9';
+          pptx.title = `Rapport - ${entiteName}`;
+          if(includeCover) {
+              let slide = pptx.addSlide(); slide.background = { color: "F8FAFF" };
+              slide.addShape(pptx.ShapeType.rect, { x:0, y:0, w:3, h:'100%', fill:'363795' }); 
+              slide.addText("RAPPORT D'ACTIVITÉ", { x:3.5, y:2.0, fontSize:40, color:'363795', bold:true });
+              slide.addText(entiteName, { x:3.5, y:3.0, fontSize:28, color:'E67E22', bold:true });
+              slide.addText(periodName, { x:3.5, y:3.7, fontSize:20, color:'666666' });
+              
+              if(respName || dirMedName) {
+                  slide.addText("MANAGEMENT", { x:3.5, y:5.0, fontSize:14, color:'363795', bold:true });
+                  if(respName) slide.addText("Resp. Exploitation : " + respName, { x:3.5, y:5.4, fontSize:12, color:'555555' });
+                  if(dirMedName) slide.addText("Dir. Médical : " + dirMedName, { x:3.5, y:5.8, fontSize:12, color:'555555' });
+              }
+              slide.addText(`Généré le ${dateGen}`, { x:0.5, y:7, fontSize:12, color:'FFFFFF' });
+              
+              let summarySlide = pptx.addSlide();
+              summarySlide.addText("SOMMAIRE DÉTAILLÉ", { x:0.5, y:0.5, fontSize:24, color:'363795', bold:true, underline:true });
+              let yPos = 1.5; let currentSection = "";
+              checkboxes.forEach(cb => {
+                  let groupKey = cb.getAttribute('data-group-ref');
+                  let sectionTitle = EXPORT_CONFIG[groupKey].title;
+                  if (sectionTitle !== currentSection) {
+                      summarySlide.addText(sectionTitle.toUpperCase(), { x:0.5, y:yPos, fontSize:16, color:'E67E22', bold:true });
+                      yPos += 0.5; currentSection = sectionTitle;
+                  }
+                  let subTitle = cb.getAttribute('data-title');
+                  summarySlide.addText("   • " + subTitle, { x:1, y:yPos, fontSize:14, color:'333' });
+                  yPos += 0.4;
+                  if(yPos > 6.5) { summarySlide = pptx.addSlide(); yPos = 1.0; }
+              });
+          }
+      } else {
+          window.jsPDF = window.jspdf.jsPDF;
+          pdf = new jsPDF('l', 'mm', 'a4');
+          const w = pdf.internal.pageSize.getWidth(); const h = pdf.internal.pageSize.getHeight();
+
+          if (includeCover) {
+              pdf.setFillColor(245, 247, 250); pdf.rect(0, 0, w, h, 'F');
+              pdf.setFillColor(54, 55, 149); pdf.rect(0, 0, 15, h, 'F');
+              pdf.setFillColor(230, 126, 34); pdf.rect(15, 60, 5, 40, 'F');
+
+              pdf.setTextColor(54, 55, 149); pdf.setFontSize(40); pdf.setFont("helvetica", "bold");
+              pdf.text("RAPPORT", 30, 75); pdf.text("D'ACTIVITÉ", 30, 90);
+              
+              pdf.setTextColor(230, 126, 34); pdf.setFontSize(28);
+              pdf.text(entiteName.toUpperCase(), 30, 115);
+              
+              pdf.setTextColor(100, 100, 100); pdf.setFontSize(18); pdf.setFont("helvetica", "normal");
+              pdf.text(periodName, 30, 130);
+              
+              if(respName || dirMedName) {
+                  pdf.setFontSize(12); pdf.setTextColor(54, 55, 149); pdf.setFont("helvetica", "bold");
+                  pdf.text("MANAGEMENT", 30, 160);
+                  pdf.setFontSize(11); pdf.setTextColor(80, 80, 80); pdf.setFont("helvetica", "normal");
+                  let yC = 168;
+                  if(respName) { pdf.text("Responsable Exploitation : " + respName, 30, yC); yC+=7; }
+                  if(dirMedName) { pdf.text("Directeur Médical : " + dirMedName, 30, yC); }
+              }
+
+              pdf.setTextColor(255, 255, 255); pdf.setFontSize(10);
+              pdf.text(`Généré le ${dateGen}`, 10, h - 10);
+
+              pdf.addPage();
+              pdf.setFillColor(54, 55, 149); pdf.rect(0, 0, w, 20, 'F');
+              pdf.setTextColor(255, 255, 255); pdf.setFontSize(16); pdf.setFont("helvetica", "bold");
+              pdf.text("SOMMAIRE DÉTAILLÉ", 10, 14);
+
+              let yPos = 40; let pageCounter = 3; 
+              let lastGroup = "";
+              
+              pdf.setTextColor(60, 60, 60); pdf.setFontSize(12);
+              checkboxes.forEach(cb => {
+                  let groupKey = cb.getAttribute('data-group-ref');
+                  let sectionTitle = EXPORT_CONFIG[groupKey].title;
+                  
+                  if (yPos > 180) { pdf.addPage(); yPos = 30; }
+                  
+                  if(groupKey !== lastGroup) {
+                      yPos += 8;
+                      pdf.setTextColor(230, 126, 34); pdf.setFontSize(13); pdf.setFont("helvetica", "bold");
+                      pdf.text(sectionTitle.toUpperCase(), 20, yPos);
+                      yPos += 8;
+                      lastGroup = groupKey;
+                      pdf.setTextColor(60, 60, 60); pdf.setFontSize(11); pdf.setFont("helvetica", "normal");
+                      if(includeSeparators) pageCounter++;
+                  }
+
+                  let title = cb.getAttribute('data-title');
+                  pdf.text(title, 30, yPos);
+                  pdf.setDrawColor(200, 200, 200); pdf.setLineDash([1, 1], 0);
+                  pdf.line(35 + pdf.getStringUnitWidth(title)*4, yPos, w-30, yPos);
+                  pdf.text(String(pageCounter), w-25, yPos);
+                  yPos += 7; pageCounter++; 
+              });
+          }
+      }
+
+      let lastGroupKey = "";
+      let processedCount = 0;
+      let currentPageNum = includeCover ? 3 : 1;
+
+      for (let cb of checkboxes) {
+          const [groupKey, itemIndex] = cb.value.split('|');
+          const config = EXPORT_CONFIG[groupKey];
+          const item = config.items[itemIndex];
+          const targetEl = document.getElementById(item.captureId || config.targetId);
+
+          if (includeSeparators && groupKey !== lastGroupKey) {
+              if (format === 'pdf') {
+                  pdf.addPage();
+                  pdf.setFillColor(54, 55, 149); pdf.rect(0, 0, pdf.internal.pageSize.getWidth(), pdf.internal.pageSize.getHeight(), 'F');
+                  pdf.setTextColor(255, 255, 255); pdf.setFontSize(36); pdf.setFont("helvetica", "bold");
+                  pdf.text(config.title.toUpperCase(), pdf.internal.pageSize.getWidth()/2, pdf.internal.pageSize.getHeight()/2, { align: 'center' });
+                  pdf.setFontSize(10); pdf.text("Page " + currentPageNum, pdf.internal.pageSize.getWidth()-20, pdf.internal.pageSize.getHeight()-10);
+                  currentPageNum++;
+              } else {
+                  let s = pptx.addSlide(); s.background = { color: "EEEEEE" };
+                  s.addText(config.title.toUpperCase(), { x:0, y:'45%', w:'100%', align:'center', fontSize:30, color:'363795', bold:true });
+              }
+              lastGroupKey = groupKey;
+          }
+
+          document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active'));
+          const parentView = targetEl.closest('.view-section') || targetEl;
+          parentView.classList.add('active'); parentView.style.display = 'block';
+          
+          applyGlobalFiltersToView(config.targetId);
+          if (item.action) item.action();
+
+          const elsToHide = [];
+          if(item.hideIds) {
+              item.hideIds.forEach(hid => {
+                  const el = document.getElementById(hid);
+                  if(el && el.style.display !== 'none') {
+                      el.setAttribute('data-original-display', el.style.display);
+                      el.style.display = 'none';
+                      elsToHide.push(el);
+                  }
+              });
+          }
+
+          await new Promise(r => setTimeout(r, 2000)); 
+
+          try {
+              // --- CORRECTIF TAILLE IMAGE ---
+              const h_el = targetEl.scrollHeight || targetEl.offsetHeight;
+              let myScale = 2; // Qualité haute par défaut
+              
+              // Si la page est très longue (> 2500px), on réduit la qualité pour éviter le crash
+              if (h_el > 5000) myScale = 1;       // Qualité basse pour très long contenu
+              else if (h_el > 2500) myScale = 1.5; // Qualité moyenne pour contenu long
+
+              const canvas = await html2canvas(targetEl, { scale: myScale, useCORS: true, logging: false, backgroundColor: '#ffffff', scrollX:0, scrollY:0 });
+              const imgData = canvas.toDataURL('image/png');
+
+              if (format === 'pdf') {
+                  pdf.addPage();
+                  const w = pdf.internal.pageSize.getWidth(); const h = pdf.internal.pageSize.getHeight();
+                  
+                  pdf.setFillColor(240, 240, 240); pdf.rect(0, 0, w, 12, 'F');
+                  pdf.setTextColor(54, 55, 149); pdf.setFontSize(10); pdf.setFont("helvetica", "bold");
+                  pdf.text(`${config.title} > ${item.name}`, 10, 8);
+                  pdf.setTextColor(100, 100, 100); pdf.setFontSize(10); pdf.setFont("helvetica", "normal");
+                  pdf.text(`${entiteName} | ${periodName}`, w - 60, 8);
+
+                  const imgProps = pdf.getImageProperties(imgData);
+                  
+                  let margin = 5; 
+                  let availW = w - (margin * 2);
+                  let availH = h - 20; 
+                  
+                  let finalW = availW; 
+                  let finalH = (imgProps.height * finalW) / imgProps.width;
+                  
+                  if(finalH > availH) { 
+                      finalH = availH; 
+                      finalW = (imgProps.width * finalH) / imgProps.height; 
+                  }
+                  
+                  let xPos = (w - finalW) / 2;
+                  let yPos = 12 + ((availH - finalH) / 2); 
+                  
+                  pdf.addImage(imgData, 'PNG', xPos, yPos, finalW, finalH);
+
+                  pdf.setFontSize(9); pdf.setTextColor(150, 150, 150);
+                  pdf.text(`Page ${currentPageNum}`, w - 20, h - 5);
+                  currentPageNum++;
+              } else {
+                  let slide = pptx.addSlide();
+                  slide.addText(item.name, { x:0.2, y:0.2, fontSize:18, color:'363795', bold:true });
+                  slide.addImage({ data: imgData, x:0.2, y:0.8, w:'95%', h:'85%', sizing: { type: 'contain', w: '95%', h: '85%' } });
+              }
+          } catch(e) { console.error("Erreur Export Item", e); } 
+          finally {
+              elsToHide.forEach(el => el.style.display = el.getAttribute('data-original-display') || 'block');
+          }
+
+          processedCount++;
+          loadingHeader.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Export... ${Math.round(processedCount / checkboxes.length * 100)}%`;
+      }
+
+      const fileName = `Rapport_${entiteName.replace(/\s+/g,'_')}_${dateGen.replace(/\//g,'-')}`;
+      if (format === 'pdf') pdf.save(fileName + ".pdf"); else pptx.writeFile({ fileName: fileName + ".pptx" });
+
+      loadingHeader.innerHTML = originalText;
+      if(container) container.style.display = 'block'; 
+      modal.style.display = 'none';
+  }
+
+  function selectFamily(family) { 
+      document.querySelectorAll('#familyButtons button').forEach(btn => { 
+          btn.classList.toggle('active', btn.getAttribute('data-family') === family); 
+      }); 
+      const labelElement = document.querySelector('label[for="element"]');
+      if(labelElement) { labelElement.textContent = (family === 'Hospitalisation') ? 'Service' : 'Élément'; }
+      
+      populateSousFamille(family); 
+      populateEntiteFilter(family); 
+      
+      const lEntite = document.getElementById('localEntite'); 
+      const entiteSelect = document.getElementById('entite');
+      if(lEntite && entiteSelect) { lEntite.innerHTML = entiteSelect.innerHTML; lEntite.value = entiteSelect.value; }
+
+      const lAnnee = document.getElementById('localAnnee');
+      const anneeSelect = document.getElementById('annee');
+      if(lAnnee && anneeSelect) { lAnnee.innerHTML = anneeSelect.innerHTML; lAnnee.value = anneeSelect.value; }
+      
+      const lMois = document.getElementById('localMois'); const moisSelect = document.getElementById('mois');
+      if(moisSelect.options.length <= 1) { 
+          moisSelect.innerHTML = '<option value="">TOUT</option>'; 
+          monthOrder.forEach(m => moisSelect.add(new Option(m, m)));
+      }
+      if(lMois) { lMois.innerHTML = moisSelect.innerHTML; lMois.value = moisSelect.value; }
+      
+      const lTrim = document.getElementById('localTrimestre'); const trimSelect = document.getElementById('trimestre');
+      if(trimSelect.options.length <= 1) { 
+          trimSelect.innerHTML = '<option value="">TOUT</option><option value="T1">T1</option><option value="T2">T2</option><option value="T3">T3</option><option value="T4">T4</option>'; 
+      }
+      if(lTrim) { lTrim.innerHTML = trimSelect.innerHTML; lTrim.value = trimSelect.value; }
+  }
+
+
+function populateEntiteFilter(selectedFamille) { 
+    const entiteSelect = document.getElementById('entite'); 
+    const currentSelection = entiteSelect.value; 
+    
+    // 1. Récupération des données filtrées par famille
+    const familyFilteredData = normalizedData.filter(r => r[2].toString() === selectedFamille); 
+    
+    // 2. Création de la liste des entités uniques
+    const newEntiteSet = new Set(familyFilteredData.map(r => r[0].toString()).filter(v => v.trim() !== '')); 
+    
+    // --- CORRECTION : AJOUT AUTO DE HIA CIOA ---
+    // Si la liste contient HIA et CIOA, on ajoute l'option combinée
+    if(newEntiteSet.has("HIA") && newEntiteSet.has("CIOA")) {
+        newEntiteSet.add("HIA CIOA");
+    }
+    // Si l'utilisateur est restreint à HIA CIOA, on force l'option
+    if(currentUserContext && currentUserContext.entity === "HIA CIOA") {
+        newEntiteSet.add("HIA CIOA");
+    }
+    // -------------------------------------------
+
+    // 3. Construction du menu
+    entiteSelect.innerHTML = '<option value="">TOUT</option>'; 
+    Array.from(newEntiteSet).sort((a, b) => { 
+        let idxA = ENTITY_ORDER.indexOf(a); let idxB = ENTITY_ORDER.indexOf(b); 
+        if (idxA === -1) idxA = 999; if (idxB === -1) idxB = 999; 
+        return idxA - idxB; 
+    }).forEach(item => entiteSelect.add(new Option(item, item))); 
+    
+    // 4. Restauration de la sélection
+    // Si l'utilisateur est restreint, on force sa valeur
+    if (currentUserContext && currentUserContext.entity !== 'ALL') {
+        entiteSelect.value = currentUserContext.entity;
+    } else {
+        entiteSelect.value = (currentSelection && newEntiteSet.has(currentSelection)) ? currentSelection : ''; 
+    }
+    
+    // 5. Application Sécurité (Verrouillage visuel)
+    if (typeof applySecurityRules === 'function') applySecurityRules();
+    
+    const lEntite = document.getElementById('localEntite'); 
+    if(lEntite) { lEntite.innerHTML = entiteSelect.innerHTML; lEntite.value = entiteSelect.value; } 
+}
+
+  function populateSousFamille(selectedFamille) { 
+      const sousFamilleSelect = document.getElementById('sousFamille'); 
+      const currentSelection = sousFamilleSelect.value; 
+      const targetData = normalizedData.filter(r => r[2].toString() === selectedFamille); 
+      const sousFamilleSet = new Set(targetData.map(r => r[3].toString()).filter(isFilterValueValid)); 
+      sousFamilleSelect.innerHTML = '<option value="">TOUT</option>'; 
+      Array.from(sousFamilleSet).sort().forEach(item => sousFamilleSelect.add(new Option(item, item))); 
+      sousFamilleSelect.value = (currentSelection && sousFamilleSet.has(currentSelection)) ? currentSelection : ''; 
+      populateElementFilter(selectedFamille, sousFamilleSelect.value); 
+  }
+
+  function populateElementFilter(selectedFamille, selectedSousFamille) { 
+      const elementSelect = document.getElementById('element'); 
+      const currentSelection = elementSelect.value; 
+      const filteredData = normalizedData.filter(r => r[2].toString() === selectedFamille && (!selectedSousFamille || r[3].toString() === selectedSousFamille)); 
+      const elementSet = new Set(filteredData.map(r => r[4].toString()).filter(isFilterValueValid)); 
+      elementSelect.innerHTML = '<option value="">TOUT</option>'; 
+      Array.from(elementSet).sort().forEach(item => elementSelect.add(new Option(item, item))); 
+      elementSelect.value = (currentSelection && elementSet.has(currentSelection)) ? currentSelection : ''; 
+      drawCharts(); 
+  }
+</script>

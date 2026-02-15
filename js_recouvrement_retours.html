@@ -1,0 +1,94 @@
+<script>
+/**
+ * SOUS-MODULE : RECOUVREMENT - SUIVI DES RETOURS
+ */
+
+function enrichSuiviRetoursData() {
+    return suiviRetoursData.map(d => {
+        let newItem = { ...d };
+        let inExp = expeditionData.find(e => e.entite === d.entite && String(e.facture) === String(d.facture));
+        if (inExp) { newItem.etatDossier = "Dossier non réexpédié"; newItem.natureDossier = inExp.nature || "-"; return newItem; }
+        let inRec = recouvData.find(r => r.entite === d.entite && String(r.facture) === String(d.facture));
+        if (inRec) { newItem.etatDossier = "Dossier expédié non réglé"; newItem.natureDossier = "Expédiée - E"; return newItem; }
+        newItem.etatDossier = "-"; newItem.natureDossier = "-";
+        return newItem;
+    });
+}
+
+function renderRetoursView(dataSet) {
+    const fMotif = document.getElementById('recouvFilterMotif') ? document.getElementById('recouvFilterMotif').value : ""; 
+    const fEtat = document.getElementById('recouvFilterEtat') ? document.getElementById('recouvFilterEtat').value : "";
+
+    let finalData = dataSet.filter(d => {
+        if (fMotif && d.nature !== fMotif) return false; 
+        if (fEtat && d.etatDossier !== fEtat) return false; 
+        return true;
+    });
+    
+    currentFilteredDataGlobal = finalData;
+
+    const total = finalData.reduce((s,d)=>s+d.montant,0);
+    safeSetText('kpiRecouvMontant', formatMoney(total) + " DH");
+    safeSetText('kpiRecouvCount', finalData.length);
+    
+    // KPI Carte Bleue (Top Motifs)
+    safeSetHTML('kpiCard4Title', "TOP 3 MOTIFS RÉCURRENTS");
+    
+    const aggMotif = {}; finalData.forEach(d => aggMotif[d.nature] = (aggMotif[d.nature]||0)+1);
+    const sortedMotifs = Object.entries(aggMotif).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    
+    const elVarVal = document.getElementById('kpiCard4Value');
+    const elVarAction = document.getElementById('kpiCard4Action');
+
+    if(elVarVal) {
+        let html = "";
+        if(sortedMotifs.length > 0) {
+            sortedMotifs.forEach(m => html += `<div style="font-size:0.8em; border-bottom:1px solid #eee; margin-bottom:2px; display:flex; justify-content:space-between;"><span>${m[0]}</span> <b>(${m[1]})</b></div>`);
+        } else {
+            html = "<div style='color:#ccc'>Aucune donnée</div>";
+        }
+        elVarVal.innerHTML = html;
+    }
+
+    if(elVarAction) {
+        elVarAction.innerHTML = `
+            <button onclick="handleVariableCardClick()" style="background: #3498db; color: white; border: none; padding: 5px 15px; border-radius: 20px; font-size: 0.8em; font-weight: 600; cursor: pointer; width: 100%; margin-top:5px; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                <i class="fas fa-filter"></i> Voir ces dossiers
+            </button>`;
+    }
+
+    // Header Tableau
+    const headRow = document.querySelector('#tableTopFactures thead tr') || document.getElementById('headerRowTop25');
+    if (headRow) {
+        headRow.innerHTML = `
+            <th style="text-align:left; padding:12px;">Entité</th> 
+            <th style="text-align:left; padding:12px;">Patient</th> 
+            <th style="text-align:center; padding:12px;">Facture</th> 
+            <th style="text-align:left; padding:12px;">Organisme</th> 
+            <th style="text-align:right; padding:12px;">Montant PEC</th> 
+            <th style="text-align:left; padding:12px;">Motif Std</th> 
+            <th style="text-align:left; padding:12px;">Etat Dossier</th> 
+            <th style="text-align:left; padding:12px;">Nature</th>
+        `;
+    }
+
+    // Rendu Tableau
+    const tbody = document.querySelector('#tableTopFactures tbody');
+    if(!tbody) return;
+    tbody.innerHTML = '';
+    
+    finalData.slice(0, recouvTopN).forEach(d => {
+        tbody.insertAdjacentHTML('beforeend', `
+            <tr>
+                <td style="text-align:left;">${d.entite}</td>
+                <td style="text-align:left;">${d.patient}</td>
+                <td style="text-align:center;">${d.facture||'-'}</td>
+                <td style="text-align:left;">${d.organisme}</td>
+                <td style="text-align:right;">${formatMoney(d.montant)}</td>
+                <td style="text-align:left;">${d.nature}</td>
+                <td style="text-align:left;">${d.etatDossier}</td>
+                <td style="text-align:left;">${d.natureDossier}</td>
+            </tr>`);
+    });
+}
+</script>

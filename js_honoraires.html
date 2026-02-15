@@ -1,0 +1,1056 @@
+<script>
+/**
+ * MODULE HONORAIRES MEDECINS - CODE COMPLET & FINALISÉ
+ * - Import Fractionné (Chunking)
+ * - CA Facturé Dynamique
+ * - Graphiques Pro & Triés
+ * - Exports Excel/PDF
+ */
+
+// =======================================================================
+// 1. VARIABLES GLOBALES
+// =======================================================================
+let globalHonorairesData = [];
+let filteredHonoData = [];
+let currentDetailHonoData = []; 
+let lastRenderedSummaryRows = []; 
+let lastRenderedSummaryCols = [];
+
+// Instances Graphiques
+let chartHonoEvolInstance = null;
+let chartHonoTypeOrgInstance = null;
+let trendChartInstance = null; 
+
+// État de la vue
+let honoViewMode = 'MEDECIN'; 
+let honoTopN = 10;
+let evolGraphType = 'ENTITY'; // Par défaut : Entité
+let honoChartMode = 'TOTAL';
+
+const HONO_MONTHS = ["JAN", "FEV", "MAR", "AVR", "MAI", "JUIN", "JUIL", "AOU", "SEP", "OCT", "NOV", "DEC"];
+const EXCLUDED_SPECS_IMPORT = ["ANESTHESIE-REANIMATION", "RADIOLOGIE", "RADIOLOGUE", "REANIMATION MEDICALE"];
+
+// =======================================================================
+// 2. CHARGEMENT ET TRAITEMENT DES DONNÉES
+// =======================================================================
+
+function loadHonorairesData() {
+    if(document.getElementById('loadingOverlay')) document.getElementById('loadingOverlay').style.display = 'flex';
+    
+    // Animation barre de progression
+    let progress = 0;
+    const progressEl = document.getElementById('honoProgressBar');
+    const progressTxt = document.getElementById('honoProgressText');
+    const loadingContainer = document.getElementById('honoLoadingContainer');
+    
+    if(loadingContainer) loadingContainer.style.display = 'block';
+
+    const interval = setInterval(() => {
+        if(progress < 90) {
+            progress += Math.random() * 8;
+            if(progress > 90) progress = 90;
+            if(progressEl) progressEl.style.width = progress + '%';
+            if(progressTxt) progressTxt.textContent = Math.round(progress) + '%';
+        }
+    }, 200);
+
+    google.script.run.withSuccessHandler(response => {
+        clearInterval(interval);
+        if(progressEl) progressEl.style.width = '100%';
+        if(progressTxt) progressTxt.textContent = '100%';
+        
+        setTimeout(() => {
+            if(loadingContainer) loadingContainer.style.display = 'none';
+            if(document.getElementById('loadingOverlay')) document.getElementById('loadingOverlay').style.display = 'none';
+        }, 500);
+
+        if (response && response.data) {
+            safeSetText('honorairesLastUpdate', "Date d'actualisation : " + (response.lastUpdate || "--/--/----"));
+            processHonorairesData(response.data);
+        }
+    }).getHonorairesData();
+}
+
+function processHonorairesData(rawData) {
+    if (!rawData || rawData.length < 2) return;
+    const safe = (val) => (val !== undefined && val !== null) ? val : "";
+    
+    globalHonorairesData = rawData.slice(1).map(r => {
+        let dateSortie = makeDate(safe(r[3]), safe(r[2]), safe(r[1]));
+        let datePaie = makeDate(safe(r[15]), safe(r[14]), safe(r[13]));
+        let dateEnvoi = makeDate(safe(r[23]), safe(r[22]), safe(r[21]));
+        
+        let displayDate = "-";
+        if (safe(r[1]) && safe(r[2]) && safe(r[3])) {
+            let mIdx = HONO_MONTHS.indexOf(safe(r[2]));
+            if (mIdx > -1) {
+                let mNum = String(mIdx + 1).padStart(2, '0');
+                let dNum = String(safe(r[1])).padStart(2, '0');
+                displayDate = `${dNum}/${mNum}/${safe(r[3])}`;
+            }
+        }
+
+        let specRaw = String(safe(r[6])).toUpperCase().trim();
+        let specNorm = normalizeSpecialty(specRaw);
+
+        // Exclusion stricte (sauf pour PIL)
+        if (EXCLUDED_SPECS_IMPORT.includes(specRaw) && safe(r[0]) !== 'PIL') return null;
+
+        return {
+            entite: safe(r[0]),
+            annee: safe(r[3]), mois: safe(r[2]), jour: safe(r[1]),
+            dateSortieDisplay: displayDate,
+            dateSortieObj: dateSortie,
+            
+            famille: safe(r[4]), medecin: safe(r[5]), specialite: specNorm,
+            solde: parseFloat(safe(r[7]))||0,
+            typePaiePatient: safe(r[8]), organisme: safe(r[9]), numPec: safe(r[10]), dossier: safe(r[11]),
+            regle: String(safe(r[12])).toUpperCase(),
+            
+            datePaieObj: datePaie,
+            dateEnvoiObj: dateEnvoi,
+            
+            mtBrut: parseFloat(safe(r[17])) || 0,
+            mtNet: parseFloat(safe(r[18])) || 0,
+            mtRetenu: parseFloat(safe(r[19])) || 0,
+            typeOrganisme: safe(r[24]) || "Autre", 
+            eligible: safe(r[25]), modePaie: safe(r[26])
+        };
+    }).filter(x => x !== null);
+
+    initHonorairesFilters();
+    updateHonorairesView('INIT');
+}
+
+function normalizeSpecialty(s) {
+    if(!s) return "";
+    let clean = s.trim();
+    if(clean.includes("CARDIOLOGIE") && clean.includes("INTERVENTION")) return "CARDIOLOGIE INTERVENTIONNELLE";
+    if(clean.includes("GASTRO")) return "GASTROLOGIE";
+    if(clean.includes("NEURO")) return "NEUROLOGIE";
+    if(clean.includes("TRAUMA")) return "TRAUMATOLOGIE";
+    if(clean.includes("GYNECO")) return "GYNECOLOGIE OBSTETRIQUE";
+    if(clean.includes("PEDIAT")) return "PEDIATRIE";
+    return clean;
+}
+
+function makeDate(a, mStr, j) {
+    if(!a || !mStr || !j) return null;
+    let mIdx = HONO_MONTHS.indexOf(mStr);
+    if(mIdx === -1) return null;
+    return new Date(a, mIdx, j);
+}
+
+// =======================================================================
+// 3. FILTRES (CASCADE & LOGIQUE SOUS-ENTITÉ)
+// =======================================================================
+
+function initHonorairesFilters() {
+    const ENTITY_ORDER_PREF = ["HIA CIOA", "CIT", "CID", "HPG", "PIL", "ALHIKMA"];
+    let entities = [...new Set(globalHonorairesData.map(d=>d.entite))];
+    
+    // Fusion HIA/CIOA pour l'affichage
+    if (entities.includes("HIA") && entities.includes("CIOA")) {
+         if(!entities.includes("HIA CIOA")) entities.push("HIA CIOA");
+         entities = entities.filter(e => e !== "HIA" && e !== "CIOA");
+    }
+    
+    entities.sort((a,b) => {
+        let idxA = ENTITY_ORDER_PREF.indexOf(a); let idxB = ENTITY_ORDER_PREF.indexOf(b);
+        if(idxA === -1) idxA = 99; if(idxB === -1) idxB = 99;
+        return idxA - idxB;
+    });
+
+    updateFilterOptions('honoFilterEntite', entities);
+    const distinctYears = [...new Set(globalHonorairesData.map(d=>d.annee))].filter(x=>x).sort().reverse();
+    updateFilterOptions('honoFilterAnnee', distinctYears);
+    updateFilterOptions('honoFilterMois', HONO_MONTHS);
+    updateCascadingFilters(globalHonorairesData, 'INIT');
+}
+
+function updateFilterOptions(id, list, currentValue) {
+    const sel = document.getElementById(id);
+    if(!sel) return;
+    const old = currentValue || sel.value;
+    sel.innerHTML = '<option value="">TOUT</option>';
+    list.forEach(x => sel.add(new Option(x,x)));
+    if(list.includes(old)) sel.value = old; else sel.value = "";
+}
+
+window.updateHonorairesView = function(source) {
+    const fEnt = document.getElementById('honoFilterEntite').value;
+    
+    // Gestion Sous-Entité (Affichage)
+    const subContainer = document.getElementById('honoSubEntityContainer');
+    const subSel = document.getElementById('honoFilterSubEntity');
+    
+    if (fEnt === "HIA CIOA") {
+        if(subContainer.style.display === "none") { subContainer.style.display = "flex"; subSel.value = ""; }
+    } else {
+        subContainer.style.display = "none"; subSel.value = "";
+    }
+    const fSub = subSel.value;
+
+    const fAn = document.getElementById('honoFilterAnnee').value;
+    const fMois = document.getElementById('honoFilterMois').value;
+    const fTrim = document.getElementById('honoFilterTrim').value;
+    const fMed = document.getElementById('honoFilterMedecin').value;
+    const fSpec = document.getElementById('honoFilterSpec').value;
+    const fRegle = document.getElementById('honoFilterRegle').value;
+
+    const qMonths = (fTrim==="T1")?["JAN","FEV","MAR"]:(fTrim==="T2")?["AVR","MAI","JUIN"]:(fTrim==="T3")?["JUIL","AOU","SEP"]:(fTrim==="T4")?["OCT","NOV","DEC"]:null;
+
+    filteredHonoData = globalHonorairesData.filter(d => {
+        // Filtre Entité / Sous-Entité
+        if (fEnt === "HIA CIOA") {
+            if (d.entite !== "HIA" && d.entite !== "CIOA") return false;
+            if (fSub && d.entite !== fSub) return false;
+        } else if (fEnt && d.entite !== fEnt) return false;
+
+        // Filtres Temporels
+        if(fAn && String(d.annee) !== fAn) return false;
+        if(fMois && d.mois !== fMois) return false;
+        if(fTrim && qMonths && !qMonths.includes(d.mois)) return false;
+        
+        // Filtres Attributs
+        if(fMed && d.medecin !== fMed) return false;
+        if(fSpec && d.specialite !== fSpec) return false;
+        
+        // Filtre Statut
+        if(fRegle) {
+            let isPaid = (d.regle === "OUI" || d.regle === "RÉGLÉ");
+            if(fRegle === "OUI" && !isPaid) return false;
+            if(fRegle === "NON" && isPaid) return false;
+        }
+        return true;
+    });
+
+    if(source !== 'MED' && source !== 'SPEC') updateCascadingFilters(filteredHonoData, source);
+
+    updateHonoKPIs();
+    drawHonoEvolutionChart();
+    renderHonoTable();
+}
+
+function updateCascadingFilters(subset, source) {
+    if (source === 'ENTITE' || source === 'SUB' || source === 'INIT') {
+        const years = [...new Set(subset.map(d=>d.annee))].filter(x=>x).sort().reverse();
+        updateFilterOptions('honoFilterAnnee', years, document.getElementById('honoFilterAnnee').value);
+    }
+    
+    // Trimestre -> Mois
+    if (source === 'ENTITE' || source === 'SUB' || source === 'ANNEE' || source === 'TRIM' || source === 'INIT') {
+        const fTrim = document.getElementById('honoFilterTrim').value;
+        let validMonths = HONO_MONTHS;
+        if(fTrim === 'T1') validMonths = ["JAN","FEV","MAR"];
+        else if(fTrim === 'T2') validMonths = ["AVR","MAI","JUIN"];
+        else if(fTrim === 'T3') validMonths = ["JUIL","AOU","SEP"];
+        else if(fTrim === 'T4') validMonths = ["OCT","NOV","DEC"];
+        
+        const subsetMonths = subset.map(d => d.mois);
+        const finalMonths = validMonths.filter(m => subsetMonths.includes(m));
+        updateFilterOptions('honoFilterMois', finalMonths, document.getElementById('honoFilterMois').value);
+    }
+
+    if (source === 'ENTITE' || source === 'SUB' || source === 'ANNEE' || source === 'MOIS' || source === 'TRIM' || source === 'INIT') {
+        const meds = [...new Set(subset.map(d=>d.medecin))].sort();
+        const specs = [...new Set(subset.map(d=>d.specialite))].sort();
+        updateFilterOptions('honoFilterMedecin', meds, document.getElementById('honoFilterMedecin').value);
+        updateFilterOptions('honoFilterSpec', specs, document.getElementById('honoFilterSpec').value);
+    }
+}
+
+// =======================================================================
+// 4. KPIS & CALCUL CA FACTURÉ
+// =======================================================================
+
+function updateHonoKPIs() {
+    const sumBrut = filteredHonoData.reduce((a,b)=>a+b.mtBrut,0);
+    const paid = filteredHonoData.filter(d=>d.regle==="OUI" || d.regle==="RÉGLÉ");
+    const unpaid = filteredHonoData.filter(d=>d.regle!=="OUI" && d.regle!=="RÉGLÉ");
+    const toPay = unpaid.filter(d => d.eligible === "OUI").reduce((a,b)=>a+b.mtBrut,0);
+    
+    safeSetText('kpiHonoBrut', formatMoney(sumBrut) + " DH");
+    safeSetText('kpiHonoTauxRecouv', sumBrut>0 ? (paid.reduce((a,b)=>a+b.mtBrut,0)/sumBrut*100).toFixed(1)+" %" : "0 %");
+    safeSetText('kpiHonoTauxNonRegle', sumBrut>0 ? (unpaid.reduce((a,b)=>a+b.mtBrut,0)/sumBrut*100).toFixed(1)+" %" : "0 %");
+    safeSetText('kpiHonoAPayer', formatMoney(toPay) + " DH");
+
+    // Délai Moyen
+    let totalDays = 0, countDelay = 0;
+    paid.forEach(d => {
+        if (d.datePaieObj) {
+            let start = d.dateSortieObj;
+            if (d.typeOrganisme === "Prise en charge" && d.dateEnvoiObj) start = d.dateEnvoiObj;
+            if (start && d.datePaieObj > start) {
+                let diff = (d.datePaieObj - start) / (1000 * 60 * 60 * 24);
+                if (diff >= 0 && diff < 1000) { totalDays += diff; countDelay++; }
+            }
+        }
+    });
+    const avgDelay = countDelay > 0 ? Math.round(totalDays / countDelay) : 0;
+    safeSetText('kpiHonoDelai', avgDelay + " Jours");
+
+    // Top 3
+    const aggMed = {}; filteredHonoData.forEach(d => aggMed[d.medecin] = (aggMed[d.medecin]||0)+d.mtBrut);
+    const top3Med = Object.entries(aggMed).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    const elTopMed = document.getElementById('kpiHonoTopMed'); 
+    if(elTopMed) elTopMed.innerHTML = top3Med.map((m,i) => `<div style="display:flex; justify-content:space-between; border-bottom:1px dashed #eee; padding:2px 0;"><span style="color:#555;">${i+1}. ${m[0].substring(0,18)}</span><span style="font-weight:bold; color:#8e44ad;">${formatMoney(m[1])}</span></div>`).join('') || "Aucune donnée";
+
+    const aggSpec = {}; filteredHonoData.forEach(d => aggSpec[d.specialite] = (aggSpec[d.specialite]||0)+d.mtBrut);
+    const top3Spec = Object.entries(aggSpec).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    const elTopSpec = document.getElementById('kpiHonoTopSpec'); 
+    if(elTopSpec) elTopSpec.innerHTML = top3Spec.map((s,i) => `<div style="display:flex; justify-content:space-between; border-bottom:1px dashed #eee; padding:2px 0;"><span style="color:#555;">${i+1}. ${s[0]}</span><span style="font-weight:bold; color:#2980b9;">${formatMoney(s[1])}</span></div>`).join('') || "Aucune donnée";
+
+    // --- CALCUL CA FACTURÉ (Budget + Honoraires) ---
+    if(typeof rawData !== 'undefined' && rawData.caData) {
+        let caClinique = 0;
+        const fEnt = document.getElementById('honoFilterEntite').value;
+        const fSub = document.getElementById('honoFilterSubEntity').value;
+        const fMois = document.getElementById('honoFilterMois').value;
+        const fTrim = document.getElementById('honoFilterTrim').value;
+        
+        let targetEntities = [];
+        if (fEnt === "HIA CIOA") {
+            if (fSub) targetEntities = [fSub];
+            else targetEntities = ["HIA", "CIOA"];
+        } else if (fEnt) {
+            targetEntities = [fEnt];
+        } else {
+            targetEntities = [...new Set(globalHonorairesData.map(d => d.entite))];
+        }
+
+        const quarters = { "T1": ["JAN", "FEV", "MAR"], "T2": ["AVR", "MAI", "JUIN"], "T3": ["JUIL", "AOU", "SEP"], "T4": ["OCT", "NOV", "DEC"] };
+
+targetEntities.forEach(e => {
+            // [CORRECTION] : Vérification de sécurité stricte
+            if (rawData.caData && rawData.caData[e]) {
+                let entData = rawData.caData[e];
+                // On s'assure que les données de l'année concernée existent
+                // Note: Le code original utilisait caData[e] directement sans année,
+                // ou rawData.caData est structuré [Entité][Année].
+                // Adaptons selon la structure détectée dans Code.gs (extraData.ca[ent][year])
+                
+                // On récupère l'objet pour l'année filtrée ou l'année en cours
+                const yearKey = document.getElementById('honoFilterAnnee').value || new Date().getFullYear();
+                
+                // Si la structure est [Entité][Année]
+                if (entData[yearKey]) {
+                    entData = entData[yearKey];
+                }
+
+                if (entData && entData.caMensuel && !e.toUpperCase().includes("TOTAL")) {
+                    if (fMois) {
+                        // [CORRECTION] : Vérification que le mois existe
+                        caClinique += (entData.caMensuel[fMois] || 0);
+                    } else if (fTrim && quarters[fTrim]) {
+                        quarters[fTrim].forEach(m => caClinique += (entData.caMensuel[m] || 0));
+                    } else {
+                        caClinique += (entData.caAnnuel || 0);
+                    }
+                }
+            }
+        });
+        
+        // Poids = Honoraires / (CA Clinique + Honoraires)
+        let totalFacture = caClinique + sumBrut;
+        let ratio = (totalFacture > 0) ? (sumBrut / totalFacture * 100).toFixed(1) : "--";
+        safeSetText('kpiHonoPoidsCA', ratio + " %");
+        safeSetText('kpiHonoRefCA', "CA Facturé : " + formatMoney(totalFacture));
+    }
+}
+
+// =======================================================================
+// 5. GRAPHIQUES (DYNAMIQUE & COULEURS PRO)
+// =======================================================================
+
+// Attacher explicitement à window pour éviter ReferenceError
+window.updateHonoChartMode = function(mode) {
+    honoChartMode = mode;
+    document.getElementById('btnChartTotal').classList.toggle('active', mode==='TOTAL');
+    document.getElementById('btnChartSplit').classList.toggle('active', mode==='SPLIT');
+    drawHonoEvolutionChart();
+}
+
+window.updateEvolGraphType = function(type) {
+    evolGraphType = type;
+    document.querySelectorAll('.toggle-chart-btn').forEach(b => b.classList.remove('active'));
+    
+    if (type === 'ENTITY') document.getElementById('btnGraphEntity').classList.add('active');
+    else if (type === 'SPEC') document.getElementById('btnGraphSpec').classList.add('active');
+    else if (type === 'MED') document.getElementById('btnGraphMed').classList.add('active');
+    else if (type === 'TIME') document.getElementById('btnGraphTime').classList.add('active');
+
+    drawHonoEvolutionChart();
+}
+
+function drawHonoEvolutionChart() {
+    const ctxEvol = document.getElementById('chartHonoEvolution');
+    const ctxOrg = document.getElementById('chartHonoTypeOrg');
+    if(!ctxEvol) return;
+
+    if(chartHonoEvolInstance) chartHonoEvolInstance.destroy();
+    
+    const fEnt = document.getElementById('honoFilterEntite').value;
+    const fAn = document.getElementById('honoFilterAnnee').value;
+    
+    // Détermination dynamique de l'axe X
+    let viewMode = evolGraphType; 
+    
+    // Auto-ajustement si "Période"
+    if (viewMode === 'TIME') {
+        viewMode = (!fEnt && !fAn) ? 'YEAR' : 'MONTH';
+    }
+    // Auto-ajustement si "Entité" unique -> switch vers Année
+    if (viewMode === 'ENTITY' && fEnt && fEnt !== "HIA CIOA") viewMode = 'YEAR'; 
+
+    let labels = [], dataBrut = [], dataNonRegle = [], dataPctRegle = [];
+    const agg = {};
+
+    filteredHonoData.forEach(d => {
+        let k;
+        if (viewMode === 'MED') k = d.medecin;
+        else if (viewMode === 'SPEC') k = d.specialite;
+        else if (viewMode === 'MONTH') k = d.mois;
+        else if (viewMode === 'YEAR') k = d.annee;
+        else k = d.entite;
+
+        if(!agg[k]) agg[k] = {brut:0, non:0, regle:0};
+        agg[k].brut += d.mtBrut;
+        if(d.regle!=="OUI" && d.regle!=="RÉGLÉ") agg[k].non += d.mtBrut; else agg[k].regle += d.mtBrut;
+    });
+
+    labels = Object.keys(agg);
+
+    // TRI : Du Grand au Petit
+    if (['ENTITY', 'MED', 'SPEC'].includes(viewMode)) {
+        labels.sort((a,b) => agg[b].brut - agg[a].brut);
+        if (viewMode !== 'ENTITY') labels = labels.slice(0, 10);
+    } else if (viewMode === 'MONTH') {
+        labels = HONO_MONTHS.filter(m => agg[m]);
+    } else {
+        labels.sort(); // Années
+    }
+
+    dataBrut = labels.map(l => agg[l] ? agg[l].brut : 0);
+    dataNonRegle = labels.map(l => agg[l] ? agg[l].non : 0);
+    dataPctRegle = labels.map(l => (agg[l] && agg[l].brut > 0) ? (agg[l].regle / agg[l].brut * 100) : 0);
+
+    // --- COULEURS PRO ---
+    // Bleu Nuit Dégradé pour Montant Honoraires
+    const gradBrut = ctxEvol.getContext('2d').createLinearGradient(0,0,0,400); 
+    gradBrut.addColorStop(0, '#2c3e50'); gradBrut.addColorStop(1, '#4ca1af'); 
+
+    // Rouge Dégradé pour Non Réglé (si mode SPLIT)
+    const gradNon = ctxEvol.getContext('2d').createLinearGradient(0,0,0,400); 
+    gradNon.addColorStop(0, '#e74c3c'); gradNon.addColorStop(1, '#c0392b');
+
+    let datasets = [
+        {
+            type: 'line', label: '% Réglé', data: dataPctRegle,
+            borderColor: '#d32f2f', backgroundColor: '#d32f2f', // Rouge vif contraste
+            borderWidth: 2, pointRadius: 4, pointBackgroundColor: 'white', yAxisID: 'y1',
+            datalabels: { display: true, color: '#b71c1c', backgroundColor: 'white', borderRadius: 4, font: {weight: 'bold', size:10}, align: 'top', offset: 6, formatter: (v) => Math.round(v) + '%' }
+        },
+        {
+            label: 'Montant Honoraires', data: dataBrut, backgroundColor: gradBrut, borderRadius: 4, order: 2, yAxisID: 'y'
+        }
+    ];
+
+    if(honoChartMode === 'SPLIT') {
+        datasets.pop(); 
+        let dataRegle = dataBrut.map((v, i) => v - dataNonRegle[i]);
+        datasets.push({ label: 'Réglé', data: dataRegle, backgroundColor: '#27ae60', borderRadius: 4, stack: 'Stk', yAxisID: 'y' });
+        datasets.push({ label: 'Non Réglé', data: dataNonRegle, backgroundColor: gradNon, borderRadius: 4, stack: 'Stk', yAxisID: 'y' });
+    }
+
+    const fmtMDH = (v) => { if(v >= 1000000) return (v/1000000).toFixed(1) + ' M'; if(v >= 1000) return (v/1000).toFixed(0) + ' K'; return v; };
+
+    chartHonoEvolInstance = new Chart(ctxEvol.getContext('2d'), {
+        type: 'bar',
+        data: { labels: labels.map(l => String(l).length > 15 ? String(l).substring(0,15)+'...' : l), datasets: datasets },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            scales: { x:{grid:{display:false}}, y:{display:false, position:'left', ticks:{callback:fmtMDH}}, y1:{display:false, position:'right', min:0, max:110, grid:{display:false}} },
+            plugins: { 
+                legend: {display:true, position:'top'}, 
+                datalabels: { display: (ctx)=>ctx.dataset.type!=='line' && ctx.dataset.data[ctx.dataIndex] > 0, formatter: (v) => fmtMDH(v), color: '#fff', anchor: 'center', align: 'center', font: {size:10} },
+                onClick: (e, elements) => {
+                    if (elements.length > 0) {
+                        const index = elements[0].index;
+                        const label = labels[index]; 
+                        let filterDimension = 'ENTITE';
+                        if (viewMode === 'ENTITY') filterDimension = 'ENTITE';
+                        else if (viewMode === 'YEAR') filterDimension = 'ANNEE';
+                        else if (viewMode === 'MONTH') filterDimension = 'MOIS';
+                        else if (viewMode === 'MED') filterDimension = 'MED';
+                        else if (viewMode === 'SPEC') filterDimension = 'SPEC';
+                        openHonoDetail(label, 'CHART_CLICK', filterDimension + '|' + label); 
+                    }
+                }
+            }
+        }
+    });
+
+    if(chartHonoTypeOrgInstance) chartHonoTypeOrgInstance.destroy();
+    const aggOrg = {}; filteredHonoData.forEach(d => aggOrg[d.typeOrganisme] = (aggOrg[d.typeOrganisme]||0) + d.mtBrut);
+    const lblOrg = Object.keys(aggOrg);
+    // Nouvelle Palette Pro Pastel Vif
+    const pieColors = ['#1a237e', '#0d47a1', '#0277bd', '#00838f', '#00695c', '#2e7d32', '#ef6c00', '#d84315'];
+
+    chartHonoTypeOrgInstance = new Chart(ctxOrg.getContext('2d'), {
+        type: 'doughnut',
+        data: { labels: lblOrg, datasets: [{ data: lblOrg.map(l=>aggOrg[l]), backgroundColor: pieColors, borderWidth:2, borderColor:'#fff' }] },
+        options: { 
+            responsive: true, maintainAspectRatio: false, cutout:'60%', 
+            plugins: { 
+                legend: { position:'bottom', labels:{boxWidth:10, padding:15} }, 
+                datalabels:{ color:'#333', backgroundColor:'#fff', borderRadius:3, font:{weight:'bold', size:10}, formatter:(v,ctx)=>{let s=ctx.chart._metasets[ctx.datasetIndex].total; return (v/s*100).toFixed(0)+'%';} },
+                onClick: (e, elements) => {
+                    if(elements.length > 0) {
+                        const idx = elements[0].index;
+                        const label = lblOrg[idx];
+                        openHonoDetail("Type Organisme: " + label, "TYPE_ORG", label);
+                    }
+                }
+            } 
+        }
+    });
+}
+
+// =======================================================================
+// 6. TABLES ET UI
+// =======================================================================
+
+window.updateHonoViewMode = function(mode) {
+    honoViewMode = mode;
+    ['btnHonoMed', 'btnHonoSpec', 'btnHonoAgeing'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.style.background = 'transparent'; el.style.color = '#666'; }
+    });
+    const ids = {'MEDECIN':'btnHonoMed', 'SPECIALITE':'btnHonoSpec', 'AGEING':'btnHonoAgeing'};
+    document.getElementById(ids[mode]).style.background = '#2c3e50';
+    document.getElementById(ids[mode]).style.color = 'white';
+    renderHonoTable();
+}
+
+window.updateHonoTopN = function(val) { honoTopN = val === '1000' ? 100000 : parseInt(val); renderHonoTable(); }
+
+function renderHonoTable() {
+    const thead = document.querySelector('#tableHonoraires thead');
+    const tbody = document.querySelector('#tableHonoraires tbody');
+    tbody.innerHTML = '';
+    
+    let dynCols = [];
+    const fTrim = document.getElementById('honoFilterTrim').value;
+    const fMois = document.getElementById('honoFilterMois').value;
+    const fAn = document.getElementById('honoFilterAnnee').value;
+    const distinctYears = [...new Set(filteredHonoData.map(d=>d.annee).filter(y=>y))].sort();
+
+    if (honoViewMode === 'AGEING') {
+        dynCols = ["< 1 Mois", "1-3 Mois", "3-6 Mois", "6-12 Mois", "12-24 Mois", "> 24 Mois"];
+    } else {
+        if (!fAn && distinctYears.length > 1) {
+            dynCols = distinctYears;
+        } else {
+            if (fMois) dynCols = [fMois];
+            else if (fTrim) {
+                if(fTrim==="T1") dynCols=["JAN","FEV","MAR"];
+                else if(fTrim==="T2") dynCols=["AVR","MAI","JUIN"];
+                else if(fTrim==="T3") dynCols=["JUIL","AOU","SEP"];
+                else dynCols=["OCT","NOV","DEC"];
+            } else {
+                dynCols = HONO_MONTHS;
+            }
+        }
+    }
+    
+    lastRenderedSummaryCols = dynCols;
+    const hasCID = filteredHonoData.some(d => d.entite === 'CID');
+    let showSpec = (honoViewMode === 'MEDECIN' || honoViewMode === 'AGEING');
+
+    let h1 = `<tr><th rowspan="2" style="background:#fff; border-right:1px solid #eee; text-align:left;">${showSpec ? 'Médecin' : 'Spécialité'}</th>`;
+    if(showSpec) h1 += `<th rowspan="2" style="background:#fff; border-right:1px solid #eee; text-align:left;">Spécialité</th>`;
+    
+    h1 += `<th colspan="${dynCols.length}" style="text-align:center; background:#ecf0f1; border-right:1px solid #ddd;">VENTILATION</th>`;
+    h1 += `<th colspan="3" style="text-align:center; background:#f4f6f9; border-right:1px solid #ddd;">GLOBAL</th>`;
+    h1 += `<th colspan="2" style="text-align:center; background:#eafaf1; border-right:1px solid #ddd; color:#27ae60;">TRÉSORERIE</th>`;
+    h1 += `<th colspan="2" style="text-align:center; background:#fff3e0; color:#e67e22;">PAYANT</th>`;
+    h1 += `<th colspan="2" style="text-align:center; background:#fff8e1; color:#f1c40f;">AFFILIÉ</th>`;
+    h1 += `<th colspan="2" style="text-align:center; background:#e3f2fd; color:#3498db;">PEC</th>`;
+    h1 += `<th colspan="2" style="text-align:center; background:#fce4ec; color:#e91e63;">AT</th>`;
+    if(hasCID) h1 += `<th colspan="2" style="text-align:center; background:#e8f5e9; color:#2ecc71;">RÉGION</th>`;
+    h1 += `</tr>`;
+
+    let h2 = `<tr>`;
+    dynCols.forEach(c => h2 += `<th style="text-align:right; font-size:0.8em; background:#ecf0f1;">${c}</th>`);
+    h2 += `<th style="text-align:right; background:#f4f6f9;">Total</th><th style="text-align:right; background:#f4f6f9; color:#2ecc71;">Réglé</th><th style="text-align:right; background:#f4f6f9; color:#e74c3c; border-right:1px solid #ddd;">Reste</th>`;
+    h2 += `<th style="text-align:right; background:#eafaf1; color:#2980b9;">À Payer</th><th style="text-align:right; background:#fdfefe; border-right:1px solid #ddd;">Solde</th>`;
+    
+    h2 += `<th style="text-align:right; background:#fff3e0;">Soldé</th><th style="text-align:right; background:#fff3e0;">Non</th>`;
+    h2 += `<th style="text-align:right; background:#fff8e1;">Soldé</th><th style="text-align:right; background:#fff8e1;">Non</th>`;
+    h2 += `<th style="text-align:right; background:#e3f2fd;">Accordé</th><th style="text-align:right; background:#e3f2fd;">Non</th>`;
+    h2 += `<th style="text-align:right; background:#fce4ec;">Soldé</th><th style="text-align:right; background:#fce4ec;">Non</th>`;
+    if(hasCID) h2 += `<th style="text-align:right; background:#e8f5e9;">Soldé</th><th style="text-align:right; background:#e8f5e9;">Non</th>`;
+    h2 += `</tr>`;
+    
+    thead.innerHTML = h1 + h2;
+
+    const agg = {};
+    const today = new Date();
+
+    filteredHonoData.forEach(d => {
+        let k = showSpec ? d.medecin : d.specialite;
+        if(!k) return;
+        
+        if(!agg[k]) { 
+            agg[k] = { 
+                name:k, spec: d.specialite, 
+                total:0, regle:0, a_payer:0, solde:0, 
+                dyn:{}, 
+                payant:{s:0,ns:0}, affilie:{s:0,ns:0}, pec:{s:0,ns:0}, at:{s:0,ns:0}, region:{s:0,ns:0}
+            }; 
+            dynCols.forEach(c => agg[k].dyn[c]=0);
+        }
+        
+        const amt = d.mtBrut;
+        agg[k].total += amt;
+        
+        let colKey = null;
+        if (honoViewMode === 'AGEING' && d.dateSortieObj && d.regle !== "OUI" && d.regle !== "RÉGLÉ") {
+             const diff = Math.ceil(Math.abs(today - d.dateSortieObj) / 86400000);
+             colKey = diff<30?"< 1 Mois":diff<90?"1-3 Mois":diff<180?"3-6 Mois":diff<365?"6-12 Mois":diff<730?"12-24 Mois":"> 24 Mois";
+        } else if (honoViewMode !== 'AGEING') {
+             if (!fAn && distinctYears.length > 1) colKey = d.annee;
+             else colKey = d.mois;
+        }
+        
+        if (colKey && agg[k].dyn[colKey] !== undefined) agg[k].dyn[colKey] += amt;
+
+        if(d.regle==="OUI" || d.regle==="RÉGLÉ") agg[k].regle += amt;
+        else {
+            if(d.eligible==="OUI") agg[k].a_payer += amt; else agg[k].solde += amt;
+            if(d.typeOrganisme === "Payant") { if(d.solde<200) agg[k].payant.s += amt; else agg[k].payant.ns += amt; }
+            else if(d.typeOrganisme === "Payant affilié") { if(d.solde<200) agg[k].affilie.s += amt; else agg[k].affilie.ns += amt; }
+            else if(d.typeOrganisme === "Prise en charge") { if(d.numPec==="OUI") agg[k].pec.s += amt; else agg[k].pec.ns += amt; }
+            else if(d.typeOrganisme === "Accident de travail") { if(d.solde<200) agg[k].at.s += amt; else agg[k].at.ns += amt; }
+            else if(d.typeOrganisme === "REGION-DAKHLA-OUED-EDDAHAB") { if(d.solde<200) agg[k].region.s += amt; else agg[k].region.ns += amt; }
+        }
+    });
+
+    let rows = Object.values(agg).sort((a,b)=>b.total-a.total).slice(0, honoTopN);
+    lastRenderedSummaryRows = rows; 
+
+    const clk = (n, filter, stat) => `onclick="openHonoDetail('${n.replace(/'/g, "\\'")}', '${filter}', '${stat}')" style="cursor:pointer;"`;
+    const clkCol = (n, colVal) => `onclick="openHonoDetail('${n.replace(/'/g, "\\'")}', 'COLUMN', '${colVal}')" style="cursor:pointer;"`;
+    const clkType = (n, typeOrg, subStat) => `onclick="openHonoDetail('${n.replace(/'/g, "\\'")}', 'TYPE_DETAIL', '${typeOrg}|${subStat}')" style="cursor:pointer;"`;
+    const fmt = (v) => v===0 ? '-' : formatMoney(v);
+
+    rows.forEach(r => {
+        let specDisplay = r.spec || "";
+        let tr = `<tr onmouseenter="showTrendTooltip(event, '${r.name.replace(/'/g, "\\'")}', '${honoViewMode}', '${specDisplay.replace(/'/g, "\\'")}')" onmouseleave="hideTrendTooltip()">`;
+        tr += `<td style="text-align:left; font-weight:bold; color:#2c3e50;">${r.name}</td>`;
+        if(showSpec) tr += `<td style="text-align:left; font-size:0.85em; color:#666;">${specDisplay}</td>`;
+        
+        dynCols.forEach(c => tr += `<td ${clkCol(r.name, c)} style="text-align:right; font-size:0.9em; color:#555;">${fmt(r.dyn[c])}</td>`);
+        
+        tr += `<td ${clk(r.name,'ALL','ALL')} style="text-align:right; font-weight:bold; background:#f9f9f9;">${fmt(r.total)}</td>`;
+        tr += `<td ${clk(r.name,'ALL','REGLE')} style="text-align:right; color:#2ecc71; background:#f9f9f9;">${fmt(r.regle)}</td>`;
+        tr += `<td ${clk(r.name,'ALL','NON')} style="text-align:right; color:#e74c3c; background:#f9f9f9; border-right:1px solid #ddd;">${fmt(r.total-r.regle)}</td>`;
+        
+        tr += `<td ${clk(r.name,'ALL','A_PAYER')} style="text-align:right; font-weight:bold; color:#2980b9; background:#eafaf1;">${fmt(r.a_payer)}</td>`;
+        tr += `<td ${clk(r.name,'ALL','SOLDE')} style="text-align:right; color:#7f8c8d; border-right:1px solid #ddd;">${fmt(r.solde)}</td>`;
+        
+        tr += `<td ${clkType(r.name, 'Payant', 'SOLDE')} style="text-align:right; background:#fff3e0;">${fmt(r.payant.s)}</td>`;
+        tr += `<td ${clkType(r.name, 'Payant', 'NON_SOLDE')} style="text-align:right; background:#fff3e0; border-right:1px solid #ddd;">${fmt(r.payant.ns)}</td>`;
+        
+        tr += `<td ${clkType(r.name, 'Payant affilié', 'SOLDE')} style="text-align:right; background:#fff8e1;">${fmt(r.affilie.s)}</td>`;
+        tr += `<td ${clkType(r.name, 'Payant affilié', 'NON_SOLDE')} style="text-align:right; background:#fff8e1; border-right:1px solid #ddd;">${fmt(r.affilie.ns)}</td>`;
+        
+        tr += `<td ${clkType(r.name, 'Prise en charge', 'ACCORDE')} style="text-align:right; background:#e3f2fd;">${fmt(r.pec.s)}</td>`;
+        tr += `<td ${clkType(r.name, 'Prise en charge', 'NON_ACCORDE')} style="text-align:right; background:#e3f2fd; border-right:1px solid #ddd;">${fmt(r.pec.ns)}</td>`;
+        
+        tr += `<td ${clkType(r.name, 'Accident de travail', 'SOLDE')} style="text-align:right; background:#fce4ec;">${fmt(r.at.s)}</td>`;
+        tr += `<td ${clkType(r.name, 'Accident de travail', 'NON_SOLDE')} style="text-align:right; background:#fce4ec; border-right:1px solid #ddd;">${fmt(r.at.ns)}</td>`;
+        
+        if(hasCID) {
+            tr += `<td ${clkType(r.name, 'REGION-DAKHLA-OUED-EDDAHAB', 'SOLDE')} style="text-align:right; background:#e8f5e9;">${fmt(r.region.s)}</td>`;
+            tr += `<td ${clkType(r.name, 'REGION-DAKHLA-OUED-EDDAHAB', 'NON_SOLDE')} style="text-align:right; background:#e8f5e9;">${fmt(r.region.ns)}</td>`;
+        }
+        tr += `</tr>`;
+        tbody.insertAdjacentHTML('beforeend', tr);
+    });
+}
+
+// =======================================================================
+// 7. TOOLTIP, DETAIL & EXPORT
+// =======================================================================
+
+window.showTrendTooltip = function(e, keyName, mode, specName) {
+    const tooltip = document.getElementById('trendTooltip');
+    const canvas = document.getElementById('trendTooltipCanvas');
+    const title = document.getElementById('trendTooltipTitle');
+    
+    tooltip.style.display = 'block';
+    let top = e.clientY + 10;
+    let left = e.clientX + 15;
+    if (left + 400 > window.innerWidth) left = e.clientX - 410;
+    if (top + 300 > window.innerHeight) top = e.clientY - 310;
+    tooltip.style.left = left + 'px'; tooltip.style.top = top + 'px';
+    title.textContent = keyName;
+    document.getElementById('trendTooltipSpec').textContent = specName || "";
+
+    let timeSeries = [];
+    filteredHonoData.forEach(d => {
+        const matchKey = (mode === 'MEDECIN' || mode === 'AGEING') ? d.medecin : d.specialite;
+        if(matchKey === keyName) {
+            let k = d.annee + '-' + String(HONO_MONTHS.indexOf(d.mois)).padStart(2,'0');
+            let found = timeSeries.find(t=>t.k===k);
+            if(!found) { found={k:k, l:d.mois+' '+d.annee, v:0}; timeSeries.push(found); }
+            found.v += d.mtBrut;
+        }
+    });
+    timeSeries.sort((a,b)=>a.k.localeCompare(b.k));
+    
+    if(timeSeries.length === 0) timeSeries = HONO_MONTHS.map(m=>({l:m, v:0}));
+    const chartLabels = timeSeries.map(t=>t.l);
+    const chartValues = timeSeries.map(t=>t.v);
+    
+    const validVals = chartValues.filter(v => v > 0);
+    const sumVal = chartValues.reduce((a,b)=>a+b, 0);
+    const avgVal = validVals.length > 0 ? sumVal / validVals.length : 0;
+    const maxVal = validVals.length > 0 ? Math.max(...validVals) : 0;
+    const minVal = validVals.length > 0 ? Math.min(...validVals) : 0;
+    
+    let maxIdx = chartValues.indexOf(maxVal);
+    let minIdx = chartValues.findIndex(v => v === minVal && v > 0);
+    
+    document.getElementById('ttMaxPeriod').textContent = (maxVal > 0) ? chartLabels[maxIdx] : "-";
+    document.getElementById('ttMinPeriod').textContent = (minVal > 0) ? chartLabels[minIdx] : "-";
+    const fmtLarge = (v) => { if(v >= 1000000) return (v/1000000).toFixed(2) + ' MDH'; if(v >= 1000) return (v/1000).toFixed(1) + ' KDH'; return v.toFixed(0); };
+    document.getElementById('ttTotal').textContent = fmtLarge(sumVal);
+    document.getElementById('ttAvg').textContent = fmtLarge(avgVal);
+    document.getElementById('ttMax').textContent = fmtLarge(maxVal);
+    document.getElementById('ttMin').textContent = fmtLarge(minVal);
+
+    if (trendChartInstance) trendChartInstance.destroy();
+    trendChartInstance = new Chart(canvas.getContext('2d'), { type: 'line', data: { labels: chartLabels, datasets: [{ data: chartValues, borderColor: '#363795', borderWidth: 2, pointRadius: 2, pointBackgroundColor: 'white', fill: true, backgroundColor: 'rgba(54, 55, 149, 0.1)', tension: 0.3 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: {display:false}, datalabels: {display:false} }, scales: { x: {display:true, ticks:{font:{size:9}, maxTicksLimit:6}}, y: {display:false} } } });
+}
+window.hideTrendTooltip = function() { document.getElementById('trendTooltip').style.display = 'none'; }
+
+// DETAIL AU CLIC
+window.openHonoDetail = function(keyName, filterType, status) {
+    const modal = document.getElementById('honoDetailModal');
+    const tbody = document.getElementById('honoModalBody');
+    document.getElementById('honoModalTitle').textContent = `Détail : ${keyName}`;
+    
+    currentDetailHonoData = filteredHonoData.filter(d => {
+        if (filterType === 'CHART_CLICK') {
+            const [dim, val] = status.split('|');
+            if (dim === 'ENTITE') return d.entite === val;
+            if (dim === 'ANNEE') return String(d.annee) === String(val);
+            if (dim === 'MOIS') return d.mois === val;
+            if (dim === 'MED') return d.medecin === val;
+            if (dim === 'SPEC') return d.specialite === val;
+            return true;
+        }
+        let matchK = (honoViewMode === 'MEDECIN' || honoViewMode === 'AGEING') ? d.medecin : d.specialite;
+        if(keyName !== "" && matchK !== keyName && !keyName.startsWith("Type Organisme")) return false;
+        
+        if (filterType === 'COLUMN') {
+            if (honoViewMode === 'AGEING') {
+                const today = new Date();
+                if (!d.dateSortieObj || d.regle === "OUI" || d.regle === "RÉGLÉ") return false;
+                const diff = Math.ceil(Math.abs(today - d.dateSortieObj) / 86400000);
+                let b = diff<30?"< 1 Mois":diff<90?"1-3 Mois":diff<180?"3-6 Mois":diff<365?"6-12 Mois":diff<730?"12-24 Mois":"> 24 Mois";
+                return b === status;
+            } else return (d.mois === status || String(d.annee) === String(status));
+        }
+        else if (filterType === 'TYPE_DETAIL') {
+            if (d.regle === "OUI" || d.regle === "RÉGLÉ") return false;
+            const [targetType, targetStat] = status.split('|');
+            if (d.typeOrganisme !== targetType) return false;
+            if (targetStat === 'SOLDE' || targetStat === 'ACCORDE') { if (targetType === 'Prise en charge' || targetType === 'Accident de travail') return d.numPec === 'OUI'; else return d.solde < 200; } else { if (targetType === 'Prise en charge' || targetType === 'Accident de travail') return d.numPec !== 'OUI'; else return d.solde >= 200; }
+        }
+        else if (filterType === 'TYPE_ORG') return d.typeOrganisme === status;
+        else {
+            if(status === 'REGLE' && (d.regle !== "OUI" && d.regle !== "RÉGLÉ")) return false;
+            if(status === 'NON' && (d.regle === "OUI" || d.regle === "RÉGLÉ")) return false;
+            if(status === 'A_PAYER' && (d.eligible !== "OUI" || d.regle === "OUI")) return false;
+            if(status === 'SOLDE' && (d.regle === "OUI" || d.eligible === "OUI")) return false; 
+        }
+        return true;
+    });
+
+    const total = currentDetailHonoData.reduce((s,d)=>s+d.mtBrut,0);
+    safeSetText('honoDetailCount', currentDetailHonoData.length);
+    safeSetText('honoDetailTotal', formatMoney(total) + " DH");
+
+    tbody.innerHTML = '';
+    currentDetailHonoData.slice(0, 500).forEach(d => {
+        let etatDossier = "";
+        if (d.typeOrganisme === "Prise en charge" || d.typeOrganisme === "Accident de travail") etatDossier = (d.numPec === "OUI") ? "<span style='color:green'>PEC Accordé</span>" : "<span style='color:orange'>PEC non accordé</span>";
+        else etatDossier = (d.solde < 200) ? "<span style='color:green'>Dossier soldé</span>" : "<span style='color:red'>Dossier non soldé</span>";
+        let color = (d.regle==="OUI" || d.regle==="RÉGLÉ") ? "green" : "red";
+        tbody.insertAdjacentHTML('beforeend', `<tr style="border-bottom:1px solid #eee;"><td>${d.entite}</td><td>${d.dateSortieDisplay}</td><td><b>${d.dossier}</b><br><small>${d.typePaiePatient}</small></td><td>${d.medecin}</td><td>${d.specialite}</td><td>${d.organisme}</td><td>${d.typeOrganisme}</td><td style="text-align:right;">${etatDossier}</td><td style="text-align:right; font-weight:bold;">${formatMoney(d.mtBrut)}</td><td style="text-align:center; color:${color}; font-weight:bold;">${d.regle}</td></tr>`);
+    });
+    if(modal) modal.style.display = 'flex';
+}
+
+// EXPORT EXCEL CORRIGÉ
+window.exportHonoSummaryExcel = function() {
+    if(!lastRenderedSummaryRows || lastRenderedSummaryRows.length === 0) return;
+    const data = lastRenderedSummaryRows.map(r => {
+        let row = {};
+        if(honoViewMode === 'MEDECIN') { row["Médecin"] = r.name; row["Spécialité"] = r.spec; } 
+        else if (honoViewMode === 'SPECIALITE') { row["Spécialité"] = r.name; } 
+        else { row["Libellé"] = r.name; }
+
+        lastRenderedSummaryCols.forEach(c => row[c] = r.dyn[c]);
+        
+        row["Montant Honoraires"] = r.total;
+        row["Réglé"] = r.regle;
+        row["Non Réglé"] = r.total - r.regle;
+        row["À Payer"] = r.a_payer;
+        row["Solde"] = r.solde;
+        
+        row["Payant Soldé"] = r.payant.s; row["Payant Non Soldé"] = r.payant.ns;
+        row["Affilié Soldé"] = r.affilie.s; row["Affilié Non Soldé"] = r.affilie.ns;
+        row["PEC Accordé"] = r.pec.s; row["PEC Non Accordé"] = r.pec.ns;
+        row["AT Soldé"] = r.at.s; row["AT Non Soldé"] = r.at.ns;
+        if(r.region && (r.region.s>0||r.region.ns>0)) { row["Région Soldé"]=r.region.s; row["Région Non Soldé"]=r.region.ns; }
+        return row;
+    });
+    
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Synthese_Honoraires");
+    XLSX.writeFile(wb, "Synthese_Honoraires.xlsx");
+}
+
+window.printHonoSummaryPDF = function() {
+    const tableHTML = document.getElementById('tableHonoraires').outerHTML;
+    const title = "Synthèse Honoraires";
+    const printWindow = window.open('', '', 'height=600,width=1200');
+    printWindow.document.write(`<html><head><title>${title}</title><style>body { font-family: 'Segoe UI', sans-serif; padding: 20px; } table { width: 100%; border-collapse: collapse; font-size: 10px; } th, td { border: 1px solid #ddd; padding: 5px; text-align: right; } th { background-color: #f0f0f0; text-align: center; } td:first-child { text-align: left; }</style></head><body><h2>${title}</h2>${tableHTML}</body></html>`);
+    printWindow.document.close();
+    setTimeout(() => { printWindow.focus(); printWindow.print(); printWindow.close(); }, 500);
+}
+
+window.exportHonoDetailExcel = function() {
+    if(!currentDetailHonoData || currentDetailHonoData.length === 0) return;
+    const exportData = currentDetailHonoData.map(d => ({
+        "Entité": d.entite, "Date Sortie": d.dateSortieDisplay, "Dossier": d.dossier, 
+        "Patient": d.typePaiePatient, "Médecin": d.medecin, "Spécialité": d.specialite, 
+        "Organisme": d.organisme, "Type Organisme": d.typeOrganisme, 
+        "Montant Brut": d.mtBrut, "Statut": d.regle
+    }));
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Detail_Honoraires");
+    XLSX.writeFile(wb, "Detail_Honoraires.xlsx");
+}
+
+window.printHonoDetailData = function() {
+    const content = document.getElementById('honoPrintArea').innerHTML;
+    const title = document.getElementById('honoModalTitle').textContent;
+    const printWindow = window.open('', '', 'height=600,width=1200');
+    printWindow.document.write(`<html><head><title>${title}</title><style>table{width:100%;border-collapse:collapse;font-family:sans-serif;font-size:10px;} th,td{border:1px solid #ccc;padding:5px;text-align:left;} th{background:#eee;} td:nth-child(9){text-align:right;}</style></head><body><h2>${title}</h2>${content}</body></html>`);
+    printWindow.document.close();
+    setTimeout(() => { printWindow.print(); printWindow.close(); }, 500);
+}
+
+// =======================================================================
+// IMPORT
+// =======================================================================
+
+async function handleHonorairesFileSelect(event) {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    document.getElementById('fileHonoraireDisplay').textContent = "Traitement...";
+    
+    let sessionClearedKeys = new Set();
+    for (let i = 0; i < files.length; i++) {
+        await processSingleHonoFileSmart(files[i], sessionClearedKeys);
+    }
+    document.getElementById('fileHonoraireDisplay').textContent = "Terminé !";
+    setTimeout(loadHonorairesData, 1000);
+}
+
+function processSingleHonoFileSmart(file, sessionClearedKeys) {
+    return new Promise((resolve) => {
+        let detectedEntity = "Inconnue";
+        const n = file.name.toUpperCase();
+        if (n.includes("HIA") && !n.includes("CIOA")) detectedEntity = "HIA";
+        else if (n.includes("CIOA")) detectedEntity = "CIOA";
+        else if (n.includes("CIT")) detectedEntity = "CIT";
+        else if (n.includes("CID")) detectedEntity = "CID";
+        else if (n.includes("PIL")) detectedEntity = "PIL";
+        else if (n.includes("ALHIKMA") || n.includes("HIKMA") || n.includes("CAH")) detectedEntity = "ALHIKMA";
+        else if (n.includes("HPG")) detectedEntity = "HPG";
+
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rawJson = XLSX.utils.sheet_to_json(sheet, {header: 1});
+                const cleanData = parseHonoRawData(rawJson, detectedEntity);
+                
+                if (cleanData.length === 0) { resolve(true); return; }
+
+                const batches = {};
+                cleanData.forEach(row => {
+                    const ent = row[0]; const annee = row[3]; 
+                    if (ent && annee) {
+                        const key = ent + "|" + annee;
+                        if (!batches[key]) batches[key] = [];
+                        batches[key].push(row);
+                    }
+                });
+
+                const keys = Object.keys(batches);
+                const display = document.getElementById('fileHonoraireDisplay');
+                
+                for (let k = 0; k < keys.length; k++) {
+                    const key = keys[k];
+                    const [bEnt, bYear] = key.split("|");
+                    const batchData = batches[key];
+
+                    if (!sessionClearedKeys.has(key)) {
+                        display.textContent = `Vidage ${bEnt} ${bYear}...`;
+                        await new Promise(r => google.script.run.withSuccessHandler(r).clearHonorairesFile(bEnt, bYear));
+                        sessionClearedKeys.add(key);
+                    }
+
+                    const CHUNK_SIZE = 2000;
+                    const totalRows = batchData.length;
+                    for (let i = 0; i < totalRows; i += CHUNK_SIZE) {
+                        const chunk = batchData.slice(i, i + CHUNK_SIZE);
+                        const progress = Math.min(100, Math.round(((i + chunk.length) / totalRows) * 100));
+                        display.textContent = `Envoi ${bEnt} ${bYear} (${progress}%)...`;
+                        
+                        await new Promise((resBatch) => {
+                            google.script.run.withSuccessHandler(() => resBatch()).saveHonorairesBatch(chunk, bEnt, bYear);
+                        });
+                    }
+                }
+                resolve(true);
+            } catch (err) { console.error(err); resolve(false); }
+        };
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+function parseHonoRawData(rows, entity) {
+    if(rows.length < 1) return [];
+    const headers = rows[0].map(h => String(h).toLowerCase().trim());
+    const findIdx = (inc, exc=[]) => {
+        for(let i=0; i<headers.length; i++) {
+            if(inc.every(x=>headers[i].includes(x)) && !exc.some(x=>headers[i].includes(x))) return i;
+        }
+        return -1;
+    };
+
+    let colMap = {
+        sortie: findIdx(["date", "sortie"]),
+        famille: findIdx(["famille"]),
+        benef: findIdx(["benificiaire"]) > -1 ? findIdx(["benificiaire"]) : findIdx(["medecin"]),
+        spec: findIdx(["specialite"]),
+        solde: findIdx(["solde"]),
+        type_pat: findIdx(["paiement", "patient"]),
+        org: findIdx(["organisme"], ["type"]),
+        pec: findIdx(["num", "pec"], ["reglement"]),
+        dossier: findIdx(["dossier"], ["type", "total"]),
+        regle: findIdx(["regle"], ["num", "date", "mode"]),
+        paie_date: findIdx(["date", "paiement"]),
+        paie_type: findIdx(["type", "paiement"], ["patient"]),
+        brut: findIdx(["brut"]),
+        net: findIdx(["net"]),
+        retenu: findIdx(["retenu"]),
+        patente: findIdx(["patente"]),
+        envoi: findIdx(["envoi"], ["2"])
+    };
+
+    const cleanAmt = (val) => {
+        if (val == null || val === "") return 0;
+        if (typeof val === 'number') return val;
+        let s = String(val).replace(/[^0-9.,-]/g, '').replace(',', '.');
+        return parseFloat(s) || 0;
+    };
+    function splitDate(val) {
+        if(!val) return {j:"", m:"", a:""};
+        let d = null;
+        if(typeof val === 'number') d = new Date(Math.round((val - 25569)*86400*1000));
+        else {
+            let s = String(val).trim();
+            if (s.includes('-')) { let p = s.split(' ')[0].split('-'); if (p.length===3) d = new Date(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2])); }
+            else if (s.includes('/')) { let p = s.split('/'); if (p.length===3) d = new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0])); }
+        }
+        if(d && !isNaN(d.getTime())) return { j: d.getDate(), m: HONO_MONTHS[d.getMonth()], a: d.getFullYear() };
+        return {j:"", m:"", a:""};
+    }
+
+    let result = [];
+    for(let i=1; i<rows.length; i++) {
+        let r = rows[i];
+        
+        const famStr = String(r[colMap.famille] || "").toUpperCase();
+        if (!famStr.includes("HONORAIRE") && !famStr.includes("MEDECIN")) continue;
+
+        const specStr = String(r[colMap.spec] || "").toUpperCase().trim();
+        if (EXCLUDED_SPECS_IMPORT.includes(specStr) && entity !== 'PIL') continue;
+
+        let orgName = String(r[colMap.org] || "").trim().toUpperCase();
+        let typePaiePat = String(r[colMap.type_pat] || "").trim().toUpperCase();
+        let solde = cleanAmt(r[colMap.solde]);
+        
+        let rawPec = String(r[colMap.pec] || "").trim();
+        let storedPec = (rawPec && rawPec !== "0") ? "OUI" : "";
+
+        let typeOrg = "Prise en charge"; 
+        if (orgName === "PAYANT") typeOrg = "Payant";
+        else if (orgName.includes("PAYANT")) typeOrg = "Payant affilié";
+        else if (
+            (orgName === "AT" || orgName.startsWith("AT ") || orgName.endsWith(" AT") || orgName.includes(" ACCIDENT ")) &&
+            !orgName.includes("ATLANTA") && !orgName.includes("MSH") && !orgName.includes("MAROC ASSISTANCE")
+        ) {
+            typeOrg = "Accident de travail";
+        }
+        else if (orgName.includes("DAKHLA")) { if(entity === "CID") typeOrg = "REGION-DAKHLA-OUED-EDDAHAB"; }
+
+        let isEligible = "NON";
+        if (["Payant", "Payant affilié", "Accident de travail", "REGION-DAKHLA-OUED-EDDAHAB"].includes(typeOrg)) {
+            if (solde < 200) isEligible = "OUI";
+        } else {
+            if (storedPec === "OUI") isEligible = "OUI";
+        }
+        let modePaie = (isEligible === "OUI") ? ((typeOrg === "Payant" && typePaiePat === "E") ? "Espèce" : "Virement") : "-";
+        
+        let datesSortie = splitDate(r[colMap.sortie]);
+        let datesPaie = splitDate(r[colMap.paie_date]);
+        let datesEnvoi = splitDate(r[colMap.envoi]);
+
+        result.push([
+            entity, datesSortie.j, datesSortie.m, datesSortie.a,
+            r[colMap.famille], r[colMap.benef], r[colMap.spec], 
+            solde, r[colMap.type_pat], r[colMap.org], storedPec, r[colMap.dossier], r[colMap.regle],
+            datesPaie.j, datesPaie.m, datesPaie.a,
+            r[colMap.paie_type], 
+            cleanAmt(r[colMap.brut]), cleanAmt(r[colMap.net]), cleanAmt(r[colMap.retenu]), 
+            r[colMap.patente]||"", datesEnvoi.j, datesEnvoi.m, datesEnvoi.a,
+            typeOrg, isEligible, modePaie
+        ]);
+    }
+    return result;
+}
+
+// (Le reste des fonctions utilitaires comme modal, etc. sont incluses ci-dessus)
+window.openPoidsCADetail = function() { const modal = document.getElementById('honoPoidsCAModal'); const tbody = document.getElementById('honoPoidsCABody'); tbody.innerHTML = ''; if(typeof rawData === 'undefined' || !rawData.caData) { alert("Données CA non disponibles."); return; } const fEnt = document.getElementById('honoFilterEntite').value; const months = HONO_MONTHS; let totalHono = 0, totalCA = 0; months.forEach(m => { let honoMonth = filteredHonoData.filter(d => d.mois === m).reduce((s, d) => s + d.mtBrut, 0); let caMonth = 0; if(fEnt) { if(rawData.caData[fEnt] && rawData.caData[fEnt].caMensuel) caMonth = rawData.caData[fEnt].caMensuel[m] || 0; } else { const entities = [...new Set(globalHonorairesData.map(d => d.entite))]; entities.forEach(ent => { if(rawData.caData[ent] && rawData.caData[ent].caMensuel && !ent.includes("TOTAL")) caMonth += (rawData.caData[ent].caMensuel[m] || 0); }); } if (honoMonth > 0 || caMonth > 0) { totalHono += honoMonth; totalCA += caMonth; let ratio = caMonth > 0 ? (honoMonth / caMonth * 100).toFixed(1) + '%' : '-'; tbody.insertAdjacentHTML('beforeend', `<tr style="border-bottom:1px solid #eee;"><td style="padding:10px;">${m}</td><td style="padding:10px; text-align:right;">${formatMoney(honoMonth)}</td><td style="padding:10px; text-align:right;">${formatMoney(caMonth)}</td><td style="padding:10px; text-align:center; font-weight:bold; color:#9b59b6;">${ratio}</td></tr>`); } }); let ratioTot = totalCA > 0 ? (totalHono / totalCA * 100).toFixed(1) + '%' : '-'; tbody.insertAdjacentHTML('beforeend', `<tr style="background:#f4f6f9; font-weight:bold;"><td style="padding:10px;">TOTAL</td><td style="padding:10px; text-align:right;">${formatMoney(totalHono)}</td><td style="padding:10px; text-align:right;">${formatMoney(totalCA)}</td><td style="padding:10px; text-align:center; color:#9b59b6;">${ratioTot}</td></tr>`); modal.style.display = 'flex'; }
+window.openAPayerModal = function() { const modal = document.getElementById('modalAPayer'); const tbody = document.querySelector('#tableAPayer tbody'); tbody.innerHTML = ''; const dataAPayer = filteredHonoData.filter(d => d.eligible === "OUI" && d.regle !== "OUI" && d.regle !== "RÉGLÉ"); const agg = {}; dataAPayer.forEach(d => { const key = d.medecin || "Inconnu"; if(!agg[key]) agg[key] = { name: key, esp: 0, vir: 0, total: 0 }; agg[key].total += d.mtBrut; if(d.modePaie === "Espèce" || d.typePaiePatient === "E") agg[key].esp += d.mtBrut; else agg[key].vir += d.mtBrut; }); const rows = Object.values(agg).sort((a,b)=>b.total-a.total).slice(0,100); rows.forEach(r => { let pctE = r.total > 0 ? (r.esp/r.total*100).toFixed(0)+'%' : '-'; let pctV = r.total > 0 ? (r.vir/r.total*100).toFixed(0)+'%' : '-'; tbody.insertAdjacentHTML('beforeend', `<tr style="border-bottom:1px solid #eee;"><td style="padding:8px; font-weight:bold;">${r.name}</td><td style="padding:8px; text-align:right;">${formatMoney(r.esp)}</td><td style="text-align:center; font-size:0.8em; color:#888;">${pctE}</td><td style="padding:8px; text-align:right;">${formatMoney(r.vir)}</td><td style="text-align:center; font-size:0.8em; color:#888;">${pctV}</td><td style="padding:8px; text-align:right; font-weight:bold; color:#d35400;">${formatMoney(r.total)}</td></tr>`); }); if(modal) modal.style.display = 'flex'; }
+window.openHonoDelayDetail = function() { const paidWithDelay = filteredHonoData.filter(d => { if(d.regle !== "OUI" && d.regle !== "RÉGLÉ") return false; let start = (d.typeOrganisme === "Prise en charge" && d.dateEnvoiObj) ? d.dateEnvoiObj : d.dateSortieObj; return (d.datePaieObj && start && d.datePaieObj > start); }); currentDetailHonoData = paidWithDelay; document.getElementById('honoModalTitle').textContent = "Détail : Délais de Règlement"; const total = currentDetailHonoData.reduce((s,d)=>s+d.mtBrut,0); safeSetText('honoDetailCount', currentDetailHonoData.length); safeSetText('honoDetailTotal', formatMoney(total) + " DH"); const tbody = document.getElementById('honoModalBody'); tbody.innerHTML = ''; currentDetailHonoData.slice(0, 500).forEach(d => { let start = (d.typeOrganisme === "Prise en charge" && d.dateEnvoiObj) ? d.dateEnvoiObj : d.dateSortieObj; let days = Math.round((d.datePaieObj - start) / (86400000)); tbody.insertAdjacentHTML('beforeend', `<tr style="border-bottom:1px solid #eee;"><td>${d.entite}</td><td>${d.dateSortieDisplay}</td><td><b>${d.dossier}</b></td><td>${d.medecin}</td><td>${d.specialite}</td><td>${d.organisme}</td><td>${d.typeOrganisme}</td><td style="text-align:right;">${formatMoney(d.solde)}</td><td style="text-align:right; font-weight:bold;">${formatMoney(d.mtBrut)}</td><td style="text-align:center; color:green; font-weight:bold;">${days} j</td></tr>`); }); document.getElementById('honoDetailModal').style.display = 'flex'; }
+window.printHonoSummaryPDF = function() { const tableHTML = document.getElementById('tableHonoraires').outerHTML; const title = "Synthèse Honoraires"; const printWindow = window.open('', '', 'height=600,width=1200'); printWindow.document.write(`<html><head><title>${title}</title><style>body { font-family: 'Segoe UI', sans-serif; padding: 20px; } table { width: 100%; border-collapse: collapse; font-size: 10px; } th, td { border: 1px solid #ddd; padding: 5px; text-align: right; } th { background-color: #f0f0f0; text-align: center; } td:first-child { text-align: left; }</style></head><body><h2>${title}</h2>${tableHTML}</body></html>`); printWindow.document.close(); setTimeout(() => { printWindow.focus(); printWindow.print(); printWindow.close(); }, 500); }
+window.exportHonoDetailExcel = function() { if(!currentDetailHonoData || currentDetailHonoData.length === 0) return; const exportData = currentDetailHonoData.map(d => ({ "Entité": d.entite, "Date Sortie": d.dateSortieDisplay, "Dossier": d.dossier, "Médecin": d.medecin, "Spécialité": d.specialite, "Organisme": d.organisme, "Type": d.typeOrganisme, "Montant Brut": d.mtBrut, "Statut": d.regle })); const ws = XLSX.utils.json_to_sheet(exportData); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Detail_Honoraires"); XLSX.writeFile(wb, "Detail_Honoraires.xlsx"); }
+window.printHonoDetailData = function() { const content = document.getElementById('honoPrintArea').innerHTML; const title = document.getElementById('honoModalTitle').textContent; const printWindow = window.open('', '', 'height=600,width=1200'); printWindow.document.write(`<html><head><title>${title}</title><style>table{width:100%;border-collapse:collapse;font-family:sans-serif;font-size:10px;} th,td{border:1px solid #ccc;padding:5px;text-align:left;} th{background:#eee;} td:nth-child(9){text-align:right;}</style></head><body><h2>${title}</h2>${content}</body></html>`); printWindow.document.close(); setTimeout(() => { printWindow.print(); printWindow.close(); }, 500); }
+
+</script>

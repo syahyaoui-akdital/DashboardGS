@@ -1,0 +1,147 @@
+<script>
+/**
+ * SOUS-MODULE : EXPÉDITION - DOSSIERS NON EXPÉDIÉS
+ */
+
+function renderExpeditionView(dataSet) {
+    const fPatient = document.getElementById('expedFilterPatient') ? document.getElementById('expedFilterPatient').value : "";
+    
+    let finalData = dataSet.filter(d => {
+        if(fPatient === 'HOSPITALISE') { if (!d.dateEntree) return false; if (d.dateRefObj) return false; } 
+        else if (fPatient === 'SORTANT') { if (!d.dateRefObj) return false; } 
+        return true;
+    });
+
+    currentFilteredDataGlobal = finalData;
+
+    // --- KPIs ---
+    const total = finalData.reduce((s,d)=>s+d.montant,0);
+    safeSetText('kpiRecouvMontant', formatMoney(total) + " DH");
+    safeSetText('kpiRecouvCount', finalData.length);
+
+    updateExpeditionDelays(finalData, fPatient);
+
+    // --- KPI Carte Bleue (PEC) ---
+    const alertPec = finalData.filter(d => d.isAlertPEC || d.nature === "Suivi PEC vide");
+    safeSetHTML('kpiCard4Title', "DEMANDE PEC NON TRAITÉE");
+    
+    const elVarVal = document.getElementById('kpiCard4Value');
+    const elVarAction = document.getElementById('kpiCard4Action');
+
+    if(elVarVal) {
+        elVarVal.innerHTML = `<div style="font-size:1.6em; font-weight:800; color:#c0392b;">${formatMoney(alertPec.reduce((s,d)=>s+d.montant,0))}</div>
+                              <div style="font-size:0.9em; color:#666;">Nb: ${alertPec.length}</div>`;
+    }
+    if(elVarAction) {
+        elVarAction.innerHTML = `
+            <button onclick="handleVariableCardClick()" style="background: #3498db; color: white; border: none; padding: 5px 15px; border-radius: 20px; font-size: 0.8em; font-weight: 600; cursor: pointer; width: 100%; margin-top:5px; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                <i class="fas fa-search"></i> Voir ces dossiers
+            </button>`;
+    }
+
+    // --- [CORRECTION] : APPEL DES FONCTIONS DE MISE À JOUR MANQUANTES ---
+    
+    // 1. Top 3 Entités & Organismes
+    if(typeof renderTopEntities === 'function') renderTopEntities(finalData);
+    if(typeof renderTopOrganisms === 'function') renderTopOrganisms(finalData);
+
+    // 2. Graphiques
+    if(typeof drawRecouvCharts === 'function') drawRecouvCharts(finalData);
+
+    // 3. Tableau Principal (Liste dossiers)
+    updateExpeditionHeader(fPatient);
+    renderExpeditionTable(finalData, fPatient);
+
+    // 4. Tableau Par Organisme (Classification)
+    if(typeof renderClassificationTable === 'function') renderClassificationTable(finalData);
+    
+    // 5. Tableau Par Nature
+    if(typeof renderNatureTable === 'function') renderNatureTable(finalData);
+
+    // 6. Balance Âgée (Mise à jour avec les données d'expédition)
+    if(typeof renderBalanceTable === 'function') renderBalanceTable(finalData);
+}
+
+function updateExpeditionDelays(data, filterPatient) {
+    let d30=0, d60=0, d90=0, dSup=0;
+    let n30=0, n60=0, n90=0, nSup=0;
+
+    data.forEach(d => {
+        let valDelai = (filterPatient === 'HOSPITALISE' || !d.dateRefObj) ? d.ancienneteEntree : d.ancienneteSortie;
+        if (valDelai < 30) { d30 += d.montant; n30++; }
+        else if (valDelai < 60) { d60 += d.montant; n60++; }
+        else if (valDelai < 90) { d90 += d.montant; n90++; }
+        else { dSup += d.montant; nSup++; }
+    });
+
+    safeSetText('kpiExped30_Mt', formatMoney(d30)); safeSetText('kpiExped30_Nb', n30);
+    safeSetText('kpiExped60_Mt', formatMoney(d60)); safeSetText('kpiExped60_Nb', n60);
+    safeSetText('kpiExped90_Mt', formatMoney(d90)); safeSetText('kpiExped90_Nb', n90);
+    safeSetText('kpiExpedSup_Mt', formatMoney(dSup)); safeSetText('kpiExpedSup_Nb', nSup);
+}
+
+function updateExpeditionHeader(fPatient) {
+    let delaiLabel = "Délais Dossier";
+    if(fPatient === 'HOSPITALISE') delaiLabel += " (Entrée)"; else if(fPatient === 'SORTANT') delaiLabel += " (Sortie)";
+
+    const headRow = document.querySelector('#tableTopFactures thead tr') || document.getElementById('headerRowTop25');
+    if (headRow) {
+        headRow.innerHTML = `
+            <th style="text-align:left; padding:12px;">Entité</th> 
+            <th style="text-align:left; padding:12px;">Dossier / Patient</th> 
+            <th style="text-align:center; padding:12px;">N° Facture</th> 
+            <th style="text-align:left; padding:12px;">Organisme</th> 
+            <th style="text-align:left; padding:12px;">Motif / Resp. PEC</th> 
+            <th style="text-align:right; padding:12px;">Montant</th> 
+            <th style="text-align:center; padding:12px;">Date Entrée</th> 
+            <th style="text-align:center; padding:12px;">Date Sortie</th> 
+            <th style="text-align:center; padding:12px;">${delaiLabel}</th> 
+            <th style="text-align:center; padding:12px;">Statut</th>
+        `;
+    }
+}
+
+function renderExpeditionTable(data, fPatient) {
+    const tbody = document.querySelector('#tableTopFactures tbody');
+    if(!tbody) return;
+    tbody.innerHTML = '';
+
+    let sorted = [...data];
+
+    // --- APPLICATION DU TRI ---
+    if (recouvSortMode === 'DELAI') {
+        // Tri par Ancienneté décroissante
+        sorted.sort((a,b) => {
+            let delaiA = (fPatient === 'HOSPITALISE' || !a.dateRefObj) ? a.ancienneteEntree : a.ancienneteSortie;
+            let delaiB = (fPatient === 'HOSPITALISE' || !b.dateRefObj) ? b.ancienneteEntree : b.ancienneteSortie;
+            return delaiB - delaiA; 
+        });
+    } else {
+        sorted.sort((a,b) => b.montant - a.montant);
+    }
+
+    const limit = (recouvTopN === 1000) ? sorted.length : recouvTopN;
+
+    sorted.slice(0, limit).forEach(d => {
+        let valDelai = (fPatient === 'HOSPITALISE' || !d.dateRefObj) ? d.ancienneteEntree : d.ancienneteSortie;
+        let stat = (valDelai < 30) ? "<30j" : (valDelai < 60 ? "30-60j" : (valDelai < 90 ? "60-90j" : ">90j"));
+        if(!d.dateRefObj) stat = "Hosp.";
+        
+        let styleAlert = (d.isAlertPEC || d.nature === "Suivi PEC vide") ? "background-color: #fff0f0; color: #c0392b;" : "";
+
+        tbody.insertAdjacentHTML('beforeend', `
+            <tr style="cursor:pointer;" onclick="openRecouvDetailCustom([currentFilteredDataGlobal.find(x=>x.dossier=='${d.dossier}')], 'Dossier ${d.dossier}')">
+                <td style="text-align:left; ${styleAlert}">${d.entite}</td>
+                <td style="text-align:left; ${styleAlert}"><b>${d.dossier}</b><br>${d.patient}</td>
+                <td style="text-align:center;">${d.facture||'-'}</td>
+                <td style="text-align:left;">${d.organisme}</td>
+                <td style="text-align:left;">${d.motif||'-'} ${(d.respPEC ? '<br>Resp: '+d.respPEC : '')}</td>
+                <td style="text-align:right; font-weight:bold;">${formatMoney(d.montant)}</td>
+                <td style="text-align:center;">${d.dateEntreeDisplay || '-'}</td>
+                <td style="text-align:center;">${d.dateRefDisplay||'-'}</td>
+                <td style="text-align:center;">${valDelai}</td>
+                <td style="text-align:center;">${stat}</td>
+            </tr>`);
+    });
+}
+</script>

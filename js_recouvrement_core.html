@@ -1,0 +1,1661 @@
+<script>
+/**
+ * MODULE RECOUVREMENT - CORE (Partagé)
+ */
+
+// --- VARIABLES GLOBALES ---
+let recouvData = []; 
+let expeditionData = [];
+let suiviRetoursData = []; 
+let objRealData = []; 
+let currentData = []; // Données brutes du module actif
+let currentFilteredDataGlobal = []; // Données après filtres
+let delaisMap = {};
+let recouvBalanceMode = 'AGEING'; // 'AGEING' (Antériorité) ou 'PERIOD' (Période)
+
+// Instances Graphiques Partagées
+let recouvChartBarInstance = null;
+let recouvChartPieInstance = null;
+let natureChartPieInstance = null;
+
+// État
+let currentFamily = "Recouvrement"; 
+let currentSubFamily = "Dossiers non réglés"; 
+let lastUpdateRecouv = "--/--/----";
+let lastUpdateExped = "--/--/----";
+let recouvTopN = 25;
+let recouvTableMode = 'LIST';
+let recouvGraphMode = 'TIME';
+let recouvSortMode = 'MONTANT';
+let isProcheFilterActive = false;
+
+const REC_MS_DAY = 1000 * 60 * 60 * 24;
+const REC_COLORS = ['#363795', '#e67e22', '#2ecc71', '#9b59b6', '#34495e', '#f1c40f', '#e74c3c'];
+const REC_MONTHS = ["JAN", "FEV", "MAR", "AVR", "MAI", "JUIN", "JUIL", "AOU", "SEP", "OCT", "NOV", "DEC"];
+const REC_ENTITY_ORDER = ['HIA CIOA', 'CIT', 'CID', 'HPG', 'PIL', 'AL HIKMA'];
+
+// --- CHARGEMENT ---
+document.addEventListener('DOMContentLoaded', () => { loadRecouvData(); });
+
+function loadRecouvData() {
+    // 1. D'abord les délais (nécessaires pour le calcul du retard)
+    google.script.run.withSuccessHandler(delais => {
+        if (delais) {
+            delais.forEach(row => { 
+                if (row[0]) delaisMap[String(row[0]).trim().toUpperCase()] = parseInt(row[1]) || 0; 
+            });
+        }
+        
+        // 2. Recouvrement (Focus)
+        google.script.run.withSuccessHandler(response => {
+            if (response && response.data) {
+                if (response.lastUpdate) lastUpdateRecouv = response.lastUpdate;
+                recouvData = processBackendData(response.data, 'RECOUVREMENT');
+                
+                // Initialisation par défaut (si on est au démarrage)
+                if (currentFamily === 'Recouvrement' && currentSubFamily === 'Dossiers non réglés') {
+                    currentData = recouvData;
+                    initRecouvFilters();
+                    const btn = document.querySelector('.nav-sub-btn.active') || document.querySelector('.nav-sub-btn');
+                    // On ne force le switch que si aucune vue n'est active ou au premier chargement
+                    if (!document.querySelector('.nav-sub-btn.active')) {
+                        switchFamily('Recouvrement', 'Dossiers non réglés', btn);
+                    } else {
+                        updateRecouvDashboard(); // Rafraîchissement simple
+                    }
+                }
+            }
+        }).getRecouvFocusData();
+
+        // 3. Expédition
+        google.script.run.withSuccessHandler(response => {
+            if (response && response.data) {
+                if (response.lastUpdate) lastUpdateExped = response.lastUpdate;
+                expeditionData = processBackendData(response.data, 'EXPEDITION');
+                // Si on est sur l'onglet Expédition, on rafraîchit
+                if (currentFamily === 'Expédition') updateRecouvDashboard();
+            }
+        }).getExpeditionData();
+
+        // 4. Suivi des Retours
+        google.script.run.withSuccessHandler(data => {
+            if(data) {
+                suiviRetoursData = data.map(d => ({
+                    entite: d.entite, patient: d.patient, facture: d.facture, organisme: d.organisme, 
+                    montant: parseFloat(d.montant)||0, motif: d.motif, nature: d.motifStd, reponse: d.reponse, observation: d.observation
+                }));
+                // Si on est sur l'onglet Retours, on rafraîchit
+                if (currentSubFamily === 'Suivi des retours') updateRecouvDashboard();
+            }
+        }).getSuiviRetoursData();
+
+        // 5. Objectifs vs Réalisations (AJOUT CRUCIAL)
+        google.script.run.withSuccessHandler(response => {
+            // Utilisation de la fonction de traitement spécifique créée précédemment
+            if (typeof processObjRealData === 'function') {
+                objRealData = processObjRealData(response);
+            } else {
+                console.warn("Fonction processObjRealData manquante, utilisation brute.");
+                objRealData = response;
+            }
+            
+            // Si on est sur l'onglet Objectifs, on rafraîchit
+            if (currentSubFamily === 'Objectif vs Réalisation') {
+                if(typeof updateObjRealDashboard === 'function') updateObjRealDashboard();
+            }
+        }).getObjRealDashboardData();
+
+    }).getDelaisData();
+}
+
+function processObjRealData(rawData) {
+    if (!rawData || rawData.length < 2) return [];
+    
+    // On commence à l'index 1 pour sauter la ligne d'en-tête (Famille, Jour, etc.)
+    return rawData.slice(1).map(r => {
+        // Nettoyage des montants (gestion des virgules, espaces, etc.)
+        let objVal = r[5]; // Colonne F
+        let realVal = r[6]; // Colonne G
+
+        if (typeof objVal === 'string') objVal = parseFloat(objVal.replace(/\s/g, '').replace(',', '.'));
+        if (typeof realVal === 'string') realVal = parseFloat(realVal.replace(/\s/g, '').replace(',', '.'));
+
+        return {
+            famille: String(r[0]).trim(),      // Col A: Famille (Recouvrement/Expédition)
+            jour: parseInt(r[1]) || 0,         // Col B: Jour
+            mois: String(r[2]).trim().toUpperCase(), // Col C: Mois
+            annee: String(r[3]).trim(),        // Col D: Année
+            entite: String(r[4]).trim(),       // Col E: Entité
+            objectif: objVal || 0,             // Col F: Objectif
+            realisation: realVal || 0          // Col G: Réalisation
+        };
+    });
+}
+
+function processBackendData(rawData, type) {
+    if (!rawData || rawData.length < 2) return [];
+    const today = new Date(); today.setHours(0,0,0,0);
+
+    return rawData.slice(1).map(r => {
+        let entite = r[0];
+        let dossier = "", patient = "", facture = "", organisme = "Autre", montant = 0;
+        let dateRef = null; let motif = "", nature = "";
+        let datePEC = null; let dateEntree = null; let respPEC = ""; 
+        
+        if (type === 'RECOUVREMENT') {
+            dossier = r[2]; patient = r[3]; facture = r[4];
+            organisme = String(r[16] || "Autre").trim();
+            try { montant = parseFloat(String(r[18]).replace(/[^0-9.-]/g, '')) || 0; } catch(e){}
+            dateRef = parseDate(r[9], r[10], r[11]); 
+        } else if (type === 'EXPEDITION') { 
+            dossier = r[1]; patient = r[2]; motif = r[3];
+            dateRef = parseDate(r[4], r[5], r[6]); 
+            organisme = String(r[7] || "Autre").trim();
+            facture = r[8]; 
+            nature = String(r[9] || "").trim(); if(nature === "") nature = "Suivi PEC vide";
+            datePEC = parseDate(r[10], r[11], r[12]);
+            try { montant = parseFloat(String(r[13]).replace(/[^0-9.-]/g, '')) || 0; } catch(e){}
+            dateEntree = parseDate(r[14], r[15], r[16]);
+            respPEC = String(r[17] || "").trim();
+        }
+
+        let retard = 0, isEchue = false;
+        let ancienneteSortie = 0, anciennetePEC = 0, ancienneteEntree = 0;
+        let anneeRef = "", moisRef = "";
+        
+        if (dateRef && !isNaN(dateRef.getTime())) {
+            anneeRef = dateRef.getFullYear().toString();
+            moisRef = REC_MONTHS[dateRef.getMonth()];
+            ancienneteSortie = Math.floor((today - dateRef) / REC_MS_DAY);
+            if (type === 'RECOUVREMENT') {
+                let delaiPaiement = delaisMap[organisme.toUpperCase()] || 0;
+                let dateEcheance = new Date(dateRef);
+                dateEcheance.setDate(dateEcheance.getDate() + delaiPaiement);
+                retard = Math.floor((today - dateEcheance) / REC_MS_DAY);
+                isEchue = retard > 0;
+            }
+        }
+        
+        if (datePEC && !isNaN(datePEC.getTime())) anciennetePEC = Math.floor((today - datePEC) / REC_MS_DAY);
+        if (dateEntree && !isNaN(dateEntree.getTime())) ancienneteEntree = Math.floor((today - dateEntree) / REC_MS_DAY);
+
+        let isAlertPEC = false;
+        if (type === 'EXPEDITION') {
+            const isHospitalise = (!dateRef || isNaN(dateRef.getTime())); 
+            if (isHospitalise && nature === "Suivi PEC vide" && ancienneteEntree > 2) isAlertPEC = true;
+            if (!isHospitalise && nature === "Suivi PEC vide") isAlertPEC = true;
+        }
+
+        return {
+            entite: entite, dossier: dossier, patient: patient, facture: facture,
+            organisme: organisme, montant: montant,
+            dateRefDisplay: (dateRef && !isNaN(dateRef.getTime())) ? formatDateFR(dateRef) : null,
+            dateRefObj: dateRef, anneeRef: anneeRef, moisRef: moisRef,
+            retard: retard, isEchue: isEchue,
+            motif: motif, nature: nature, type: type,
+            datePEC: datePEC, datePECDisplay: (datePEC && !isNaN(datePEC.getTime())) ? formatDateFR(datePEC) : '-',
+            dateEntree: dateEntree, dateEntreeDisplay: (dateEntree && !isNaN(dateEntree.getTime())) ? formatDateFR(dateEntree) : '-',
+            ancienneteEntree: ancienneteEntree, ancienneteSortie: ancienneteSortie,
+            respPEC: respPEC, isAlertPEC: isAlertPEC, etatDossier: "", natureDossier: ""
+        };
+    });
+}
+
+// --- NAVIGATION & DISPATCHER ---
+window.switchFamily = function(mainFam, subFam, btn) {
+    document.querySelectorAll('.nav-sub-btn').forEach(b => b.classList.remove('active'));
+    if(btn) btn.classList.add('active');
+    
+    currentFamily = mainFam; 
+    currentSubFamily = subFam;
+    
+    // UI Updates Generiques
+    safeSetText('recouvMainTitle', mainFam.toUpperCase());
+    const subTitle = document.getElementById('recouvSubTitle');
+    if(subTitle) subTitle.textContent = subFam.toUpperCase();
+
+    // Reset basics
+    recouvTopN = 25; if(document.getElementById('recouvTopN')) document.getElementById('recouvTopN').value = "25";
+    isProcheFilterActive = false;
+
+    // Gestion de l'affichage des panneaux
+    const importZone = document.getElementById('recouvImportZone');
+    const standardDashboard = document.getElementById('recouvDataContent');
+    const objRealDiv = document.getElementById('objRealDataContent');
+    const recouvFilterRow = document.getElementById('recouvFilterRow');
+
+    if(importZone) importZone.style.display = (subFam === 'Objectif vs Réalisation') ? 'none' : 'flex';
+    if(standardDashboard) standardDashboard.style.display = (subFam === 'Objectif vs Réalisation') ? 'none' : 'block';
+    if(objRealDiv) objRealDiv.style.display = (subFam === 'Objectif vs Réalisation') ? 'block' : 'none';
+    if(recouvFilterRow) recouvFilterRow.style.display = 'flex';
+
+    // ROUTAGE VERS LES FICHIERS SPECIFIQUES
+    if (subFam === 'Objectif vs Réalisation') {
+        if(typeof updateObjRealDashboard === 'function') updateObjRealDashboard();
+    } else if (subFam === 'Suivi des retours') {
+        currentData = (typeof enrichSuiviRetoursData === 'function') ? enrichSuiviRetoursData() : [];
+        safeSetText('recouvLastUpdate', "Temps réel (Sheets)");
+        toggleFilters('SUIVI_RETOURS');
+        updateRecouvDashboard(); 
+    } else if (mainFam === 'Recouvrement') {
+        currentData = recouvData;
+        safeSetText('recouvLastUpdate', "Date d'actualisation : " + lastUpdateRecouv);
+        toggleFilters('RECOUVREMENT');
+        updateRecouvDashboard();
+    } else if (mainFam === 'Expédition') {
+        currentData = expeditionData;
+        safeSetText('recouvLastUpdate', "Date d'actualisation : " + lastUpdateExped);
+        toggleFilters('EXPEDITION');
+        updateRecouvDashboard();
+    }
+}
+
+// --- FILTRES COMMUNS ---
+function initRecouvFilters() { 
+    // 1. Initialisation des Entités (Avec Tri et Harmonisation)
+    const rawEntites = [...new Set(currentData.map(d => d.entite))];
+    let displayEntites = [];
+
+    // Logique de regroupement : Si HIA ou CIOA existent, on ajoute "HIA CIOA"
+    if (rawEntites.includes('HIA') || rawEntites.includes('CIOA')) {
+        displayEntites.push('HIA CIOA');
+    }
+    // Ajout des autres entités (sauf HIA/CIOA qui sont dans le groupe)
+    rawEntites.forEach(e => {
+        if (e !== 'HIA' && e !== 'CIOA') displayEntites.push(e);
+    });
+
+    // Tri selon l'ordre préférentiel défini dans REC_ENTITY_ORDER
+    displayEntites.sort((a, b) => {
+        let idxA = REC_ENTITY_ORDER.indexOf(a);
+        let idxB = REC_ENTITY_ORDER.indexOf(b);
+        if (idxA === -1) idxA = 999;
+        if (idxB === -1) idxB = 999;
+        return idxA - idxB;
+    });
+
+    const selEnt = document.getElementById('recouvFilterEntite');
+    const globalEnt = document.getElementById('entite') ? document.getElementById('entite').value : "";
+
+    if(selEnt) {
+        selEnt.innerHTML = '<option value="">TOUT</option>'; 
+        displayEntites.forEach(e => selEnt.add(new Option(e, e)));
+        
+        // Harmonisation avec le Filtre Global au chargement
+        if (globalEnt) {
+            // Si le global est sur une entité spécifique ou le groupe
+            if (displayEntites.includes(globalEnt)) {
+                selEnt.value = globalEnt;
+            } 
+            // Si le global est HIA ou CIOA mais qu'on affiche le groupe HIA CIOA
+            else if ((globalEnt === 'HIA' || globalEnt === 'CIOA') && displayEntites.includes('HIA CIOA')) {
+                selEnt.value = 'HIA CIOA';
+            }
+        }
+    }
+
+    // 2. Années
+    const annees = [...new Set(currentData.map(d => d.anneeRef).filter(x => x))].sort().reverse();
+    const selAn = document.getElementById('recouvFilterAnnee');
+    if(selAn) {
+        // Sauvegarde de la sélection actuelle ou du global
+        const curVal = selAn.value || (document.getElementById('annee') ? document.getElementById('annee').value : "");
+        selAn.innerHTML = '<option value="">TOUTES</option>';
+        annees.forEach(a => selAn.add(new Option(a, a)));
+        if (curVal && annees.includes(curVal)) selAn.value = curVal;
+    }
+
+    // 3. Mois
+    const selMois = document.getElementById('recouvFilterMois');
+    if(selMois) {
+        const curVal = selMois.value || (document.getElementById('mois') ? document.getElementById('mois').value : "");
+        selMois.innerHTML = '<option value="">TOUS</option>';
+        REC_MONTHS.forEach(m => selMois.add(new Option(m, m)));
+        if (curVal && REC_MONTHS.includes(curVal)) selMois.value = curVal;
+    }
+
+    // 4. Organismes
+    const orgs = [...new Set(currentData.map(d => d.organisme).filter(x => x))].sort();
+    const selOrg = document.getElementById('recouvFilterOrganisme');
+    if(selOrg) {
+        const curVal = selOrg.value;
+        selOrg.innerHTML = '<option value="">TOUS</option>';
+        orgs.forEach(o => selOrg.add(new Option(o, o)));
+        if (curVal && orgs.includes(curVal)) selOrg.value = curVal;
+    }
+}
+
+window.updateRecouvFilters = function(source) {
+    updateRecouvDashboard();
+};
+
+// AJOUTEZ CETTE NOUVELLE FONCTION (pour corriger l'erreur ReferenceError)
+window.openRecouvDetail = function(type) {
+    let subset = [];
+    let title = "";
+
+    if (type === 'ECHUE') {
+        subset = currentFilteredDataGlobal.filter(d => d.isEchue);
+        title = "Factures Échues";
+    } else if (type === 'NON_ECHUE') {
+        subset = currentFilteredDataGlobal.filter(d => !d.isEchue);
+        title = "Factures Non Échues";
+    } else if (type === '30') {
+        subset = currentFilteredDataGlobal.filter(d => (d.dateRefObj ? d.ancienneteSortie : d.ancienneteEntree) < 30);
+        title = "Dossiers < 30 Jours";
+    } else if (type === '60') {
+        subset = currentFilteredDataGlobal.filter(d => { let val = d.dateRefObj ? d.ancienneteSortie : d.ancienneteEntree; return val >= 30 && val < 60; });
+        title = "Dossiers 30 - 60 Jours";
+    } else if (type === '90') {
+        subset = currentFilteredDataGlobal.filter(d => { let val = d.dateRefObj ? d.ancienneteSortie : d.ancienneteEntree; return val >= 60 && val < 90; });
+        title = "Dossiers 60 - 90 Jours";
+    } else if (type === 'SUP') {
+        subset = currentFilteredDataGlobal.filter(d => { let val = d.dateRefObj ? d.ancienneteSortie : d.ancienneteEntree; return val >= 90; });
+        title = "Dossiers > 90 Jours";
+    }
+
+    if (subset.length > 0) {
+        openRecouvDetailCustom(subset, title);
+    } else {
+        alert("Aucun dossier correspondant.");
+    }
+};
+
+function updateRecouvDashboard() {
+    const fEnt = document.getElementById('recouvFilterEntite').value;
+    const fAn = document.getElementById('recouvFilterAnnee').value;
+    const fMois = document.getElementById('recouvFilterMois').value;
+    const fOrg = document.getElementById('recouvFilterOrganisme').value;
+    const fTrim = document.getElementById('recouvFilterTrim').value;
+
+    // --- GESTION SOUS-ENTITÉ ---
+    const subContainer = document.getElementById('recouvSubEntityContainer');
+    const subSel = document.getElementById('recouvFilterSubEntity');
+    let fSub = "";
+
+    // Affichage et remplissage du menu si "HIA CIOA" est sélectionné
+    if (fEnt === "HIA CIOA") {
+        if(subContainer) subContainer.style.display = "flex";
+        if(subSel && subSel.options.length === 0) {
+             subSel.innerHTML = '<option value="">Global (HIA + CIOA)</option><option value="HIA">HIA</option><option value="CIOA">CIOA</option>';
+        }
+        fSub = subSel ? subSel.value : "";
+    } else {
+        if(subContainer) subContainer.style.display = "none";
+        if(subSel) subSel.value = "";
+    }
+
+    // Mise à jour Management (Raffiné avec la sous-entité)
+    let lookupEnt = (fEnt === 'HIA CIOA' || fEnt === 'HIA' || fEnt === 'CIOA') ? 'HIA' : fEnt;
+    if (fEnt === "HIA CIOA" && fSub) lookupEnt = fSub; 
+
+    let infoMgmt = { respExploit: '-', dirMedical: '-' };
+    if (typeof window.extraContactData !== 'undefined') {
+        if (window.extraContactData[lookupEnt]) infoMgmt = window.extraContactData[lookupEnt];
+        else if (fEnt && window.extraContactData[fEnt]) infoMgmt = window.extraContactData[fEnt];
+    }
+    safeSetText('recouvResp', infoMgmt.respExploit || '-');
+    safeSetText('recouvDirMed', infoMgmt.dirMedical || '-');
+
+    // DISPATCH VERS OBJECTIFS (Si c'est l'onglet actif)
+    if (currentSubFamily === 'Objectif vs Réalisation') {
+        if(typeof updateObjRealDashboard === 'function') updateObjRealDashboard();
+        return;
+    }
+
+    // FILTRAGE GÉNÉRAL (Pour Dossiers Non Réglés, Expédition, Retours)
+    let filtered = currentData.filter(d => {
+        // Filtre Entité & Sous-Entité
+        if (fEnt === "HIA CIOA") { 
+            if (d.entite !== "HIA" && d.entite !== "CIOA") return false; 
+            if (fSub && d.entite !== fSub) return false; 
+        } 
+        else if (fEnt && d.entite !== fEnt) return false;
+        
+        if (fOrg && d.organisme !== fOrg) return false;
+
+        // Filtres Temporels
+        if (fAn && String(d.anneeRef) !== String(fAn)) return false;
+        if (fMois && d.moisRef !== fMois) return false;
+        
+        if (fTrim) {
+            let validMonths = [];
+            if(fTrim==="T1") validMonths=["JAN","FEV","MAR"];
+            else if(fTrim==="T2") validMonths=["AVR","MAI","JUIN"];
+            else if(fTrim==="T3") validMonths=["JUIL","AOU","SEP"];
+            else if(fTrim==="T4") validMonths=["OCT","NOV","DEC"];
+            if (d.moisRef && !validMonths.includes(d.moisRef)) return false;
+        }
+        
+        return true;
+    });
+
+    // Rendu selon la vue active
+    if (currentFamily === 'Recouvrement' && currentSubFamily === 'Dossiers non réglés') {
+        if(typeof renderNonReglesView === 'function') renderNonReglesView(filtered);
+    } else if (currentFamily === 'Expédition') {
+        if(typeof renderExpeditionView === 'function') renderExpeditionView(filtered);
+    } else if (currentSubFamily === 'Suivi des retours') {
+        if(typeof renderRetoursView === 'function') renderRetoursView(filtered);
+    }
+}
+
+// Utilitaires de dates et formatage
+function parseDate(j, m, a) { /* ... code existant ... */ if(!j||!m||!a) return null; let mNum=m; if(isNaN(m)) mNum=REC_MONTHS.indexOf(String(m).toUpperCase().trim())+1; let d=new Date(a,mNum-1,j); return isNaN(d.getTime())?null:d; }
+function formatDateFR(d) { /* ... code existant ... */ if (!d || isNaN(d.getTime())) return "-"; return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`; }
+function safeSetText(id, t) { const e=document.getElementById(id); if(e) e.textContent=t; }
+function safeSetHTML(id, h) { const e=document.getElementById(id); if(e) e.innerHTML=h; }
+
+// Toggle Filters UI
+function toggleFilters(mode) {
+    // Cache tout d'abord
+    const ids = ['filterStatutContainer', 'filterApprocheContainer', 'filterPatientContainer', 'rowAlertsRecouv', 'rowAlertsExped', 'blockClassifNature', 'blockClassifOrg', 'filterMotifContainer', 'filterEtatContainer', 'filterOrganismeContainer'];
+    ids.forEach(id => { const el = document.getElementById(id); if(el) el.style.display = 'none'; });
+
+    // Affiche selon le mode
+    if (mode === 'RECOUVREMENT') { 
+        ['filterStatutContainer', 'rowAlertsRecouv', 'blockClassifOrg', 'filterOrganismeContainer'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display='flex'; }); 
+    } else if (mode === 'EXPEDITION') {
+        ['filterApprocheContainer', 'filterPatientContainer', 'rowAlertsExped', 'blockClassifNature', 'blockClassifOrg', 'filterOrganismeContainer'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display='flex'; });
+        const e2 = document.getElementById('rowAlertsExped'); if(e2) e2.style.display='grid';
+    } else if (mode === 'SUIVI_RETOURS') {
+        ['filterMotifContainer', 'filterEtatContainer', 'filterOrganismeContainer'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display='flex'; });
+    }
+}
+
+// =========================================================
+// 5. GESTION DES GRAPHIQUES (Code manquant)
+// =========================================================
+
+window.updateRecouvGraphMode = function(mode) {
+    recouvGraphMode = mode;
+    
+    // Mise à jour visuelle des boutons
+    ['btnRecGraphTime', 'btnRecGraphEntity', 'btnRecGraphOrg'].forEach(id => {
+        const el = document.getElementById(id); 
+        if(el) el.classList.remove('active');
+    });
+    
+    let btnId = 'btnRecGraphTime';
+    if(mode === 'ENTITY') btnId = 'btnRecGraphEntity';
+    if(mode === 'ORG') btnId = 'btnRecGraphOrg';
+    
+    const btn = document.getElementById(btnId); 
+    if(btn) btn.classList.add('active');
+    
+    // Redessiner avec les données actuelles
+    if (typeof drawRecouvCharts === 'function' && currentFilteredDataGlobal.length > 0) {
+        drawRecouvCharts(currentFilteredDataGlobal);
+    }
+};
+
+window.drawRecouvCharts = function(dataSet) {
+    // Vérification de l'existence du canvas
+    const canvasBar = document.getElementById('chartRecouvSimple');
+    if (!canvasBar) return;
+    const ctxBar = canvasBar.getContext('2d');
+
+    if (recouvChartBarInstance) recouvChartBarInstance.destroy();
+    
+    let labels = [], values = [], title = "Evolution des montants";
+    const fAn = document.getElementById('recouvFilterAnnee').value;
+    
+    // FORMATAGE MDH/KDH
+    const formatLabel = (v) => {
+        if(v >= 1000000) return (v/1000000).toFixed(1) + ' MDh';
+        if(v >= 1000) return (v/1000).toFixed(0) + ' KDh';
+        return v;
+    };
+
+    // Préparation des données selon le mode
+    if (recouvGraphMode === 'TIME') {
+        if (!fAn || fAn === "") {
+            // SI ANNEE VIDE -> GROUPER PAR ANNEE
+            const agg = {}; dataSet.forEach(d => agg[d.anneeRef] = (agg[d.anneeRef]||0) + d.montant);
+            labels = Object.keys(agg).sort();
+            values = labels.map(y => agg[y]);
+            title += " par Année";
+        } else {
+            // SI ANNEE CHOISIE -> PAR MOIS
+            const agg = {}; dataSet.forEach(d => agg[d.moisRef] = (agg[d.moisRef]||0) + d.montant);
+            labels = REC_MONTHS.filter(m => agg[m] !== undefined);
+            values = labels.map(m => agg[m]);
+            title += ` par Mois (${fAn})`;
+        }
+    } else if (recouvGraphMode === 'ENTITY') {
+        const agg = {}; dataSet.forEach(d => agg[d.entite] = (agg[d.entite]||0) + d.montant);
+        const sorted = Object.entries(agg).sort((a,b) => b[1]-a[1]);
+        labels = sorted.map(i => i[0]);
+        values = sorted.map(i => i[1]);
+        title += " par Entité";
+    } else if (recouvGraphMode === 'ORG') {
+        const agg = {}; dataSet.forEach(d => agg[d.organisme] = (agg[d.organisme]||0) + d.montant);
+        const sorted = Object.entries(agg).sort((a,b) => b[1]-a[1]).slice(0, 10);
+        labels = sorted.map(i => i[0]);
+        values = sorted.map(i => i[1]);
+        title += " par Organisme (Top 10)";
+    }
+    
+    safeSetText('chartTitleHisto', title);
+    const bgColors = values.map((v, i) => i === 0 ? '#363795' : '#7f8c8d');
+    
+    recouvChartBarInstance = new Chart(ctxBar, { 
+        type: 'bar', 
+        data: { labels: labels, datasets: [{ data: values, backgroundColor: bgColors, borderRadius:4 }] }, 
+        options: { 
+            responsive: true, maintainAspectRatio: false, 
+            layout: { padding: { left: 0, right: 0, top: 20, bottom: 0 } }, 
+            plugins: { 
+                legend: {display:false}, 
+                datalabels: { anchor:'end', align:'top', font:{weight:'bold'}, formatter: (v) => formatLabel(v) } 
+            }, 
+            scales: { x:{grid:{display:false}}, y:{display:false} },
+            onClick: (e, activeEls) => { 
+                if (activeEls.length > 0) { 
+                    const idx = activeEls[0].index; 
+                    const label = labels[idx];
+                    let subset = dataSet;
+                    if(recouvGraphMode === 'TIME') subset = fAn ? dataSet.filter(d=>d.moisRef===label) : dataSet.filter(d=>d.anneeRef===label);
+                    else if(recouvGraphMode === 'ENTITY') subset = dataSet.filter(d=>d.entite===label);
+                    else if(recouvGraphMode === 'ORG') subset = dataSet.filter(d=>d.organisme===label);
+                    
+                    if (typeof openRecouvDetailCustom === 'function') {
+                        openRecouvDetailCustom(subset, `Détail : ${label}`); 
+                    }
+                } 
+            }
+        } 
+    });
+    
+    // PIE CHART (Répartition Organisme)
+    const canvasPie = document.getElementById('chartRecouvPie');
+    if (canvasPie) {
+        const ctxPie = canvasPie.getContext('2d');
+        if (recouvChartPieInstance) recouvChartPieInstance.destroy();
+        
+        const aggPie = {}; dataSet.forEach(d=>aggPie[d.organisme]=(aggPie[d.organisme]||0)+d.montant);
+        const sortedPie = Object.entries(aggPie).sort((a,b)=>b[1]-a[1]); 
+        let pL=[], pD=[], other=0; 
+        sortedPie.forEach((i,x) => { if(x<7) { pL.push(i[0]); pD.push(i[1]); } else other+=i[1]; }); 
+        if(other>0) { pL.push("Autres"); pD.push(other); }
+        
+        recouvChartPieInstance = new Chart(ctxPie, { 
+            type: 'doughnut', 
+            data: { labels: pL, datasets: [{ data: pD, backgroundColor: REC_COLORS }] }, 
+            options: { 
+                responsive: true, maintainAspectRatio: false, cutout: '55%', 
+                plugins: { 
+                    legend: { position:'right' }, 
+                    datalabels: { 
+                        color: 'white', font: {weight:'bold'}, 
+                        formatter: (v, ctx) => { 
+                            let s=ctx.chart._metasets[ctx.datasetIndex].total; 
+                            return (v*100/s).toFixed(0)+'%'; 
+                        } 
+                    } 
+                } 
+            } 
+        });
+    }
+};
+
+// =========================================================
+// 6. GESTION DE L'IMPORT (Code manquant)
+// =========================================================
+
+window.handleRecouvFileSelect = async function(event) {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    
+    const displayEl = document.getElementById('fileRecouvDisplay');
+    if(displayEl) displayEl.textContent = "Traitement en cours...";
+    
+    let processedCount = 0;
+    for (let i = 0; i < files.length; i++) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+        const success = await processRecouvFile(files[i]);
+        if(success) processedCount++;
+    }
+    
+    if(displayEl) displayEl.textContent = processedCount + " fichier(s) traité(s)";
+    document.getElementById('fileRecouv').value = "";
+};
+
+function processRecouvFile(file) {
+    return new Promise((resolve) => {
+        let detectedEntity = "Inconnue"; 
+        const n = file.name.toUpperCase();
+        
+        // 1. Détection de l'Entité
+        if (n.includes("PIL")) detectedEntity = "PIL"; 
+        else if (n.includes("HIA") && !n.includes("CIOA")) detectedEntity = "HIA"; 
+        else if (n.includes("CIOA") && !n.includes("HIA")) detectedEntity = "CIOA"; 
+        else if (n.includes("HPG")) detectedEntity = "HPG"; 
+        else if (n.includes("CIT")) detectedEntity = "CIT"; 
+        else if (n.includes("ALHIKMA") || n.includes("HIKMA") || n.includes("CAH")) detectedEntity = "ALHIKMA"; 
+        else if (n.includes("CID")) detectedEntity = "CID";
+
+        // 2. DÉTECTION INTELLIGENTE DU TYPE (Correction de la confusion)
+        // On regarde le nom du fichier pour savoir si c'est Expédition ou Recouvrement
+        let targetMode = ""; 
+        
+        if (n.includes("NON_ENVOYES") || n.includes("NON ENVOYES") || n.includes("NON-ENVOYES")) {
+            targetMode = 'EXPEDITION';
+        } else if (n.includes("NON_REGLEES") || n.includes("NON REGLEES") || n.includes("NON-REGLEES") || n.includes("NON RÉGLÉES")) {
+            targetMode = 'RECOUVREMENT';
+        } else {
+            // Fallback : Si le nom n'est pas explicite, on utilise l'onglet actif
+            targetMode = (currentFamily === 'Expédition') ? 'EXPEDITION' : 'RECOUVREMENT';
+        }
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const data = new Uint8Array(e.target.result); 
+                const workbook = XLSX.read(data, {type: 'array'}); 
+                const sheet = workbook.Sheets[workbook.SheetNames[0]]; 
+                const rawJson = XLSX.utils.sheet_to_json(sheet, {header: 1, raw: false});
+                
+                let cleanData = [];
+                
+                // 3. Routage forcé selon le type détecté
+                if (targetMode === 'EXPEDITION') {
+                    cleanData = parseExpeditionImportData(rawJson, detectedEntity);
+                    if (cleanData.length > 0) {
+                        google.script.run.withSuccessHandler((res) => {
+                             loadRecouvData(); resolve(true);
+                        }).saveExpeditionData(cleanData);
+                        return;
+                    } else {
+                        console.warn("Échec parsing Expédition pour " + file.name);
+                    }
+                } else {
+                    // RECOUVREMENT
+                    cleanData = parseRecouvImportData(rawJson, detectedEntity);
+                    if (cleanData.length > 0) {
+                        google.script.run.withSuccessHandler((res) => {
+                             loadRecouvData(); resolve(true);
+                        }).saveRecouvFocusData(cleanData);
+                        return;
+                    } else {
+                        console.warn("Échec parsing Recouvrement pour " + file.name);
+                    }
+                }
+                resolve(false);
+
+            } catch (err) { console.error("Erreur lecture", err); resolve(false); }
+        };
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+// Fonction de parsing pour Recouvrement
+function parseRecouvImportData(rows, entityName) {
+    let result = [];
+    let headers = [];
+    let startRowIndex = 0;
+    
+    // Recherche de la ligne d'en-tête
+    for(let i=0; i<Math.min(rows.length, 20); i++) {
+        const rowStr = rows[i].join(' ').toUpperCase();
+        if( (rowStr.includes('DOSSIER') || rowStr.includes('PATIENT')) && (rowStr.includes('MONTANT') || rowStr.includes('SOLDE')) ) {
+            headers = rows[i].map(x => String(x).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim());
+            startRowIndex = i + 1;
+            break;
+        }
+    }
+    
+    if(headers.length === 0) return []; 
+    
+    const findCol = (keywords) => headers.findIndex(h => keywords.some(k => h.includes(k)));
+    const colDos = findCol(['DOSSIER', 'NUM', 'N°']);
+    const colPat = findCol(['PATIENT', 'NOM', 'BENEFICIAIRE', 'MALADE']);
+    const colFac = findCol(['FACTURE']);
+    const colOrg = findCol(['ORGANISME', 'MUTUELLE', 'ASSURANCE', 'CLIENT', 'TIERS']);
+    const colMnt = findCol(['MONTANT', 'RESTE', 'SOLDE', 'NET']);
+    const colDateExp = findCol(['ENVOI', 'EXPEDITION', 'DEPOT', 'DATE EXP', 'REMISE', 'BORDEREAU', 'SORTIE', 'DATE']);
+    const colDateRecep = findCol(['RECEPTION', 'DATE FACT']);
+    const colDateRet = findCol(['RETOUR', 'DATE RET', 'DATE_RET']); 
+    const colExpPar = findCol(['EXPEDIE PAR', 'PAR', 'AGENT', 'USER', 'UTILISATEUR']); 
+    const colMotif = findCol(['MOTIF', 'RAISON', 'CAUSE', 'OBSERVATION']); 
+
+    const parseRobustDate = (val) => {
+        if(!val) return ["", "", ""];
+        let jsDate = null;
+        const dateRegexFr = /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/;
+        const dateRegexIso = /(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/;
+
+        if (typeof val === 'number') { jsDate = new Date(Math.round((val - 25569) * 86400 * 1000)); } 
+        else if (val instanceof Date) { jsDate = val; } 
+        else {
+            let s = String(val).trim();
+            let matchIso = s.match(dateRegexIso);
+            if (matchIso) { jsDate = new Date(parseInt(matchIso[1]), parseInt(matchIso[2])-1, parseInt(matchIso[3])); } 
+            else {
+                let matchFr = s.match(dateRegexFr);
+                if (matchFr) {
+                    if (matchFr[3].length === 4) jsDate = new Date(parseInt(matchFr[3]), parseInt(matchFr[2])-1, parseInt(matchFr[1]));
+                    else if (matchFr[3].length === 2) jsDate = new Date(parseInt("20"+matchFr[3]), parseInt(matchFr[2])-1, parseInt(matchFr[1]));
+                }
+            }
+            if (!jsDate || isNaN(jsDate.getTime())) { let tryDate = new Date(s); if (!isNaN(tryDate.getTime())) jsDate = tryDate; }
+        }
+
+        if (jsDate && !isNaN(jsDate.getTime())) return [jsDate.getDate(), jsDate.getMonth() + 1, jsDate.getFullYear()];
+        return ["", "", ""];
+    };
+    
+    const parseMnt = (val) => {
+        if(typeof val === 'number') return val;
+        if(!val) return 0;
+        return parseFloat(String(val).replace(/[^0-9.,-]/g, '').replace(',', '.')) || 0;
+    };
+
+    for(let i=startRowIndex; i<rows.length; i++) {
+        const row = rows[i];
+        if(!row || row.length === 0) continue;
+        const dossier = colDos > -1 ? row[colDos] : "";
+        const patient = colPat > -1 ? row[colPat] : "";
+        if(!dossier && !patient) continue; 
+        const facture = colFac > -1 ? row[colFac] : "";
+        const organisme = colOrg > -1 ? row[colOrg] : "Autre";
+        const montant = colMnt > -1 ? parseMnt(row[colMnt]) : 0;
+        
+        const rawDateExp = colDateExp > -1 ? row[colDateExp] : "";
+        const [jExp, mExp, aExp] = parseRobustDate(rawDateExp);
+        const rawDateRecep = colDateRecep > -1 ? row[colDateRecep] : "";
+        const [jRec, mRec, aRec] = parseRobustDate(rawDateRecep);
+        const rawDateRet = colDateRet > -1 ? row[colDateRet] : "";
+        const [jRet, mRet, aRet] = parseRobustDate(rawDateRet);
+
+        const expPar = colExpPar > -1 ? String(row[colExpPar]||"") : "";
+        const motifRet = colMotif > -1 ? String(row[colMotif]||"") : "";
+        
+        let line = new Array(19).fill("");
+        line[0] = entityName; line[1] = "Recouvrement"; 
+        line[2] = dossier; line[3] = patient; line[4] = facture;
+        line[5] = jRec; line[6] = mRec; line[7] = aRec; 
+        line[8] = expPar; 
+        line[9] = jExp; line[10] = mExp; line[11] = aExp; 
+        line[12] = jRet; line[13] = mRet; line[14] = aRet; 
+        line[15] = motifRet; 
+        line[16] = organisme; line[18] = montant;
+        
+        result.push(line);
+    }
+    return result;
+}
+
+// Fonction de parsing pour Expédition
+function parseExpeditionImportData(rows, entityName) {
+    let result = []; 
+    let headers = []; 
+    let startRowIndex = 0;
+    
+    // 1. Recherche de la ligne d'en-tête
+    for(let i=0; i<Math.min(rows.length, 20); i++) {
+        const rowStr = rows[i].join(' ').toUpperCase();
+        // On cherche une ligne qui contient Dossier ET (Patient OU Date)
+        if( rowStr.includes('DOSSIER') && (rowStr.includes('PATIENT') || rowStr.includes('DATE')) ) {
+            // Normalisation : On enlève les accents (ENTRÉE -> ENTREE)
+            headers = rows[i].map(x => String(x).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim());
+            startRowIndex = i + 1; 
+            break;
+        }
+    }
+    
+    if(headers.length === 0) return [];
+    
+    // 2. Définition des colonnes (Mots-clés renforcés)
+    const findCol = (k) => headers.findIndex(h => k.some(x => h.includes(x)));
+    
+    const colDos = findCol(['DOSSIER', 'NUM', 'N°']);
+    const colPat = findCol(['PATIENT', 'NOM', 'MALADE']);
+    const colFac = findCol(['FACTURE']);
+    const colOrg = findCol(['ORGANISME', 'MUTUELLE', 'ASSURANCE']);
+    const colMnt = findCol(['MONTANT PEC']);
+    
+    // DATES : Ajout de variantes pour être sûr de trouver
+    const colDateSortie = findCol(['DATE SORTIE', 'SORTIE', 'DS', 'D.SORTIE']);
+    const colDateEntree = findCol(['DATE ENTREE', 'DATE ENT', 'ENTREE', 'ADMISSION', 'D.ENTREE']);
+    const colDatePEC = findCol(['DATE PEC', 'ACCORD', 'RECEPTION PEC', 'DATE REC', 'D.PEC']);
+    
+    // Autres colonnes
+    const colMotif = findCol(['MOTIF', 'OBSERVATION', 'COMMENTAIRE']);
+    const colResp = findCol(['RESPONSABLE', 'RESP', 'TRAITE PAR', 'AGENT']);
+    const colNature = findCol(['NATURE']);
+
+    // Fonction de parsing date (Renvoie [J, MOIS, ANNEE])
+    const parseDate = (val) => {
+        if(!val) return ["", "", ""];
+        let jsDate = null;
+        
+        // Cas 1 : Date Excel (Nombre)
+        if (typeof val === 'number') {
+            jsDate = new Date(Math.round((val - 25569) * 86400 * 1000));
+        } 
+        // Cas 2 : Objet Date
+        else if (val instanceof Date) {
+            jsDate = val;
+        } 
+        // Cas 3 : Texte (ex: "12/01/2025" ou "12-01-2025")
+        else {
+             let s = String(val).trim();
+             let parts = s.split(/[\/\-\.]/); // Découpe par / - ou .
+             if(parts.length === 3) {
+                 let d = parseInt(parts[0]);
+                 let m = parseInt(parts[1]);
+                 let y = parseInt(parts[2]);
+                 
+                 // Si l'année est au début (ex: 2025-01-12)
+                 if (parts[0].length === 4) { y = parseInt(parts[0]); m = parseInt(parts[1]); d = parseInt(parts[2]); }
+                 
+                 if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
+                     jsDate = new Date(y, m - 1, d);
+                 }
+             }
+        }
+
+        // Vérification et formatage : JJ MOIS AAAA
+        if (jsDate && !isNaN(jsDate.getTime())) {
+            // REC_MONTHS est défini globalement : ["JAN", "FEV", ...]
+            return [jsDate.getDate(), REC_MONTHS[jsDate.getMonth()], jsDate.getFullYear()];
+        }
+        return ["", "", ""];
+    };
+    
+    const parseMnt = (val) => {
+        if(typeof val === 'number') return val;
+        if(!val) return 0;
+        return parseFloat(String(val).replace(/[^0-9.,-]/g, '').replace(',', '.')) || 0;
+    };
+
+    // 3. Extraction des données
+    for(let i=startRowIndex; i<rows.length; i++) {
+        const row = rows[i]; 
+        const dossier = colDos > -1 ? row[colDos] : ""; 
+        if(!dossier) continue; // Ignorer lignes vides
+        
+        // Extraction des dates
+        const [jSor, mSor, aSor] = parseDate(colDateSortie > -1 ? row[colDateSortie] : "");
+        const [jEnt, mEnt, aEnt] = parseDate(colDateEntree > -1 ? row[colDateEntree] : "");
+        const [jPec, mPec, aPec] = parseDate(colDatePEC > -1 ? row[colDatePEC] : "");
+
+        // Construction de la ligne pour Code.gs
+        let line = new Array(18).fill("");
+        
+        line[0] = entityName; 
+        line[1] = dossier; 
+        line[2] = colPat > -1 ? row[colPat] : ""; 
+        line[3] = colMotif > -1 ? row[colMotif] : ""; 
+        
+        // Date Sortie (JJ, MOIS, AAAA)
+        line[4] = jSor; line[5] = mSor; line[6] = aSor; 
+        
+        line[7] = colOrg > -1 ? row[colOrg] : "Autre"; 
+        line[8] = colFac > -1 ? row[colFac] : ""; 
+        line[9] = colNature > -1 ? row[colNature] : ""; 
+        
+        // Date PEC
+        line[10] = jPec; line[11] = mPec; line[12] = aPec; 
+        
+        line[13] = colMnt > -1 ? parseMnt(row[colMnt]) : 0;
+        
+        // Date Entrée
+        line[14] = jEnt; line[15] = mEnt; line[16] = aEnt; 
+        
+        line[17] = colResp > -1 ? row[colResp] : ""; 
+        
+        result.push(line);
+    }
+    return result;
+}
+
+// =========================================================
+// 7. GESTION DE L'INTERFACE UTILISATEUR & MODALES (Code Manquant)
+// =========================================================
+
+// Déclaration de la variable manquante pour les Objectifs
+// (Assurez-vous que cette ligne n'est pas déjà présente au début du fichier)
+window.objRealChartInstance = null;
+
+// --- GESTION DES VUES (Liste vs Balance) ---
+window.updateRecouvViewMode = function(mode) {
+    recouvTableMode = mode;
+    const btnList = document.getElementById('btnViewList');
+    const btnBalance = document.getElementById('btnViewBalance');
+    const viewList = document.getElementById('viewListContainer');
+    const viewBalance = document.getElementById('viewBalanceContainer');
+    const balOptions = document.getElementById('balanceOptions');
+    const sortListContainer = document.getElementById('sortListContainer');
+    const topNSelector = document.getElementById('topNSelector');
+
+    // Bascule UI des boutons
+    if(mode === 'LIST') {
+        if(btnList) { btnList.style.background = '#c0392b'; btnList.style.color = 'white'; }
+        if(btnBalance) { btnBalance.style.background = 'transparent'; btnBalance.style.color = '#666'; }
+        if(viewList) viewList.style.display = 'block';
+        if(viewBalance) viewBalance.style.display = 'none';
+        if(balOptions) balOptions.style.display = 'none';
+        if(sortListContainer) sortListContainer.style.visibility = 'visible';
+        if(topNSelector) topNSelector.style.visibility = 'visible';
+    } else {
+        if(btnBalance) { btnBalance.style.background = '#363795'; btnBalance.style.color = 'white'; }
+        if(btnList) { btnList.style.background = 'transparent'; btnList.style.color = '#666'; }
+        if(viewList) viewList.style.display = 'none';
+        if(viewBalance) viewBalance.style.display = 'block';
+        
+        // Afficher les options Balance UNIQUEMENT pour Expédition (ou si vous voulez pour les deux)
+        if(balOptions && currentFamily === 'Expédition') balOptions.style.display = 'flex';
+        else if(balOptions) balOptions.style.display = 'none';
+
+        if(sortListContainer) sortListContainer.style.visibility = 'hidden';
+        if(topNSelector) topNSelector.style.visibility = 'hidden';
+    }
+
+    // Mise à jour du titre
+    const titleEl = document.querySelector('#tableTopFactures').closest('.table-container').querySelector('h4');
+    if(titleEl) {
+        if (mode === 'LIST') {
+            let labelTop = (recouvTopN === 1000) ? "TOUTES" : "TOP " + recouvTopN;
+            titleEl.textContent = (currentFamily === 'Expédition') ? `LISTE (${labelTop})` : `FACTURES (${labelTop})`;
+        } else {
+            if (recouvBalanceMode === 'PERIOD' && currentFamily === 'Expédition') titleEl.textContent = "BALANCE PAR PÉRIODE";
+            else titleEl.textContent = "BALANCE PAR ANTÉRIORITÉ";
+        }
+    }
+
+    updateRecouvDashboard();
+};
+
+window.updateRecouvBalanceMode = function(mode) {
+    recouvBalanceMode = mode;
+    
+    // Style des boutons
+    const btnAge = document.getElementById('btnBalAge');
+    const btnPer = document.getElementById('btnBalPer');
+    if(btnAge && btnPer) {
+        if(mode === 'AGEING') {
+            btnAge.style.background = '#363795'; btnAge.style.color = 'white';
+            btnPer.style.background = 'transparent'; btnPer.style.color = '#666';
+        } else {
+            btnPer.style.background = '#363795'; btnPer.style.color = 'white';
+            btnAge.style.background = 'transparent'; btnAge.style.color = '#666';
+        }
+    }
+    updateRecouvDashboard();
+};
+
+// --- REMPLACEZ renderBalanceTable (VERSION DYNAMIQUE) ---
+
+
+// Alias pour compatibilité
+window.showRecouvDetail = function(data, title) {
+    openRecouvDetailCustom(data, title);
+};
+
+// Fermeture modale
+window.closeRecouvModal = function() { 
+    document.getElementById('recouvDetailModal').style.display='none'; 
+};
+
+// Rendu du tableau dans la modale
+window.renderDetailTable = function(dataset) {
+    const body = document.getElementById('recouvTableBody'); 
+    body.innerHTML = '';
+    const tableExport = document.getElementById('recouvExportTable');
+    
+    // Header Dynamique
+    let hCols = "";
+    if (currentFamily === 'Expédition') {
+        const fPatient = document.getElementById('expedFilterPatient') ? document.getElementById('expedFilterPatient').value : '';
+        let delaiLabel = "Délais Dossier";
+        if(fPatient === 'HOSPITALISE') delaiLabel += " (Entrée)"; else if(fPatient === 'SORTANT') delaiLabel += " (Sortie)";
+        
+        hCols = `
+            <th style="text-align:left; padding:10px;">Entité</th>
+            <th style="text-align:left; padding:10px;">Dossier / Patient</th>
+            <th style="text-align:center; padding:10px;">N° Facture</th>
+            <th style="text-align:left; padding:10px;">Organisme</th>
+            <th style="text-align:left; padding:10px;">Motif / Resp. PEC</th>
+            <th style="text-align:right; padding:10px;">Montant</th>
+            <th style="text-align:center; padding:10px;">Date Entrée</th>
+            <th style="text-align:center; padding:10px;">Date Sortie</th>
+            <th style="text-align:center; padding:10px;">${delaiLabel}</th>
+            <th style="text-align:center; padding:10px;">Statut</th>`;
+    } else if (currentFamily === 'Recouvrement' && currentSubFamily === 'Suivi des retours') {
+        hCols = `
+            <th style="text-align:left; padding:10px;">Entité</th>
+            <th style="text-align:left; padding:10px;">Patient</th>
+            <th style="text-align:center; padding:10px;">Facture</th>
+            <th style="text-align:left; padding:10px;">Organisme</th>
+            <th style="text-align:right; padding:10px;">Montant PEC</th>
+            <th style="text-align:left; padding:10px;">Motif Std</th>
+            <th style="text-align:left; padding:10px;">Etat Dossier</th>
+            <th style="text-align:left; padding:10px;">Nature</th>`;
+    } else {
+        hCols = `
+            <th style="text-align:left; padding:10px;">Entité</th>
+            <th style="text-align:left; padding:10px;">Dossier / Patient</th>
+            <th style="text-align:center; padding:10px;">N° Facture</th>
+            <th style="text-align:left; padding:10px;">Organisme</th>
+            <th style="text-align:right; padding:10px;">Montant</th>
+            <th style="text-align:center; padding:10px;">Date Exp</th>
+            <th style="text-align:center; padding:10px;">Retard</th>
+            <th style="text-align:center; padding:10px;">Statut</th>`;
+    }
+    
+    let thead = tableExport.querySelector('thead');
+    if(!thead) { thead = document.createElement('thead'); tableExport.prepend(thead); }
+    thead.innerHTML = `<tr style="background:#f0f0f0; border-bottom:2px solid #ccc;">${hCols}</tr>`;
+
+    // Data Rows
+    dataset.slice(0, 1000).forEach(d => {
+        let rowHtml = "";
+        
+        if (currentFamily === 'Recouvrement' && currentSubFamily === 'Suivi des retours') {
+             rowHtml = `
+                <td style="text-align:left;">${d.entite}</td>
+                <td style="text-align:left;">${d.patient}</td>
+                <td style="text-align:center;">${d.facture||'-'}</td>
+                <td style="text-align:left;">${d.organisme}</td>
+                <td style="text-align:right;">${formatMoney(d.montant)}</td>
+                <td style="text-align:left;">${d.motifStd}</td>
+                <td style="text-align:left;">${d.etatDossier}</td>
+                <td style="text-align:left;">${d.natureDossier}</td>`;
+        } 
+        else if (currentFamily === 'Expédition') {
+             const fPatient = document.getElementById('expedFilterPatient') ? document.getElementById('expedFilterPatient').value : '';
+             let valDelai = (fPatient === 'HOSPITALISE' || !d.dateRefObj) ? d.ancienneteEntree : d.ancienneteSortie;
+             let stat = (valDelai < 30) ? "<30j" : (valDelai < 60 ? "30-60j" : (valDelai < 90 ? "60-90j" : ">90j"));
+             if(!d.dateRefObj) stat = "Hosp.";
+             
+             let styleAlert = (d.isAlertPEC || d.nature === "Suivi PEC vide") ? "background-color: #fff0f0; color: #c0392b;" : "";
+             
+             rowHtml = `
+                <td style="text-align:left; ${styleAlert}">${d.entite}</td>
+                <td style="text-align:left; ${styleAlert}"><b>${d.dossier}</b><br>${d.patient}</td>
+                <td style="text-align:center;">${d.facture||'-'}</td>
+                <td style="text-align:left;">${d.organisme}</td>
+                <td style="text-align:left;">${d.motif||'-'} ${(d.respPEC ? '<br>Resp: '+d.respPEC : '')}</td>
+                <td style="text-align:right;">${formatMoney(d.montant)}</td>
+                <td style="text-align:center;">${d.dateEntreeDisplay || '-'}</td>
+                <td style="text-align:center;">${d.dateRefDisplay||'-'}</td>
+                <td style="text-align:center;">${valDelai}</td>
+                <td style="text-align:center;">${stat}</td>`;
+        } 
+        else {
+             let stat = d.isEchue ? "Échue" : "Non Échue";
+             let color = d.isEchue ? "#c0392b" : "#27ae60";
+             rowHtml = `
+                <td style="text-align:left;">${d.entite}</td>
+                <td style="text-align:left;"><b>${d.dossier}</b><br>${d.patient}</td>
+                <td style="text-align:center;">${d.facture||'-'}</td>
+                <td style="text-align:left;">${d.organisme}</td>
+                <td style="text-align:right;">${formatMoney(d.montant)}</td>
+                <td style="text-align:center;">${d.dateRefDisplay}</td>
+                <td style="text-align:center;">${d.retard} j</td>
+                <td style="text-align:center; color:${color}; font-weight:bold;">${stat}</td>`;
+        }
+        
+        body.insertAdjacentHTML('beforeend', `<tr style="border-bottom:1px solid #eee;">${rowHtml}</tr>`);
+    });
+};
+
+// --- GESTION DES CLICS SUR LA CARTE VARIABLE (BLEUE) ---
+window.handleVariableCardClick = function() {
+    // 1. Vue RECOUVREMENT - Non Réglés (Pas d'action ici car le bouton est DANS la carte)
+    if(currentFamily === 'Recouvrement' && currentSubFamily === 'Dossiers non réglés') {
+        return; // Le clic est géré par le bouton "Activer/Désactiver" interne
+    } 
+    // 2. Vue EXPEDITION
+    else if (currentFamily === 'Expédition') {
+        openRecouvDetailCustom(currentFilteredDataGlobal.filter(d => d.isAlertPEC || d.nature === "Suivi PEC vide"), 'Dossiers PEC Non Traité');
+    } 
+    // 3. Vue RETOURS
+    else if (currentSubFamily === 'Suivi des retours') {
+        openRecouvDetailCustom(currentFilteredDataGlobal, 'Liste des Retours');
+    }
+    // 4. Autres
+    else {
+        openRecouvDetailCustom(currentFilteredDataGlobal, 'Détail');
+    }
+};
+
+// =========================================================
+// 8. FONCTIONS D'EXPORT (EXCEL/PDF)
+// =========================================================
+
+window.exportTop25Excel = function() {
+    let sortedData = [...currentFilteredDataGlobal];
+    // Logique de tri simplifiée pour l'export
+    sortedData.sort((a,b) => b.montant - a.montant);
+    const limit = (recouvTopN === 1000) ? 10000 : recouvTopN;
+    
+    let exportData = [];
+    
+    if (recouvTableMode === 'LIST') {
+        exportData = sortedData.slice(0, limit).map(d => ({
+            "Entité": d.entite, 
+            "Dossier": d.dossier, 
+            "Patient": d.patient, 
+            "Facture": d.facture,
+            "Organisme": d.organisme,
+            "Montant": d.montant, 
+            "Statut": d.isEchue ? "ECHUE" : "NON ECHUE"
+        }));
+    } else {
+        // Mode Balance Agée (On reconstruit l'agrégation pour l'export)
+        const agg = {};
+        sortedData.forEach(d => {
+            const org = d.organisme;
+            if(!agg[org]) agg[org] = { nonEchu:0, e30:0, e60:0, e90:0, eSup:0, totalEchu:0, total:0 };
+            agg[org].total += d.montant;
+            if(!d.isEchue) { agg[org].nonEchu += d.montant; }
+            else {
+                agg[org].totalEchu += d.montant;
+                if(d.retard < 30) agg[org].e30 += d.montant;
+                else if(d.retard < 60) agg[org].e60 += d.montant;
+                else if(d.retard < 90) agg[org].e90 += d.montant;
+                else agg[org].eSup += d.montant;
+            }
+        });
+        
+        const sortedAgg = Object.entries(agg).sort((a,b) => b[1].total - a[1].total);
+        exportData = sortedAgg.slice(0, limit).map(([org, v]) => ({
+            "Organisme": org,
+            "Non Échues": v.nonEchu,
+            "< 30j": v.e30,
+            "30-60j": v.e60,
+            "60-90j": v.e90,
+            "> 90j": v.eSup,
+            "Total Échu": v.totalEchu,
+            "TOTAL": v.total
+        }));
+    }
+    
+    const ws = XLSX.utils.json_to_sheet(exportData); 
+    const wb = XLSX.utils.book_new(); 
+    XLSX.utils.book_append_sheet(wb, ws, "Export"); 
+    XLSX.writeFile(wb, "Export_Recouvrement.xlsx"); 
+};
+
+window.printTop25PDF = function() {
+    const tableId = recouvTableMode === 'LIST' ? 'tableTopFactures' : 'tableBalanceAgee';
+    const content = document.getElementById(tableId).outerHTML;
+    const title = "Export PDF - " + document.getElementById('recouvFilterEntite').value;
+    const printWindow = window.open('', '', 'height=600,width=1200');
+    printWindow.document.write(`<html><head><title>${title}</title><style>body{font-family:sans-serif;padding:20px;} table{width:100%;border-collapse:collapse;font-size:10px;} th,td{border:1px solid #ddd;padding:5px;text-align:left;} th{background:#f2f2f2;}</style></head><body><h2>${title}</h2>${content}</body></html>`);
+    printWindow.document.close();
+    setTimeout(() => { printWindow.focus(); printWindow.print(); printWindow.close(); }, 500);
+};
+
+// Export Modale (Détail Complet)
+window.exportRecouvExcel = function() { 
+    if(!currentDetailDataset || currentDetailDataset.length === 0) return;
+    const exportData = currentDetailDataset.map(d => ({
+        "Entité": d.entite, "Dossier": d.dossier, "Patient": d.patient, "Organisme": d.organisme, "Montant": d.montant
+    }));
+    const ws = XLSX.utils.json_to_sheet(exportData); 
+    const wb = XLSX.utils.book_new(); 
+    XLSX.utils.book_append_sheet(wb, ws, "Data"); 
+    XLSX.writeFile(wb, "Recouvrement_Detail.xlsx"); 
+};
+
+window.printRecouvData = function() { 
+    const content = document.getElementById('recouvPrintArea').innerHTML; 
+    const baseTitle = document.getElementById('recouvModalTitle').textContent; 
+    const iframe = document.createElement('iframe'); 
+    iframe.style.position = 'absolute'; iframe.style.width = '0px'; iframe.style.height = '0px'; iframe.style.border = 'none'; 
+    document.body.appendChild(iframe); 
+    const doc = iframe.contentWindow.document; 
+    doc.write(`<html><head><title>${baseTitle}</title><style> body { font-family: sans-serif; padding: 20px; } table { width: 100%; border-collapse: collapse; font-size: 11px; } th, td { border: 1px solid #ddd; padding: 6px; text-align:left; } th { background-color: #f2f2f2; } </style></head><body><h2>${baseTitle}</h2>${content}</body></html>`); 
+    doc.close(); 
+    iframe.contentWindow.focus(); 
+    iframe.contentWindow.print(); 
+    setTimeout(() => { document.body.removeChild(iframe); }, 1000); 
+};
+
+// =========================================================
+// 8. FONCTIONS UTILITAIRES MANQUANTES (COMPLÉMENT FINAL)
+// =========================================================
+
+// --- Gestion du filtre "Proche Échéance" (Bouton Activer) ---
+window.toggleProcheFilterFunc = function(e) {
+    if(e) e.stopPropagation();
+    isProcheFilterActive = !isProcheFilterActive;
+    
+    // Si on active "Proche", on reset le filtre statut
+    if(isProcheFilterActive) {
+        const selStatut = document.getElementById('recouvFilterEcheance');
+        if(selStatut) selStatut.value = "";
+    }
+    updateRecouvDashboard();
+};
+
+// --- Tableau Classification : Par Organisme ---
+window.renderClassificationTable = function(dataSet) {
+    const tbody = document.querySelector('#tableRecouvOrg tbody'); 
+    if(!tbody) return; 
+    tbody.innerHTML = '';
+    
+    const counts = {}; 
+    const amounts = {};
+    
+    dataSet.forEach(d => {
+        counts[d.organisme] = (counts[d.organisme]||0)+1;
+        amounts[d.organisme] = (amounts[d.organisme]||0)+d.montant;
+    });
+    
+    const total = dataSet.reduce((s,d)=>s+d.montant,0);
+    
+    // Tri par montant décroissant
+    let sorted = Object.entries(amounts).sort((a,b) => b[1] - a[1]);
+    
+    sorted.forEach(i => { 
+        const p = total > 0 ? (i[1]/total*100).toFixed(0) : 0; 
+        tbody.insertAdjacentHTML('beforeend', `
+            <tr onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>d.organisme==='${i[0].replace(/'/g, "\\'")}'), 'Détail ${i[0].replace(/'/g, "\\'")}')" style="cursor:pointer;">
+                <td style="text-align:left;">${i[0]}</td>
+                <td style="text-align:center;">${counts[i[0]]}</td>
+                <td style="text-align:right; font-weight:bold;">${formatMoney(i[1])}</td>
+                <td style="text-align:right;">${p}%</td>
+            </tr>`); 
+    });
+};
+
+// --- Tableau Classification : Par Nature (Expédition) ---
+window.renderNatureTable = function(dataSet) {
+    const tbody = document.querySelector('#tableRecouvNature tbody'); 
+    if(!tbody) return; 
+    tbody.innerHTML = '';
+    
+    const counts = {};
+    const amounts = {};
+    
+    dataSet.forEach(d => { 
+        counts[d.nature] = (counts[d.nature]||0)+1;
+        amounts[d.nature] = (amounts[d.nature]||0)+d.montant;
+    });
+    
+    const total = dataSet.reduce((s,d)=>s+d.montant,0);
+    let sorted = Object.entries(amounts).sort((a,b) => b[1] - a[1]);
+    
+    sorted.forEach(i => { 
+        let st = (i[0]==='Suivi PEC vide') ? "color:#c0392b; font-weight:bold;" : "";
+        const p = total > 0 ? (i[1]/total*100).toFixed(0) : 0; 
+        
+        tbody.insertAdjacentHTML('beforeend', `
+            <tr onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>d.nature==='${i[0].replace(/'/g, "\\'")}'), 'Détail ${i[0].replace(/'/g, "\\'")}')" style="cursor:pointer; ${st}">
+                <td style="text-align:left;">${i[0]}</td>
+                <td style="text-align:center;">${counts[i[0]]}</td>
+                <td style="text-align:right; font-weight:bold;">${formatMoney(i[1])}</td>
+                <td style="text-align:right;">${p}%</td>
+            </tr>`); 
+    });
+    
+    // Met à jour le graph pie nature si présent
+    drawNatureChart(amounts);
+};
+
+// Ajoutez cette fonction pour gérer le changement de tri
+window.updateRecouvSort = function(mode) {
+    recouvSortMode = mode;
+    updateRecouvDashboard(); // Relance le rendu pour appliquer le tri
+};
+
+// --- Graphique Pie : Nature ---
+window.drawNatureChart = function(aggNature) {
+    const canvas = document.getElementById('chartNaturePie');
+    if (!canvas) return;
+    const ctxPie = canvas.getContext('2d');
+    
+    if (natureChartPieInstance) natureChartPieInstance.destroy();
+    
+    const sorted = Object.entries(aggNature).sort((a,b)=>b[1]-a[1]); 
+    let pL=[], pD=[], other=0; 
+    
+    sorted.forEach((i,x) => { 
+        if(x<7) { pL.push(i[0]); pD.push(i[1]); } 
+        else other+=i[1]; 
+    }); 
+    if(other>0) { pL.push("Autres"); pD.push(other); }
+    
+    natureChartPieInstance = new Chart(ctxPie, { 
+        type: 'doughnut', 
+        data: { labels: pL, datasets: [{ data: pD, backgroundColor: REC_COLORS }] }, 
+        options: { 
+            responsive: true, maintainAspectRatio: false, cutout: '55%', 
+            plugins: { 
+                legend: { position:'right' }, 
+                datalabels: { 
+                    color: 'white', font: {weight:'bold'}, 
+                    formatter: (v, ctx) => { 
+                        let s=ctx.chart._metasets[ctx.datasetIndex].total; 
+                        return (v*100/s).toFixed(0)+'%'; 
+                    } 
+                } 
+            }, 
+            onClick: (e, activeEls) => { 
+                if (activeEls.length > 0) { 
+                    let l = pL[activeEls[0].index]; 
+                    let subset = l==="Autres" ? currentFilteredDataGlobal.filter(d=>!pL.slice(0,7).includes(d.nature)) : currentFilteredDataGlobal.filter(d=>d.nature===l); 
+                    openRecouvDetailCustom(subset, `Détail ${l}`); 
+                } 
+            } 
+        } 
+    });
+};
+
+// Fonction partagée et adaptée pour gérer Dossiers Non Réglés ET Expédition
+window.updateRecouvBalanceMode = function(mode) {
+    recouvBalanceMode = mode;
+    
+    // Style des boutons
+    const btnAge = document.getElementById('btnBalAge');
+    const btnPer = document.getElementById('btnBalPer');
+    if(btnAge && btnPer) {
+        if(mode === 'AGEING') {
+            btnAge.style.background = '#363795'; btnAge.style.color = 'white';
+            btnPer.style.background = 'transparent'; btnPer.style.color = '#666';
+        } else {
+            btnPer.style.background = '#363795'; btnPer.style.color = 'white';
+            btnAge.style.background = 'transparent'; btnAge.style.color = '#666';
+        }
+    }
+    updateRecouvDashboard();
+};
+
+// --- REMPLACEZ renderBalanceTable (VERSION DYNAMIQUE) ---
+window.renderBalanceTable = function(data) {
+    const tbody = document.querySelector('#tableBalanceAgee tbody');
+    const thead = document.querySelector('#tableBalanceAgee thead');
+    
+    // Sécurité : si le tableau n'existe pas dans le DOM
+    if(!tbody || !thead) return;
+
+    // Reset du contenu
+    tbody.innerHTML = '';
+    thead.innerHTML = '';
+
+    const isExpedition = (currentFamily === 'Expédition');
+    const fAn = document.getElementById('recouvFilterAnnee').value;
+    const isPeriodMode = (isExpedition && recouvBalanceMode === 'PERIOD');
+
+    let columns = [];
+
+    // --- 1. DÉFINITION DES COLONNES ---
+    if (isPeriodMode) {
+        if (!fAn || fAn === "") {
+            // Mode PÉRIODE ANNUELLE (Toutes années)
+            // On scanne les données pour trouver les années uniques
+            const years = new Set();
+            data.forEach(d => {
+                // Pour expédition, on prend la date dispo (Sortie ou Entrée)
+                let refDate = d.dateRefObj || d.dateEntree; 
+                if(refDate && !isNaN(refDate.getTime())) {
+                    years.add(refDate.getFullYear().toString());
+                }
+            });
+            // Tri décroissant (plus récent à gauche) ou croissant selon préférence
+            columns = Array.from(years).sort().reverse(); 
+            if(columns.length === 0) columns = [new Date().getFullYear().toString()];
+        } else {
+            // Mode PÉRIODE MENSUELLE (Année filtrée)
+            columns = REC_MONTHS; // ["JAN", "FEV", ...]
+        }
+    } else {
+        // Mode ANTÉRIORITÉ (Ageing)
+        if (isExpedition) {
+            columns = ["< 30j", "30-60j", "60-90j", "> 90j"];
+        } else {
+            // Recouvrement
+            columns = ["Non Échues", "< 30j", "30-60j", "60-90j", "> 90j"];
+        }
+    }
+
+    // --- 2. CONSTRUCTION DE L'ENTÊTE (Correction du bug d'affichage) ---
+    let headerHTML = `<tr><th style="text-align:left; padding:12px; background:#f8f9fa; border-bottom:2px solid #ddd; color:#555;">Organisme</th>`;
+    columns.forEach(col => {
+        headerHTML += `<th style="text-align:right; padding:12px; background:#f0f4ff; color:#363795; border-bottom:2px solid #ddd; font-size:0.9em;">${col}</th>`;
+    });
+    headerHTML += `<th style="text-align:right; padding:12px; font-weight:800; border-left:2px solid #eee; background:#fff; border-bottom:2px solid #ddd; color:#333;">TOTAL</th></tr>`;
+    thead.innerHTML = headerHTML;
+
+    // --- 3. AGRÉGATION DES DONNÉES ---
+    const agg = {};
+
+    data.forEach(d => {
+        const org = d.organisme;
+        if(!agg[org]) {
+            agg[org] = { total: 0, cols: {} };
+            columns.forEach(c => agg[org].cols[c] = 0);
+        }
+
+        agg[org].total += d.montant;
+
+        let colKey = null;
+
+        if (isPeriodMode) {
+            // Logique Période : On cherche l'année ou le mois de la date du dossier
+            let refDate = d.dateRefObj || d.dateEntree;
+
+            if (refDate && !isNaN(refDate.getTime())) {
+                if (!fAn || fAn === "") {
+                    colKey = refDate.getFullYear().toString(); // Clé = Année (ex: "2025")
+                } else {
+                    // Si une année est filtrée, la clé est le mois
+                    colKey = REC_MONTHS[refDate.getMonth()]; // Clé = Mois (ex: "JAN")
+                }
+            }
+        } else {
+            // Logique Antériorité
+            if (isExpedition) {
+                let delay = (d.dateRefObj) ? d.ancienneteSortie : d.ancienneteEntree;
+                if(delay < 30) colKey = "< 30j";
+                else if(delay < 60) colKey = "30-60j";
+                else if(delay < 90) colKey = "60-90j";
+                else colKey = "> 90j";
+            } else {
+                if (!d.isEchue) colKey = "Non Échues";
+                else {
+                    if(d.retard < 30) colKey = "< 30j";
+                    else if(d.retard < 60) colKey = "30-60j";
+                    else if(d.retard < 90) colKey = "60-90j";
+                    else colKey = "> 90j";
+                }
+            }
+        }
+
+        // Somme si la colonne existe (évite les erreurs si une date est hors scope)
+        if (colKey && agg[org].cols[colKey] !== undefined) {
+            agg[org].cols[colKey] += d.montant;
+        }
+    });
+
+    // --- 4. RENDU DES LIGNES ---
+    // Tri par montant total décroissant
+    const sortedAgg = Object.entries(agg).sort((a,b) => b[1].total - a[1].total);
+
+    if (sortedAgg.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:20px; color:#999;">Aucune donnée disponible</td></tr>';
+        return;
+    }
+
+    sortedAgg.forEach(([org, v]) => {
+        let rowHTML = `
+            <tr onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>d.organisme==='${org.replace(/'/g, "\\'")}'), 'Balance - ${org.replace(/'/g, "\\'")}')" style="cursor:pointer; border-bottom:1px solid #eee; transition:background 0.2s;">
+                <td style="text-align:left; font-weight:600; padding:10px; color:#444;">${org}</td>`;
+
+        columns.forEach(col => {
+            let val = v.cols[col];
+            let color = val > 0 ? "#333" : "#e0e0e0";
+            let weight = val > 0 ? "600" : "400";
+            
+            // Highlight rouge pour > 90j en expédition
+            if (isExpedition && !isPeriodMode && col === "> 90j" && val > 0) color = "#c0392b";
+
+            rowHTML += `<td style="text-align:right; padding:10px; color:${color}; font-weight:${weight}; font-size:0.9em;">${formatMoney(val)}</td>`;
+        });
+
+        rowHTML += `<td style="text-align:right; font-weight:800; padding:10px; border-left:2px solid #eee; color:#2c3e50;">${formatMoney(v.total)}</td></tr>`;
+        tbody.insertAdjacentHTML('beforeend', rowHTML);
+    });
+};
+
+// =========================================================
+// GESTION DES MODALES DE DÉTAIL (Fonctions manquantes)
+// =========================================================
+
+window.openRecouvDetailCustom = function(dataset, title) { 
+    const modal = document.getElementById('recouvDetailModal'); 
+    
+    // Titre dynamique
+    const entite = document.getElementById('recouvFilterEntite').value || "Global";
+    const type = currentFamily === 'Recouvrement' ? currentSubFamily : "Expedition";
+    const titleEl = document.getElementById('recouvModalTitle');
+    if(titleEl) titleEl.textContent = `${type} - ${entite} (${title})`;
+    
+    // Sauvegarde pour export
+    currentDetailDataset = dataset; 
+    
+    // Rendu du tableau
+    renderDetailTable(dataset); 
+    
+    // Totaux bas de page
+    const total = dataset.reduce((s,d) => s + d.montant, 0); 
+    safeSetText('recouvDetailTotal', formatMoney(total) + " DH"); 
+    safeSetText('recouvDetailCount', dataset.length); 
+    
+    if(modal) modal.style.display = 'flex'; 
+};
+
+// Alias pour compatibilité
+window.showRecouvDetail = function(data, title) {
+    openRecouvDetailCustom(data, title);
+};
+
+// Fermeture modale
+window.closeRecouvModal = function() { 
+    const modal = document.getElementById('recouvDetailModal');
+    if(modal) modal.style.display='none'; 
+};
+
+// Rendu du tableau dans la modale
+window.renderDetailTable = function(dataset) {
+    const body = document.getElementById('recouvTableBody'); 
+    if(!body) return;
+    body.innerHTML = '';
+    
+    const tableExport = document.getElementById('recouvExportTable');
+    
+    // --- 1. HEADER DYNAMIQUE ---
+    let hCols = "";
+    if (currentFamily === 'Expédition') {
+        // Colonnes spécifiques Expédition
+        const fPatient = document.getElementById('expedFilterPatient') ? document.getElementById('expedFilterPatient').value : '';
+        let delaiLabel = "Délais Dossier";
+        if(fPatient === 'HOSPITALISE') delaiLabel += " (Entrée)"; else if(fPatient === 'SORTANT') delaiLabel += " (Sortie)";
+        
+        hCols = `
+            <th style="text-align:left; padding:10px;">Entité</th>
+            <th style="text-align:left; padding:10px;">Dossier / Patient</th>
+            <th style="text-align:center; padding:10px;">N° Facture</th>
+            <th style="text-align:left; padding:10px;">Organisme</th>
+            <th style="text-align:left; padding:10px;">Motif / Resp. PEC</th>
+            <th style="text-align:right; padding:10px;">Montant</th>
+            <th style="text-align:center; padding:10px;">Date Entrée</th>
+            <th style="text-align:center; padding:10px;">Date Sortie</th>
+            <th style="text-align:center; padding:10px;">${delaiLabel}</th>
+            <th style="text-align:center; padding:10px;">Statut</th>`;
+    } else if (currentFamily === 'Recouvrement' && currentSubFamily === 'Suivi des retours') {
+        // Colonnes spécifiques Retours
+        hCols = `
+            <th style="text-align:left; padding:10px;">Entité</th>
+            <th style="text-align:left; padding:10px;">Patient</th>
+            <th style="text-align:center; padding:10px;">Facture</th>
+            <th style="text-align:left; padding:10px;">Organisme</th>
+            <th style="text-align:right; padding:10px;">Montant PEC</th>
+            <th style="text-align:left; padding:10px;">Motif Std</th>
+            <th style="text-align:left; padding:10px;">Etat Dossier</th>
+            <th style="text-align:left; padding:10px;">Nature</th>`;
+    } else {
+        // Colonnes par défaut (Recouvrement)
+        hCols = `
+            <th style="text-align:left; padding:10px;">Entité</th>
+            <th style="text-align:left; padding:10px;">Dossier / Patient</th>
+            <th style="text-align:center; padding:10px;">N° Facture</th>
+            <th style="text-align:left; padding:10px;">Organisme</th>
+            <th style="text-align:right; padding:10px;">Montant</th>
+            <th style="text-align:center; padding:10px;">Date Exp</th>
+            <th style="text-align:center; padding:10px;">Retard</th>
+            <th style="text-align:center; padding:10px;">Statut</th>`;
+    }
+    
+    if(tableExport) {
+        let thead = tableExport.querySelector('thead');
+        if(!thead) { thead = document.createElement('thead'); tableExport.prepend(thead); }
+        thead.innerHTML = `<tr style="background:#f0f0f0; border-bottom:2px solid #ccc;">${hCols}</tr>`;
+    }
+
+    // --- 2. DONNÉES ---
+    dataset.slice(0, 1000).forEach(d => {
+        let rowHtml = "";
+        
+        if (currentFamily === 'Expédition') {
+             const fPatient = document.getElementById('expedFilterPatient') ? document.getElementById('expedFilterPatient').value : '';
+             let valDelai = (fPatient === 'HOSPITALISE' || !d.dateRefObj) ? d.ancienneteEntree : d.ancienneteSortie;
+             let stat = (valDelai < 30) ? "<30j" : (valDelai < 60 ? "30-60j" : (valDelai < 90 ? "60-90j" : ">90j"));
+             if(!d.dateRefObj) stat = "Hosp.";
+             let styleAlert = (d.isAlertPEC || d.nature === "Suivi PEC vide") ? "background-color: #fff0f0; color: #c0392b;" : "";
+             
+             rowHtml = `
+                <td style="text-align:left; ${styleAlert}">${d.entite}</td>
+                <td style="text-align:left; ${styleAlert}"><b>${d.dossier}</b><br>${d.patient}</td>
+                <td style="text-align:center;">${d.facture||'-'}</td>
+                <td style="text-align:left;">${d.organisme}</td>
+                <td style="text-align:left;">${d.motif||'-'} ${(d.respPEC ? '<br>Resp: '+d.respPEC : '')}</td>
+                <td style="text-align:right;">${formatMoney(d.montant)}</td>
+                <td style="text-align:center;">${d.dateEntreeDisplay || '-'}</td>
+                <td style="text-align:center;">${d.dateRefDisplay||'-'}</td>
+                <td style="text-align:center;">${valDelai}</td>
+                <td style="text-align:center;">${stat}</td>`;
+        } 
+        else if (currentFamily === 'Recouvrement' && currentSubFamily === 'Suivi des retours') {
+             rowHtml = `
+                <td style="text-align:left;">${d.entite}</td>
+                <td style="text-align:left;">${d.patient}</td>
+                <td style="text-align:center;">${d.facture||'-'}</td>
+                <td style="text-align:left;">${d.organisme}</td>
+                <td style="text-align:right;">${formatMoney(d.montant)}</td>
+                <td style="text-align:left;">${d.motif}</td>
+                <td style="text-align:left;">${d.etatDossier}</td>
+                <td style="text-align:left;">${d.nature}</td>`;
+        } 
+        else {
+             let stat = d.isEchue ? "Échue" : "Non Échue";
+             let color = d.isEchue ? "#c0392b" : "#27ae60";
+             rowHtml = `
+                <td style="text-align:left;">${d.entite}</td>
+                <td style="text-align:left;"><b>${d.dossier}</b><br>${d.patient}</td>
+                <td style="text-align:center;">${d.facture||'-'}</td>
+                <td style="text-align:left;">${d.organisme}</td>
+                <td style="text-align:right;">${formatMoney(d.montant)}</td>
+                <td style="text-align:center;">${d.dateRefDisplay}</td>
+                <td style="text-align:center;">${d.retard} j</td>
+                <td style="text-align:center; color:${color}; font-weight:bold;">${stat}</td>`;
+        }
+        
+        body.insertAdjacentHTML('beforeend', `<tr style="border-bottom:1px solid #eee;">${rowHtml}</tr>`);
+    });
+};
+
+window.updateRecouvTopN = function(val) { 
+    // Mise à jour de la variable globale
+    recouvTopN = parseInt(val); 
+    
+    // On relance le tableau de bord pour rafraîchir les tableaux avec la nouvelle limite
+    updateRecouvDashboard();
+};
+
+</script>

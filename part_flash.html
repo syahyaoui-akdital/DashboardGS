@@ -1,0 +1,171 @@
+<div id="view-flash" class="view-section active">
+    <div id="printHeader" style="display:none; width:100%; border-bottom:3px solid #363795; margin-bottom:15px; padding-bottom:10px;">
+       </div>
+
+    <div id="infoBar" style="display:flex; justify-content:space-between; align-items:center; background:#fff; padding:15px; border-radius:10px; box-shadow:0 2px 5px rgba(0,0,0,0.05); margin-bottom:15px;">
+        <div class="ctx-container">
+            <div id="ctxEntity" style="font-size:1.4em; font-weight:800; color:#333;">Région Grand-Sud</div>
+            <div class="ctx-sub" style="font-size:0.9em; color:#666;">
+                <span id="ctxPeriod">Année 2026</span> | <span id="ctxFamily" style="font-weight:bold; color:#363795;">HOSPITALISATION</span>
+            </div>
+        </div>
+        <div id="headerMetrics" style="display:flex; gap:15px; align-items:center;">
+            <div style="font-size:0.85em; color:#999; font-style:italic;">Chargement des capacités...</div>
+        </div>
+    </div>
+
+    <div id="kpiPanel">
+      <div class="kpi-row">
+          <div class="kpi-box">
+              <div class="kpi-label">CA Mensuel</div>
+              <div class="kpi-main-val">
+                  <div id="kpiCAMensuelEvolution" class="evolution-tag"></div>
+                  <div id="kpiCAMensuel" class="kpi-value green">--</div>
+              </div>
+              <div id="subKpiMensuel" class="kpi-sub-container">
+                  <div class="kpi-sub-row"><span class="kpi-sub-label">HIA</span><div class="kpi-sub-data"><span id="kpiHIA_Evol" class="evolution-tag"></span><span id="kpiHIA_M" class="kpi-sub-val">--</span></div></div>
+                  <div class="kpi-sub-row"><span class="kpi-sub-label">CIOA</span><div class="kpi-sub-data"><span id="kpiCIOA_Evol" class="evolution-tag"></span><span id="kpiCIOA_M" class="kpi-sub-val">--</span></div></div>
+              </div>
+          </div>
+          <div class="kpi-box">
+              <div class="kpi-label">CA Trimestriel</div>
+              <div class="kpi-main-val">
+                  <div id="kpiCATrimEvolution" class="evolution-tag"></div>
+                  <div id="kpiCATrim" class="kpi-value">--</div>
+              </div>
+              <div id="subKpiTrim" class="kpi-sub-container">
+                  <div class="kpi-sub-row"><span class="kpi-sub-label">HIA</span><div class="kpi-sub-data"><span id="kpiHIA_TEvol" class="evolution-tag"></span><span id="kpiHIA_T" class="kpi-sub-val">--</span></div></div>
+                  <div class="kpi-sub-row"><span class="kpi-sub-label">CIOA</span><div class="kpi-sub-data"><span id="kpiCIOA_TEvol" class="evolution-tag"></span><span id="kpiCIOA_T" class="kpi-sub-val">--</span></div></div>
+              </div>
+          </div>
+          <div class="kpi-box">
+              <div class="kpi-label">CA Annuel</div>
+              <div id="kpiCAAnnuel" class="kpi-value">--</div>
+              <div id="subKpiAnnuel" class="kpi-sub-container">
+                  <div class="kpi-sub-row"><span class="kpi-sub-label">HIA</span><span id="kpiHIA_A" class="kpi-sub-val">--</span></div>
+                  <div class="kpi-sub-row"><span class="kpi-sub-label">CIOA</span><span id="kpiCIOA_A" class="kpi-sub-val">--</span></div>
+              </div>
+          </div>
+          <div class="kpi-box">
+              <div id="kpiLabelEvolution" class="kpi-label">Évolution (Volume)</div>
+              <div class="kpi-main-val">
+                  <div id="kpiEvolutionTag" class="evolution-tag"></div>
+                  <div id="kpiEvolution" class="kpi-value">--</div>
+              </div>
+          </div>
+          <div class="kpi-box">
+              <div class="kpi-label">Total Sélectionné</div>
+              <div id="kpiTotal" class="kpi-value">--</div>
+          </div>
+      </div>
+    </div>
+
+    <div id="flashFocusZone" style="margin-bottom: 20px;">
+        
+        <div id="focusPanelBloc" class="focus-panel-container">
+            <div class="focus-box bg-bloc"><div class="focus-content"><div class="focus-label">CCV</div><div id="valCEC" class="focus-value">--</div></div></div>
+            <div class="focus-box bg-bloc-sec"><div class="focus-content"><div id="lblBlocTop1" class="focus-label">TOP 1</div><div id="valBlocTop1" class="focus-value">--</div></div></div>
+            <div class="focus-box bg-bloc-sec"><div class="focus-content"><div id="lblBlocTop2" class="focus-label">TOP 2</div><div id="valBlocTop2" class="focus-value">--</div></div></div>
+            <div class="focus-box bg-bloc-sec"><div class="focus-content"><div id="lblBlocTop3" class="focus-label">TOP 3</div><div id="valBlocTop3" class="focus-value">--</div></div></div>
+        </div>
+        
+        <div id="focusPanelChimio" class="focus-panel-container">
+              <div class="focus-box bg-chimio"><div class="focus-content"><div class="focus-label">Passage au niveau de l'HDJ</div><div id="valSeanceChimio" class="focus-value">--</div></div></div>
+              <div class="focus-box bg-chimio"><div class="focus-content"><div class="focus-label">Moyenne Passage / Jour</div><div id="valMoyennePassageChimio" class="focus-value">--</div></div><div class="focus-footer"><span>Diviseur : 22j</span></div></div>
+            <div class="focus-box bg-chimio-sec"><div class="focus-content"><div class="focus-label">Nouveaux Cas</div><div id="valNouveauxCasChimio" class="focus-value">--</div></div></div>
+        </div>
+        
+        <div id="focusPanelRadio" class="focus-panel-container">
+              <div class="focus-box bg-radio"><div class="focus-content"><div class="focus-label">Passage sur la machine</div><div id="valSeanceRadio" class="focus-value">--</div></div></div>
+              <div class="focus-box bg-radio"><div class="focus-content"><div class="focus-label">Moyenne Passage / Jour</div><div id="valMoyennePassageRadio" class="focus-value">--</div></div><div class="focus-footer"><span>Diviseur : 22j</span></div></div>
+            <div class="focus-box bg-radio-sec"><div class="focus-content"><div class="focus-label">Nouveaux Cas</div><div id="valNouveauxCasRadio" class="focus-value">--</div></div></div>
+        </div>
+        
+        <div id="focusPanelCathe" class="focus-panel-container">
+            <div class="focus-box bg-cathe"><div class="focus-content"><div class="focus-label">DILATATION</div><div id="valDilatation" class="focus-value">--</div></div><div class="focus-footer"><div id="valMoyDilatation">Moy. -- /j</div></div></div>
+            <div class="focus-box bg-cathe-sec"><div class="focus-content"><div class="focus-label">CORONAROGRAPHIE</div><div id="valCoro" class="focus-value">--</div></div><div class="focus-footer"><div id="valMoyCoro">Moy. -- /j</div></div></div>
+        </div>
+
+        <div id="focusPanelImagerie" class="focus-panel-container">
+            <div class="focus-box bg-imagerie"><div class="focus-content"><div class="focus-label">SCANNER (TDM)</div><div id="valScanner" class="focus-value">--</div></div><div class="focus-footer"><div id="valMoyScanner">Moy. -- /j</div></div></div>
+            <div class="focus-box bg-imagerie-2"><div class="focus-content"><div class="focus-label">IRM</div><div id="valIRM" class="focus-value">--</div></div><div class="focus-footer"><div id="valMoyIRM">Moy. -- /j</div></div></div>
+        </div>
+
+        <div id="focusPanelLabo" class="focus-panel-container">
+            <div class="focus-box bg-labo"><div class="focus-content"><div class="focus-label">Laboratoire EXTERNE</div><div id="valLaboExt" class="focus-value">--</div></div><div class="focus-footer"><div id="valMoyLaboExt">Moy. -- /j</div><div style="opacity:0.5">|</div><div id="valPctLaboExt">-- %</div></div></div>
+            <div class="focus-box bg-labo-2"><div class="focus-content"><div class="focus-label">Laboratoire INTERNE</div><div id="valLaboInt" class="focus-value">--</div></div><div class="focus-footer"><div id="valMoyLaboInt">Moy. -- /j</div><div style="opacity:0.5">|</div><div id="valPctLaboInt">-- %</div></div></div>
+        </div>
+
+        <div id="focusPanelNucleaire" class="focus-panel-container">
+            <div class="focus-box bg-nucleaire"><div class="focus-content"><div class="focus-label">PET SCAN</div><div id="valPetScan" class="focus-value">--</div></div><div class="focus-footer"><div id="valMoyPetScan">Moy. -- /j</div><div style="opacity:0.6; margin-left:10px; font-size:0.8em">Div. 22j</div></div></div>
+            <div class="focus-box bg-nucleaire-2"><div class="focus-content"><div class="focus-label">SCINTIGRAPHIE</div><div id="valScintigraphie" class="focus-value">--</div></div><div class="focus-footer"><div id="valMoyScintigraphie">Moy. -- /j</div><div style="opacity:0.6; margin-left:10px; font-size:0.8em">Div. 22j</div></div></div>
+        </div>
+
+        <div id="focusPanelConsultation" class="focus-panel-container">
+            <div class="focus-box bg-consult"><div class="focus-content"><div id="lblTop1" class="focus-label">TOP 1</div><div id="valTop1" class="focus-value">--</div></div></div>
+            <div class="focus-box bg-consult"><div class="focus-content"><div id="lblTop2" class="focus-label">TOP 2</div><div id="valTop2" class="focus-value">--</div></div></div>
+            <div class="focus-box bg-consult"><div class="focus-content"><div id="lblTop3" class="focus-label">TOP 3</div><div id="valTop3" class="focus-value">--</div></div></div>
+        </div>
+
+        <div id="focusPanelDialyse" class="focus-panel-container">
+            <div class="focus-box bg-dialyse"><div class="focus-content"><div class="focus-label">Séance Dialyse (HDJ)</div><div id="valSeanceDialyse" class="focus-value">--</div></div></div>
+            <div class="focus-box bg-dialyse-sec"><div class="focus-content"><div class="focus-label">Nouveaux Cas</div><div id="valNouveauxCasDialyse" class="focus-value">--</div></div></div>
+        </div>
+
+        <div id="focusPanelHospitalisation" class="focus-panel-column"></div>
+
+        <div id="focusPanelUrgence" class="focus-panel-container">
+            <div class="focus-box bg-urgence"><div class="focus-content"><div class="focus-label">Nombre d'urgence</div><div id="valPassageUrgence" class="focus-value">--</div></div><div class="focus-footer"><div id="valMoyPassageUrgence">Moy. -- /j</div></div></div>
+            <div class="focus-box bg-urgence-sec"><div class="focus-content"><div class="focus-label">Admissions via Urgences</div><div id="valAdmissionUrgence" class="focus-value">--</div></div><div class="focus-footer"><div style="font-weight: normal; margin-right:5px;">Recrutement :</div><div id="valPctRecrutementUrgence" style="font-weight: bold;">-- %</div></div></div>
+              <div class="focus-box bg-urgence-sec"><div class="focus-content"><div class="focus-label">Taux de Recrutement</div><div id="valTauxRecrutementUrgence" class="focus-value">-- %</div></div></div>
+        </div>
+
+        <div id="focusPanelHopitalJour" class="focus-panel-container">
+            <div class="focus-box bg-jour"><div class="focus-content"><div class="focus-label">Hôpital du jour</div><div id="valHopitalJour" class="focus-value">--</div></div><div class="focus-footer"><div id="valMoyHopitalJour">Moy. -- /j</div></div></div>
+            <div class="focus-box bg-jour"><div class="focus-content"><div class="focus-label">Hôpital du jour Cardio</div><div id="valHopitalJourCardio" class="focus-value">--</div></div><div class="focus-footer"><div id="valMoyHopitalJourCardio">Moy. -- /j</div></div></div>
+        </div>
+    </div>
+
+    <div id="secondaryFiltersPanel">
+        <div class="sec-filter-group">
+            <label>Clinique (Entité)</label>
+            <select id="localEntite" onchange="syncFilters('localEntite')"></select>
+        </div>
+        
+        <div class="sec-filter-group">
+            <label>Année</label>
+            <select id="localAnnee" onchange="syncFilters('localAnnee')"></select>
+        </div>
+
+        <div class="sec-filter-group">
+            <label>Trim</label>
+            <select id="localTrimestre" onchange="syncFilters('localTrimestre')"></select>
+        </div>
+
+        <div class="sec-filter-group">
+            <label>Mois</label>
+            <select id="localMois" onchange="syncFilters('localMois')"></select>
+        </div>
+
+        <div class="sec-filter-group">
+            <label>Sous-famille</label>
+            <select id="sousFamille" onchange="populateElementFilter(document.querySelector('#familyButtons button.active').getAttribute('data-family'), this.value)"></select>
+        </div>
+
+        <div class="sec-filter-group">
+            <label for="element">Élément</label>
+            <select id="element" onchange="drawCharts()"></select>
+        </div>
+    </div>
+    
+    <div id="chartContainer">
+      <div id="mainChartWrapper">
+        <canvas id="kpiChart"></canvas>
+        <p id="noDataMessage" style="text-align: center; color: #6c757d; display: none; margin-top:20px;">Aucune donnée à afficher.</p>
+      </div>
+      <div id="pieChartWrapper">
+          <h4 style="margin: 0 0 15px 0; text-align: center; color: #555; font-weight:600; font-size:1.1em;">Répartition Labo</h4>
+          <div style="position: relative; height: 280px; width: 100%;"><canvas id="laboPieChart"></canvas></div>
+      </div>
+    </div>
+</div>

@@ -1,0 +1,159 @@
+<script>
+/**
+ * SOUS-MODULE : RECOUVREMENT - DOSSIERS NON RÉGLÉS
+ */
+
+function renderNonReglesView(dataSet) {
+    // 1. Filtrage spécifique
+    const fStatut = document.getElementById('recouvFilterEcheance') ? document.getElementById('recouvFilterEcheance').value : "";
+    
+    let finalData = dataSet.filter(d => {
+        if (fStatut === "ECHUE" && !d.isEchue) return false;
+        if (fStatut === "NON_ECHUE" && d.isEchue) return false;
+        
+        if (isProcheFilterActive) {
+            // CORRECTION ICI : On inclut strictement les mêmes dossiers que le calcul de la carte bleue
+            // On garde ce qui est >= -15 (donc retard < -15 est exclu)
+            if (d.isEchue || d.retard < -15) return false;
+        }
+        return true;
+    });
+    
+    currentFilteredDataGlobal = finalData;
+
+    // 2. Mise à jour KPIs Globaux
+    const total = finalData.reduce((s,d)=>s+d.montant,0);
+    safeSetText('kpiRecouvMontant', formatMoney(total) + " DH");
+    safeSetText('kpiRecouvCount', finalData.length);
+
+    // 3. KPIs Alertes
+    const echues = finalData.filter(d=>d.isEchue);
+    const nonEchues = finalData.filter(d=>!d.isEchue);
+    safeSetText('kpiEchueMontant', formatMoney(echues.reduce((s,d)=>s+d.montant,0)) + " DH"); 
+    safeSetText('kpiEchueCount', echues.length);
+    safeSetText('kpiNonEchueMontant', formatMoney(nonEchues.reduce((s,d)=>s+d.montant,0)) + " DH"); 
+    safeSetText('kpiNonEchueCount', nonEchues.length);
+
+    // 4. KPI Carte Bleue (PROCHE ÉCHÉANCE)
+    // CORRECTION ICI : Ajout du "=" (>= -15) pour correspondre au filtre principal
+    // Utilisation de 'dataSet' pour calculer le potentiel total même si le filtre est inactif
+    const prochesDispo = dataSet.filter(d => !d.isEchue && d.retard >= -15);
+    
+    // Si le filtre est actif, on force l'affichage des valeurs filtrées pour garantir l'égalité visuelle parfaite
+    const displayProches = isProcheFilterActive ? finalData : prochesDispo;
+
+    safeSetHTML('kpiCard4Title', isProcheFilterActive ? "FILTRE ACTIF : PROCHES" : "PROCHE ÉCHÉANCE (-15j)");
+    
+    const elVarVal = document.getElementById('kpiCard4Value');
+    const elVarAction = document.getElementById('kpiCard4Action');
+    
+    if(elVarVal) {
+        elVarVal.innerHTML = `<div style="font-size:1.6em; font-weight:800; color:#2c3e50;">${formatMoney(displayProches.reduce((s,d)=>s+d.montant,0))}</div>
+                              <div style="font-size:0.9em; color:#7f8c8d; margin-bottom:5px;">Volumétrie : ${displayProches.length}</div>`;
+    }
+
+    if(elVarAction) {
+        const btnBg = isProcheFilterActive ? "#e74c3c" : "#3498db";
+        const btnTxt = isProcheFilterActive ? "Désactiver le filtre" : "Voir ces dossiers";
+        const btnIcon = isProcheFilterActive ? "fa-times" : "fa-filter";
+
+        elVarAction.innerHTML = `
+            <button onclick="toggleProcheFilterFunc(event)" style="
+                background: ${btnBg}; color: white; border: none; 
+                padding: 5px 12px; border-radius: 15px; font-size: 0.8em; 
+                font-weight: 600; cursor: pointer; width: 100%; margin-top:5px;
+                display: flex; align-items: center; justify-content: center; gap: 6px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.2s;">
+                <i class="fas ${btnIcon}"></i> ${btnTxt}
+            </button>
+        `;
+    }
+
+    // 5. Reste des affichages
+    if(typeof renderTopEntities === 'function') renderTopEntities(finalData);
+    if(typeof renderTopOrganisms === 'function') renderTopOrganisms(finalData);
+    if(typeof drawRecouvCharts === 'function') drawRecouvCharts(finalData);
+
+    updateNonReglesHeader();
+    renderNonReglesTable(finalData);
+
+    if(typeof renderClassificationTable === 'function') renderClassificationTable(finalData);
+    if(typeof renderBalanceTable === 'function') renderBalanceTable(finalData);
+}
+
+// Fonction de bascule (activée par le bouton)
+window.toggleProcheFilterFunc = function(e) {
+    if(e) e.stopPropagation();
+    isProcheFilterActive = !isProcheFilterActive;
+    
+    // Si on active "Proche", on reset le filtre statut
+    if(isProcheFilterActive) {
+        const selStatut = document.getElementById('recouvFilterEcheance');
+        if(selStatut) selStatut.value = "";
+    }
+    updateRecouvDashboard();
+};
+
+
+function updateNonReglesHeader() {
+    const headRow = document.querySelector('#tableTopFactures thead tr') || document.getElementById('headerRowTop25');
+    if (headRow) {
+        headRow.innerHTML = `
+            <th style="text-align:left; padding:12px;">Entité</th> 
+            <th style="text-align:left; padding:12px;">Dossier / Patient</th> 
+            <th style="text-align:center; padding:12px;">N° Facture</th> 
+            <th style="text-align:center; padding:12px;">Organisme</th> 
+            <th style="text-align:right; padding:12px;">Montant</th> 
+            <th style="text-align:center; padding:12px;">Date Exp</th> 
+            <th style="text-align:center; padding:12px;">Antériorité</th> 
+            <th style="text-align:center; padding:12px;">Statut</th>
+        `;
+    }
+}
+
+function renderNonReglesTable(data) {
+    const tbody = document.querySelector('#tableTopFactures tbody');
+    if(!tbody) return;
+    tbody.innerHTML = '';
+
+    let sorted = [...data];
+
+    // --- APPLICATION DU TRI ---
+    if (recouvSortMode === 'DELAI') {
+        sorted.sort((a,b) => b.retard - a.retard); // Les plus en retard d'abord
+    } else {
+        sorted.sort((a,b) => b.montant - a.montant); // Par défaut : Montant
+    }
+
+    const limit = (recouvTopN === 1000) ? sorted.length : recouvTopN;
+
+    sorted.slice(0, limit).forEach(d => {
+        let labelStat = d.isEchue ? "ECHUE" : "NON ECHUE";
+        let colorStat = d.isEchue ? "#c0392b" : "#27ae60";
+        
+        tbody.insertAdjacentHTML('beforeend', `
+            <tr style="cursor:pointer;" onclick="openRecouvDetailCustom([currentFilteredDataGlobal.find(x=>x.dossier=='${d.dossier}')], 'Dossier ${d.dossier}')">
+                <td style="text-align:left;">${d.entite}</td>
+                <td style="text-align:left;"><b>${d.dossier}</b><br>${d.patient}</td>
+                <td style="text-align:center;">${d.facture||'-'}</td>
+                <td style="text-align:center;">${d.organisme}</td>
+                <td style="text-align:right; font-weight:bold;">${formatMoney(d.montant)}</td>
+                <td style="text-align:center;">${d.dateRefDisplay}</td>
+                <td style="text-align:center;">${d.retard} j</td>
+                <td style="text-align:center; color:${colorStat}; font-weight:bold;">${labelStat}</td>
+            </tr>`);
+    });
+}
+
+function renderTopEntities(data) {
+    const agg = {}; data.forEach(d=>agg[d.entite]=(agg[d.entite]||0)+d.montant);
+    let html=""; Object.entries(agg).sort((a,b)=>b[1]-a[1]).slice(0,3).forEach(i=> html+=`<div style="display:flex; justify-content:space-between; margin-bottom:4px; border-bottom:1px dashed #eee; font-size:0.9em;"><span style="color:#555;">${i[0]}</span><span style="font-weight:bold; color:#f1c40f;">${formatMoney(i[1])}</span></div>`);
+    safeSetHTML('kpiRecouvTopEntities', html);
+}
+
+function renderTopOrganisms(data) {
+    const agg={}; data.forEach(d=>agg[d.organisme]=(agg[d.organisme]||0)+d.montant);
+    let html=""; Object.entries(agg).sort((a,b)=>b[1]-a[1]).slice(0,3).forEach(i=> html+=`<div style="display:flex; justify-content:space-between; margin-bottom:4px; border-bottom:1px dashed #eee; font-size:0.9em;"><span style="color:#555;">${i[0]}</span><span style="font-weight:bold; color:#9b59b6;">${formatMoney(i[1])}</span></div>`);
+    safeSetHTML('kpiRecouvTopOrgList', html);
+}
+</script>

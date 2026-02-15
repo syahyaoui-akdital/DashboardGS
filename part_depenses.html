@@ -1,0 +1,158 @@
+<div id="view-depenses" class="view-section export-section" data-export-title="Dépenses Caisses">
+    
+    <div style="background: white; padding: 20px; margin-bottom: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); border-left: 5px solid #363795;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px; margin-bottom:10px;">
+            <div>
+                <h2 style="margin: 0; color: #2c3e50; font-size: 1.6em; font-weight: 800; letter-spacing:-0.5px;">DÉPENSES CAISSES</h2>
+                <div id="depenseLastUpdate" style="font-size: 0.8em; color: #888; font-style: italic; margin-top: 4px;">
+                    Date d'actualisation des données : --/--/----
+                </div>
+                <div id="filterDisplay" style="color: #363795; font-size: 0.95em; margin-top: 5px; font-weight:500;">
+                    Chargement...
+                </div>
+            </div>
+            
+            <div style="background: #f8f9fa; padding: 8px 15px; border-radius: 50px; border: 1px dashed #cbd5e0; display: flex; align-items: center; gap: 10px;">
+                <input type="file" id="fileExpenses" accept=".xlsx, .xls" multiple style="display:none;" onchange="window.handleFileSelect(event)">
+                <button class="action-btn" onclick="document.getElementById('fileExpenses').click()" style="background:#363795; color:white; border-radius:20px; padding:8px 20px; font-size:0.85em; cursor:pointer; border:none; box-shadow:0 3px 6px rgba(0,0,0,0.1);">
+                    📂 Importer Données
+                </button>
+                <span id="fileNameDisplay" style="font-size:0.8em; color:#666;">Aucun fichier</span>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 15px; flex-wrap: wrap; border-top: 1px solid #eee; padding-top: 15px;">
+             <div class="sec-filter-group">
+                 <label>Entité / Groupe</label>
+                 <select id="depenseFilterEntite" onchange="updateSubEntityFilter(); updateExpensesView()" style="background:#f8f9fa;"></select>
+             </div>
+             <div class="sec-filter-group" id="containerSubEntity" style="display:none;">
+                 <label>Sous-entité</label>
+                 <select id="depenseFilterSubEntity" onchange="updateExpensesView()" style="background:#f8f9fa;"></select>
+             </div>
+             
+             <div class="sec-filter-group">
+                 <label>Année</label>
+                 <select id="depenseFilterAnnee" onchange="updateExpensesView()" style="background:#f8f9fa; font-weight:bold; color:#363795;">
+                     <option value="">TOUT (Comparatif)</option>
+                 </select>
+             </div>
+
+             <div class="sec-filter-group"><label>Trimestre</label><select id="depenseFilterTrim" onchange="updateExpensesMonthOptions(); updateExpensesView()" style="background:#f8f9fa;"><option value="">TOUT</option><option value="T1">T1</option><option value="T2">T2</option><option value="T3">T3</option><option value="T4">T4</option></select></div>
+             <div class="sec-filter-group"><label>Mois</label><select id="depenseFilterMois" onchange="updateExpensesView()" style="background:#f8f9fa;"><option value="">TOUT</option></select></div>
+             <div class="sec-filter-group"><label>Catégorie</label><select id="depenseFilterType" onchange="updateExpensesView()" style="background:#f8f9fa;"></select></div>
+        </div>
+    </div>
+
+    <div id="depenseKPIs" class="export-section cards-row" data-export-title="Dépenses - Indicateurs" style="align-items: stretch; grid-template-columns: repeat(4, 1fr);">
+        <div class="stat-card" style="border-top: 4px solid #363795;">
+            <div class="stat-title">TOTAL DÉPENSES</div>
+            <div style="display:flex; align-items:baseline; gap:10px;">
+                <div id="kpiDepenseTotal" class="stat-value" style="color: #363795; font-size:1.5em;">--</div>
+                <div id="kpiVarTotal" style="font-size:0.9em; font-weight:bold;">--</div>
+            </div>
+            <div class="stat-sub" style="margin-top:5px; color:#555;">Nbr Ops: <span id="kpiVolTotal" style="font-weight:bold;">--</span></div>
+        </div>
+        <div class="stat-card" style="border-top: 4px solid #2ecc71;">
+            <div class="stat-title">INDICATEURS DE MOYENNE</div>
+            <div style="display:flex; flex-direction:column; justify-content:center; height:60px; gap:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px dashed #eee; padding-bottom:4px;">
+                    <span style="font-size:0.85em; color:#555;">Moyenne / Mois :</span>
+                    <span id="kpiMoyMensuelle" style="font-weight:bold; color:#27ae60; font-size:1em;">--</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size:0.85em; color:#555;">Moyenne / Ops :</span>
+                    <span id="kpiTicketMoyen" style="font-weight:bold; color:#27ae60; font-size:1em;">--</span>
+                </div>
+            </div>
+        </div>
+        <div class="stat-card" style="border-top: 4px solid #f1c40f;">
+            <div class="stat-title">TOP 3 ENTITÉS</div>
+            <div id="kpiListTopEntities" style="margin-top:8px; font-size:0.85em;"></div>
+        </div>
+        <div class="stat-card clickable-card" onclick="openKpiDetail('ALERTS')" style="border-top: 4px solid #e84393; cursor:pointer;">
+            <div class="stat-title">TOP 3 DÉPENSES ÉLEVÉES</div>
+            <div id="kpiListAlerts" style="margin-top:8px; font-size:0.85em; color:#555;"></div>
+        </div>
+    </div>
+
+    <div id="depenseCharts" class="export-section" data-export-title="Dépenses - Graphiques" style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 25px;">
+        <div class="chart-container" style="flex: 2; min-width: 500px; height: 450px; border-radius:12px; box-shadow:0 4px 6px rgba(0,0,0,0.04); padding: 20px; background: white;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+                <h4 id="chartDepenseTitle" style="margin:0; color:#333; font-size:1em; font-weight:700;">Analyse des Dépenses</h4>
+                
+                <div style="background:#f4f6f8; border-radius:20px; padding:3px; display:flex; gap:2px;">
+                    <button onclick="updateDepenseGraphMode('TIME')" class="toggle-chart-btn active" id="btnDepGraphTime">Période</button>
+                    <button onclick="updateDepenseGraphMode('ENTITY')" class="toggle-chart-btn" id="btnDepGraphEntity">Entité</button>
+                    <button onclick="updateDepenseGraphMode('CATEGORIE')" class="toggle-chart-btn" id="btnDepGraphCategorie">Catégorie</button>
+                </div>
+            </div>
+            
+            <div style="height:370px;"><canvas id="chartDepenseEvol"></canvas></div>
+        </div>
+        <div class="chart-container" style="flex: 1; min-width: 320px; height: 450px; border-radius:12px; box-shadow:0 4px 6px rgba(0,0,0,0.04); padding: 20px; background: white;">
+            <h4 style="text-align:center; color:#333; font-size:1em; font-weight:700; margin-bottom:20px;">Répartition par Catégorie</h4>
+            <div style="height:370px;"><canvas id="chartDepensePie"></canvas></div>
+        </div>
+    </div>
+
+    <div id="depenseTable" class="export-section table-container" data-export-title="Dépenses - Classement" style="border-radius:12px; overflow:hidden; box-shadow:0 4px 6px rgba(0,0,0,0.04);">
+        <h4 style="padding:15px 20px; margin:0; border-bottom:1px solid #eee; background:#f8faff; color:#363795;">
+            Classement Top 10 Bénéficiaires
+        </h4>
+        <table id="tableTopDepenses" style="width:100%;">
+            <thead>
+                <tr>
+                    <th style="padding-left:20px; text-align:left;">Entité</th>
+                    <th style="text-align:left;">Bénéficiaire</th>
+                    <th style="text-align:center;">Nbr Ops</th>
+                    <th style="text-align:right;">Total (DH)</th>
+                    <th style="text-align:right; padding-right:20px;">%</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+<div id="expenseDetailModal" style="display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background-color:rgba(0,0,0,0.6); backdrop-filter:blur(3px);">
+        <div style="background-color:#fff; margin:2% auto; padding:0; border-radius:12px; width:90%; max-width:1200px; height:90vh; display:flex; flex-direction:column; box-shadow:0 15px 30px rgba(0,0,0,0.3);">
+            
+            <div style="padding:15px 25px; background:rgba(54, 55, 149, 0.95); color:white; border-radius:12px 12px 0 0; display:flex; justify-content:space-between; align-items:center; backdrop-filter:blur(5px);">
+                <div style="display:flex; align-items:center; gap:15px;">
+                    <h3 id="modalExpTitle" style="margin:0; font-size:1.2em;">Détail</h3>
+                    
+                    <button onclick="exportDataToExcel()" title="Exporter Excel" style="background:transparent; border:1px solid rgba(255,255,255,0.6); width:36px; height:36px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s;">
+                        <i class="fas fa-file-excel" style="color:white; font-size:1.1em;"></i>
+                    </button>
+                    
+                    <button onclick="printDataAsPDF()" title="Imprimer PDF" style="background:transparent; border:1px solid rgba(255,255,255,0.6); width:36px; height:36px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s;">
+                        <i class="fas fa-file-pdf" style="color:white; font-size:1.1em;"></i>
+                    </button>
+                </div>
+                <span onclick="closeModal()" style="cursor:pointer; font-size:2em; line-height:0.7; opacity:0.8;">&times;</span>
+            </div>
+            
+            <div style="padding:0; flex:1; overflow-y:auto; background:white;">
+                <table class="detail-table" style="width:100%; border-collapse:collapse; font-size:0.85em;">
+                    <thead style="position:sticky; top:0; background:#f1f2f6; z-index:10;">
+                        <tr style="color:#444; text-align:center;">
+                            <th style="padding:12px; border-bottom:2px solid #ccc;">Date</th>
+                            <th style="padding:12px; border-bottom:2px solid #ccc;">Entité</th>
+                            <th style="padding:12px; border-bottom:2px solid #ccc;">Ordre</th>
+                            <th style="padding:12px; text-align:left; border-bottom:2px solid #ccc;">Bénéficiaire</th>
+                            <th style="padding:12px; text-align:left; border-bottom:2px solid #ccc;">Nature</th>
+                            <th style="padding:12px; border-bottom:2px solid #ccc;">Catégorie</th>
+                            <th style="padding:12px; text-align:right; border-bottom:2px solid #ccc;">Montant (DH)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="modalExpBody"></tbody>
+                </table>
+                <div id="modalLimitMsg" style="padding:15px; text-align:center; color:#e74c3c; font-style:italic; display:none;"></div>
+            </div>
+            
+            <div style="padding:10px; border-top:1px solid #eee; text-align:right; background:#f9f9f9; border-radius:0 0 12px 12px;">
+                <button onclick="closeModal()" style="padding:8px 25px; background:#555; color:white; border:none; border-radius:4px; cursor:pointer;">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>

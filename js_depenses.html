@@ -1,0 +1,649 @@
+<script>
+/**
+ * MODULE DÉPENSES - VERSION FINALE (TRI ENTITÉS & GRAPH DYNAMIQUE)
+ */
+
+let globalExpensesData = [];
+let currentFilteredData = [];
+let currentDetailData = []; 
+let depenseGraphMode = 'TIME'; 
+
+const depMonthOrder = ["JAN", "FEV", "MAR", "AVR", "MAI", "JUN", "JUL", "AOU", "SEP", "OCT", "NOV", "DEC"];
+const depQuarters = { "T1": ["JAN", "FEV", "MAR"], "T2": ["AVR", "MAI", "JUN"], "T3": ["JUL", "AOU", "SEP"], "T4": ["OCT", "NOV", "DEC"] };
+const proPieColors = ['#42a5f5', '#66bb6a', '#ef5350', '#78909c', '#ffa726', '#ab47bc', '#8d6e63', '#7cb342'];
+
+// ORDRE DE TRI PERSONNALISÉ DES ENTITÉS
+const DEP_ENTITY_ORDER = ["HIA", "CIOA", "HIA CIOA", "CIT", "CID", "PIL", "HPG", "ALHIKMA", "AL HIKMA"];
+
+let expensesChartInstance = null;
+let expensesPieInstance = null;
+
+// Utilitaires
+function safeSetText(id, text) { const el = document.getElementById(id); if (el) el.textContent = text; }
+function safeSetHTML(id, html) { const el = document.getElementById(id); if (el) el.innerHTML = html; }
+const formatDynamicLabel = (val) => {
+    if (val >= 1000000) return (val / 1000000).toFixed(1) + ' MDh';
+    if (val >= 1000) return (val / 1000).toFixed(0) + ' KDh';
+    return val.toFixed(0);
+};
+
+// --- CHARGEMENT ---
+function loadExpensesData() {
+    google.script.run.withSuccessHandler(response => {
+        if (response && response.data) {
+            renderExpensesDashboard(response.data);
+            if(response.lastUpdate) safeSetText('depenseLastUpdate', "Date d'actualisation : " + response.lastUpdate);
+        } else {
+            renderExpensesDashboard(response);
+        }
+    }).getExpensesDashboardData();
+}
+
+// --- INITIALISATION ---
+function renderExpensesDashboard(data) {
+    if (!data || data.length < 2) { globalExpensesData=[]; updateExpensesView(); return; }
+    
+    globalExpensesData = data.slice(1).map(r => {
+        let jour = r[1];
+        let mois = r[2];
+        let annee = r[3];
+        if (!mois || !depMonthOrder.includes(mois)) mois = "DEC";
+        
+        let dateDisplay = "-";
+        if (jour && mois && annee) {
+            let mIdx = depMonthOrder.indexOf(mois);
+            let mNum = String(mIdx + 1).padStart(2, '0');
+            let dNum = String(jour).padStart(2, '0');
+            dateDisplay = `${dNum}/${mNum}/${annee}`;
+        }
+
+        let ent = r[0];
+        let grp = (ent === "HIA" || ent === "CIOA") ? "HIA CIOA" : ent;
+
+        return {
+            entite: ent, groupe: grp, 
+            jour: jour, mois: mois, annee: annee || new Date().getFullYear(),
+            dateDisplay: dateDisplay,
+            action: r[4], montant: parseFloat(r[5]) || 0,
+            nature: r[6], categorie: r[7] || "Non défini", ordre: r[8] || "-"
+        };
+    });
+
+    // TRI DES ENTITÉS SELON L'ORDRE DÉFINI
+    const groupes = [...new Set(globalExpensesData.map(d => d.groupe))].sort((a, b) => {
+        let idxA = DEP_ENTITY_ORDER.indexOf(a);
+        let idxB = DEP_ENTITY_ORDER.indexOf(b);
+        // Si non trouvé, on met à la fin
+        if (idxA === -1) idxA = 999;
+        if (idxB === -1) idxB = 999;
+        return idxA - idxB;
+    });
+
+    const types = [...new Set(globalExpensesData.map(d => d.categorie))].filter(t => t && t !== "Non défini").sort();
+    const annees = [...new Set(globalExpensesData.map(d => d.annee))].filter(y => y).sort().reverse();
+
+    const selEnt = document.getElementById('depenseFilterEntite');
+    if(selEnt) { selEnt.innerHTML = '<option value="">TOUT</option>'; groupes.forEach(g => selEnt.add(new Option(g, g))); }
+    
+    const selAnnee = document.getElementById('depenseFilterAnnee');
+    if(selAnnee) { selAnnee.innerHTML = '<option value="">TOUT (Comparatif)</option>'; annees.forEach(a => selAnnee.add(new Option(a, a))); }
+    
+    populateExpSelect('depenseFilterType', types);
+    updateExpensesMonthOptions();
+    updateDepenseGraphMode('TIME');
+}
+
+function updateSubEntityFilter() {
+    const grp = document.getElementById('depenseFilterEntite').value;
+    const subContainer = document.getElementById('containerSubEntity');
+    const subSel = document.getElementById('depenseFilterSubEntity');
+    if(!subSel) return;
+    subSel.innerHTML = '<option value="">TOUTES</option>';
+    if (grp === "HIA CIOA") {
+        if(subContainer) subContainer.style.display = "block";
+        subSel.add(new Option("HIA", "HIA"));
+        subSel.add(new Option("CIOA", "CIOA"));
+    } else {
+        if(subContainer) subContainer.style.display = "none";
+    }
+    subSel.value = "";
+}
+
+function updateExpensesView() {
+    const fGroupe = document.getElementById('depenseFilterEntite').value;
+    const fSub = document.getElementById('depenseFilterSubEntity') ? document.getElementById('depenseFilterSubEntity').value : "";
+    const fAnnee = document.getElementById('depenseFilterAnnee') ? document.getElementById('depenseFilterAnnee').value : "";
+    const fTrim = document.getElementById('depenseFilterTrim').value;
+    const fMois = document.getElementById('depenseFilterMois').value;
+    const fType = document.getElementById('depenseFilterType').value;
+
+    const txtEntite = fSub ? fSub : (fGroupe ? fGroupe : "Toutes Entités");
+    const txtPer = fMois ? "Mois : " + fMois : (fTrim ? "Trimestre : " + fTrim : (fAnnee ? "Année " + fAnnee : "Toutes Années"));
+    safeSetText('filterDisplay', `${txtEntite} - ${txtPer}`);
+
+    let targetMonths = depMonthOrder;
+    if (fMois) targetMonths = [fMois]; else if (fTrim) targetMonths = depQuarters[fTrim];
+
+    currentFilteredData = globalExpensesData.filter(d => {
+        if (fGroupe && d.groupe !== fGroupe) return false;
+        if (fSub && d.entite !== fSub) return false;
+        if (fAnnee && String(d.annee) !== String(fAnnee)) return false; 
+        if (fType && d.categorie !== fType) return false;
+        if (!targetMonths.includes(d.mois)) return false;
+        return true;
+    });
+
+    // Pour le Top 3 Entités, on veut voir les autres entités, donc on ignore le filtre groupe mais on garde les filtres temporels
+    const filteredForEntities = globalExpensesData.filter(d => {
+        if (fAnnee && String(d.annee) !== String(fAnnee)) return false;
+        if (!targetMonths.includes(d.mois)) return false;
+        return true;
+    });
+
+    // KPI
+    const total = currentFilteredData.reduce((sum, d) => sum + d.montant, 0);
+    const countOps = currentFilteredData.length;
+    
+    safeSetText('kpiDepenseTotal', formatMoney(total) + " DH");
+    safeSetText('kpiVolTotal', countOps);
+    
+    const nbMois = targetMonths.length || 1;
+    const avgTicket = countOps > 0 ? total / countOps : 0;
+    const nbAnnees = fAnnee ? 1 : [...new Set(currentFilteredData.map(d=>d.annee))].length || 1;
+    
+    safeSetText('kpiMoyMensuelle', formatMoney(total / (nbMois * nbAnnees || 1)) + " DH");
+    safeSetText('kpiTicketMoyen', formatMoney(avgTicket) + " DH");
+
+    const elVar = document.getElementById('kpiVarTotal');
+    if(fAnnee) elVar.textContent = ""; else { elVar.textContent = "Comparatif"; elVar.style.color = "#555"; }
+
+    // Top 3 Entités
+    const entitySums = {};
+    filteredForEntities.forEach(d => { entitySums[d.groupe] = (entitySums[d.groupe] || 0) + d.montant; });
+    const sortedEntities = Object.entries(entitySums).sort((a,b) => b[1] - a[1]).slice(0, 3);
+    let htmlEnt = "";
+    sortedEntities.forEach(item => {
+        htmlEnt += `<div class="top3-row"><span class="top3-name">${item[0]}</span><span class="top3-val">${formatMoney(item[1])}</span></div>`;
+    });
+    safeSetHTML('kpiListTopEntities', htmlEnt || "<div style='color:#ccc'>R.A.S</div>");
+
+    // Top 3 Dépenses
+    const sortedTransactions = [...currentFilteredData].sort((a, b) => b.montant - a.montant).slice(0, 3);
+    let htmlAlert = "";
+    sortedTransactions.forEach(d => {
+        let actName = String(d.action || "Inconnu");
+        if(actName.length > 25) actName = actName.substring(0,22) + "...";
+        htmlAlert += `
+            <div class="alert-row">
+                <div class="alert-info">
+                    <span class="alert-benef" title="${d.action}">${actName}</span>
+                    <span class="alert-ent">${d.entite}</span>
+                </div>
+                <span class="alert-val">${formatMoney(d.montant)}</span>
+            </div>`;
+    });
+    safeSetHTML('kpiListAlerts', htmlAlert || "<div style='color:#ccc'>R.A.S</div>");
+
+    drawExpensesCharts(currentFilteredData, fAnnee);
+    updateExpensesTable(currentFilteredData, total);
+}
+
+// --- GRAPHIQUES ---
+window.updateDepenseGraphMode = function(mode) {
+    depenseGraphMode = mode;
+    ['btnDepGraphTime', 'btnDepGraphEntity', 'btnDepGraphCategorie'].forEach(id => {
+        const el = document.getElementById(id);
+        if(el) el.classList.remove('active');
+    });
+    
+    let btnId = 'btnDepGraphTime';
+    if (mode === 'ENTITY') btnId = 'btnDepGraphEntity';
+    if (mode === 'CATEGORIE' || mode === 'NATURE') btnId = 'btnDepGraphCategorie';
+    
+    const activeBtn = document.getElementById(btnId);
+    if(activeBtn) activeBtn.classList.add('active');
+
+    drawExpensesCharts(currentFilteredData, document.getElementById('depenseFilterAnnee').value);
+}
+
+function drawExpensesCharts(data, selectedYear) {
+    const ctxBar = document.getElementById('chartDepenseEvol').getContext('2d');
+    const ctxPie = document.getElementById('chartDepensePie').getContext('2d');
+
+    if (expensesChartInstance) expensesChartInstance.destroy();
+    if (expensesPieInstance) expensesPieInstance.destroy();
+
+    let chartData = { labels: [], datasets: [] };
+    let dynamicTitle = "";
+
+    // MODE 1 : ANALYSE TEMPORELLE
+    if (depenseGraphMode === 'TIME') {
+        
+        let labelsX = [];
+        const fTrim = document.getElementById('depenseFilterTrim').value;
+        const fMois = document.getElementById('depenseFilterMois').value;
+
+        // Définition de l'Axe X (Mois) selon le filtre Trimestre/Mois
+        if (fMois) labelsX = [fMois];
+        else if (fTrim) labelsX = depQuarters[fTrim];
+        else labelsX = depMonthOrder;
+
+        dynamicTitle = selectedYear ? `Évolution Mensuelle (${selectedYear})` : "Comparaison Annuelle";
+
+        // --- Cas A : Comparaison Annuelle (Pas d'année sélectionnée) ---
+        if (!selectedYear) {
+            // Axe X = labelsX (Mois filtrés ou tous les mois)
+            chartData.labels = labelsX; 
+            
+            const yearsAvailable = [...new Set(data.map(d => d.annee))].filter(y => y).sort();
+
+            chartData.datasets = yearsAvailable.map((yr, idx) => {
+                // Pour chaque année, on calcule les données pour les mois de l'axe X (labelsX)
+                const monthlyData = labelsX.map(m => {
+                    return data
+                        .filter(d => String(d.annee) === String(yr) && d.mois === m)
+                        .reduce((s,d) => s + d.montant, 0);
+                });
+
+                const isLast = idx === yearsAvailable.length - 1;
+                const bgColor = isLast ? '#363795' : (idx === yearsAvailable.length - 2 ? '#95a5a6' : '#bdc3c7');
+
+                return {
+                    label: String(yr),
+                    data: monthlyData,
+                    backgroundColor: bgColor,
+                    borderRadius: 4,
+                    barPercentage: 0.6,
+                    categoryPercentage: 0.8,
+                    datalabels: {
+                        display: true,
+                        align: 'top', anchor: 'end', rotation: -90, offset: 0,
+                        color: '#555', font: { size: 9 },
+                        formatter: v => v > 0 ? formatDynamicLabel(v) : ''
+                    }
+                };
+            });
+
+        } else {
+            // --- Cas B : Focus Année ---
+            chartData.labels = labelsX;
+            const currentTotals = labelsX.map(m => data.filter(d => String(d.annee)===String(selectedYear) && d.mois===m).reduce((s,d)=>s+d.montant,0));
+            
+            const variations = labelsX.map((m, i) => {
+                let prevVal = 0;
+                let idx = depMonthOrder.indexOf(m);
+                if (idx > 0) {
+                    prevVal = data.filter(d => String(d.annee)===String(selectedYear) && d.mois===depMonthOrder[idx-1]).reduce((s,d)=>s+d.montant,0);
+                } else {
+                    const prevYear = (parseInt(selectedYear) - 1).toString();
+                    prevVal = globalExpensesData.filter(d => String(d.annee)===prevYear && d.mois==="DEC" && d.entite === (data[0]?data[0].entite:d.entite)).reduce((s,d)=>s+d.montant,0);
+                }
+                return (prevVal===0) ? 0 : ((currentTotals[i]-prevVal)/prevVal)*100;
+            });
+
+            chartData.datasets = [
+                { 
+                    type: 'line', label: 'Var (%)', data: variations, borderColor: '#e67e22', borderWidth:2, pointBackgroundColor:'white', yAxisID: 'y1', 
+                    datalabels:{align:'top', offset:4, color:'#d35400', backgroundColor:'rgba(255,255,255,0.8)', borderRadius:3, formatter: v=>v!==0?v.toFixed(0)+'%':''} 
+                },
+                { 
+                    type: 'bar', label: selectedYear, data: currentTotals, backgroundColor: '#363795', borderRadius:4, yAxisID:'y', 
+                    datalabels:{anchor:'end', align:'top', color:'#333', font:{weight:'bold'}, formatter: v=>formatDynamicLabel(v)} 
+                }
+            ];
+        }
+    } 
+    else {
+        // ENTITE / CATEGORIE
+        const key = depenseGraphMode === 'ENTITY' ? 'entite' : 'categorie';
+        dynamicTitle = depenseGraphMode === 'ENTITY' ? "Répartition par Entité" : "Répartition par Catégorie";
+        const agg = {};
+        data.forEach(d => { agg[d[key]||"Autre"] = (agg[d[key]||"Autre"]||0) + d.montant; });
+        const sorted = Object.entries(agg).sort((a,b)=>b[1]-a[1]).slice(0, 12);
+        
+        chartData = {
+            labels: sorted.map(s => s[0]),
+            datasets: [{ type: 'bar', label: 'Montant', data: sorted.map(s => s[1]), backgroundColor: sorted.map((v,i)=>i===0?'#363795':'#7f8c8d'), borderRadius:4, datalabels:{anchor:'end', align:'top', formatter:v=>formatDynamicLabel(v)} }]
+        };
+    }
+
+    expensesChartInstance = new Chart(ctxBar, {
+        type: 'bar',
+        data: chartData,
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                title: { display: true, text: dynamicTitle, font: {size:14} },
+                legend: { display: (!selectedYear || selectedYear === "TOUT") && depenseGraphMode === 'TIME', position: 'bottom' },
+                datalabels: { display: true }
+            },
+            scales: {
+                y: { beginAtZero: true, grid: { display: false }, grace: '15%', ticks: { display: false } },
+                y1: { display: false, position: 'right', grid: { display: false } },
+                x: { grid: { display: false } }
+            },
+            onClick: (e, elements) => {
+                if(elements.length > 0) {
+                    const idx = elements[0].index;
+                    if (depenseGraphMode === 'TIME' && !selectedYear) {
+                        const month = chartData.labels[idx];
+                        showExpenseDetails(data.filter(d => d.mois === month), `Détail : ${month} (Toutes Années)`);
+                    } else {
+                        const label = chartData.labels[idx];
+                        let subset = [];
+                        if(depenseGraphMode === 'TIME') subset = data.filter(d => d.mois === label);
+                        else if (depenseGraphMode === 'ENTITY') subset = data.filter(d => d.entite === label);
+                        else subset = data.filter(d => d.categorie === label);
+                        showExpenseDetails(subset, `Détail : ${label}`);
+                    }
+                }
+            }
+        }
+    });
+
+    const pieAgg = {};
+    data.forEach(d => { pieAgg[d.categorie] = (pieAgg[d.categorie]||0) + d.montant; });
+    const sortedPie = Object.entries(pieAgg).sort((a,b) => b[1]-a[1]);
+    let pLab=[], pDat=[], other=0;
+    sortedPie.forEach((x,i) => { if(i<5) { pLab.push(x[0]); pDat.push(x[1]); } else other+=x[1]; });
+    if(other>0) { pLab.push("Autre"); pDat.push(other); }
+
+    expensesPieInstance = new Chart(ctxPie, {
+        type: 'doughnut',
+        data: { labels: pLab, datasets: [{ data: pDat, backgroundColor: proPieColors, borderWidth: 2, borderColor: '#fff' }] },
+        options: {
+            responsive: true, maintainAspectRatio: false, cutout: '55%',
+            plugins: {
+                title: { display: true, text: "Par Catégorie", font: {size:14} },
+                legend: { position: 'right', labels: { boxWidth: 12, padding:10 } },
+                datalabels: { color: '#333', font: {weight:'bold'}, formatter: (val, ctx) => {
+                    let sum = ctx.chart._metasets[ctx.datasetIndex].total;
+                    return (val*100/sum).toFixed(0) > 3 ? (val*100/sum).toFixed(0)+"%" : ""; 
+                }}
+            },
+            layout: { padding: 10 },
+            onClick: (e, activeEls) => {
+                if (activeEls.length > 0) {
+                    const idx = activeEls[0].index;
+                    let subset = pLab[idx] === "Autre" ? data.filter(d => !pLab.slice(0,5).includes(d.categorie)) : data.filter(d => d.categorie === pLab[idx]);
+                    showExpenseDetails(subset, "Catégorie : " + pLab[idx]);
+                }
+            }
+        }
+    });
+}
+
+function updateExpensesTable(data, total) {
+    const agg = {};
+    data.forEach(d => { 
+        if(!agg[d.action]) agg[d.action] = { count: 0, amount: 0, entite: d.entite };
+        agg[d.action].count++;
+        agg[d.action].amount += d.montant;
+    });
+    const sorted = Object.entries(agg).sort((a,b) => b[1].amount - a[1].amount).slice(0, 10);
+    const tbody = document.querySelector('#tableTopDepenses tbody');
+    if(tbody) {
+        tbody.innerHTML = '';
+        sorted.forEach(item => {
+            const pct = total > 0 ? (item[1].amount / total * 100).toFixed(1) + "%" : "0%";
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td style="text-align:left; padding-left:20px; color:#555;">${item[1].entite}</td>
+                <td style="font-weight:600; text-align:left;">${item[0]}</td>
+                <td style="text-align:center;">${item[1].count}</td>
+                <td style="text-align:right;">${formatMoney(item[1].amount)} DH</td>
+                <td style="text-align:right;padding-right:20px;">${pct}</td>`;
+            tr.onclick = function() { showExpenseDetails(data.filter(d => d.action === item[0]), "Bénéficiaire : " + item[0]); };
+            tbody.appendChild(tr);
+        });
+    }
+}
+
+// --- MODAL & EXPORT ---
+function showExpenseDetails(dataSet, title) {
+    currentDetailData = dataSet;
+    const modal = document.getElementById('expenseDetailModal');
+    const tbody = document.getElementById('modalExpBody');
+    const limitMsg = document.getElementById('modalLimitMsg');
+    
+    const theadRow = document.querySelector('#expenseDetailModal thead tr');
+    if(theadRow && theadRow.children.length < 7) {
+        const thOrdre = document.createElement('th');
+        thOrdre.style.cssText = "padding:12px; border-bottom:2px solid #ccc;";
+        thOrdre.textContent = "Ordre";
+        theadRow.insertBefore(thOrdre, theadRow.children[2]);
+    }
+
+    safeSetText('modalExpTitle', title);
+    tbody.innerHTML = '';
+    dataSet.sort((a,b) => b.montant - a.montant);
+    const limit = 100;
+    const displaySet = dataSet.slice(0, limit);
+    const frag = document.createDocumentFragment();
+    
+    displaySet.forEach(d => {
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = "1px solid #ccc";
+        tr.innerHTML = `
+            <td style="padding:8px; text-align:center;">${d.dateDisplay}</td>
+            <td style="padding:8px; font-weight:600; color:#2c3e50; text-align:center;">${d.entite}</td>
+            <td style="padding:8px; text-align:center; color:#555;">${d.ordre}</td>
+            <td style="padding:8px; text-align:left;">${d.action}</td>
+            <td style="padding:8px; text-align:left; color:#555;">${d.nature || '-'}</td>
+            <td style="padding:8px; text-align:center;">${d.categorie}</td>
+            <td style="padding:8px; text-align:right; font-weight:bold; color:#363795;">${formatMoney(d.montant)} DH</td>
+        `;
+        frag.appendChild(tr);
+    });
+    tbody.appendChild(frag);
+    
+    if (dataSet.length > limit) {
+        limitMsg.style.display = 'block';
+        limitMsg.innerHTML = `⚠ Affichage limité aux 100 premières lignes.`;
+    } else { limitMsg.style.display = 'none'; }
+    if(modal) modal.style.display = 'flex';
+}
+
+function exportDataToExcel() {
+    const dataToExport = (currentDetailData && currentDetailData.length > 0) ? currentDetailData : currentFilteredData;
+    if (!dataToExport || dataToExport.length === 0) { alert("Aucune donnée"); return; }
+    
+    const exportData = dataToExport.map(d => ({
+        "Année": d.annee, "Mois": d.mois, "Jour": d.jour, 
+        "Date": d.dateDisplay, "Entité": d.entite, "Ordre": d.ordre,
+        "Bénéficiaire": d.action, "Nature": d.nature, "Catégorie": d.categorie, "Montant": d.montant
+    }));
+    
+    if (typeof XLSX === 'undefined') { alert("Erreur : Librairie Excel non chargée."); return; }
+    
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Depenses");
+    XLSX.writeFile(wb, "Export_Depenses.xlsx");
+}
+
+function printDataAsPDF() {
+    const title = document.getElementById('modalExpTitle').textContent;
+    const sub = document.getElementById('filterDisplay').textContent;
+    const tableHTML = document.querySelector('#expenseDetailModal table').outerHTML;
+    
+    const printWindow = window.open('', '', 'height=600,width=1200');
+    printWindow.document.write(`
+        <html>
+            <head>
+                <title>${title}</title>
+                <style>
+                    body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; }
+                    h2 { margin: 0 0 5px 0; color: #363795; }
+                    p { margin: 0 0 20px 0; color: #666; font-size: 0.9em; }
+                    table { width: 100%; border-collapse: collapse; font-size: 11px; }
+                    th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
+                    th { background-color: #f2f2f2; font-weight: bold; color: #333; }
+                    td:nth-child(7) { text-align: right; font-weight: bold; }
+                    tr:nth-child(even) { background-color: #f9f9f9; }
+                </style>
+            </head>
+            <body>
+                <h2>${title}</h2>
+                <p>${sub} - Imprimé le ${new Date().toLocaleDateString()}</p>
+                ${tableHTML}
+            </body>
+        </html>
+    `);
+    printWindow.document.close();
+    setTimeout(() => { 
+        printWindow.focus(); 
+        printWindow.print(); 
+        printWindow.close(); 
+    }, 500);
+}
+
+function closeModal() { 
+    document.getElementById('expenseDetailModal').style.display = 'none'; 
+    currentDetailData = []; 
+}
+function openKpiDetail(type) { if (type === 'ALERTS') showExpenseDetails(currentFilteredData, "Détail Gros Montants"); }
+function populateExpSelect(id, items) { const sel = document.getElementById(id); if(id !== 'depenseFilterEntite' && id !== 'depenseFilterSubEntity') sel.innerHTML = '<option value="">TOUT</option>'; items.forEach(i => sel.add(new Option(i, i))); }
+function updateExpensesMonthOptions() { const trim = document.getElementById('depenseFilterTrim').value; const moisSel = document.getElementById('depenseFilterMois'); const cur = moisSel.value; moisSel.innerHTML = '<option value="">TOUT</option>'; let list = depMonthOrder; if (trim && depQuarters[trim]) list = depQuarters[trim]; list.forEach(m => moisSel.add(new Option(m, m))); if (list.includes(cur)) moisSel.value = cur; else moisSel.value = ""; }
+window.onclick = function(event) { if (event.target == document.getElementById('expenseDetailModal')) closeModal(); }
+document.addEventListener('DOMContentLoaded', loadExpensesData);
+
+// --- IMPORT ---
+window.handleFileSelect = async function(event) {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    safeSetText('fileNameDisplay', "Traitement...");
+    let count = 0;
+    for (let i = 0; i < files.length; i++) {
+        await new Promise(r => setTimeout(r, 50));
+        if(await processSingleFile(files[i])) count++;
+    }
+    safeSetText('fileNameDisplay', count + " fichier(s) OK");
+    document.getElementById('fileExpenses').value = "";
+}
+
+function processSingleFile(file) {
+    return new Promise((resolve) => {
+        let detectedEntity = "Inconnue";
+        const n = file.name.toUpperCase();
+        if (n.includes("HIA")) detectedEntity = "HIA";
+        else if (n.includes("CIOA")) detectedEntity = "CIOA";
+        else if (n.includes("PIL")) detectedEntity = "PIL";
+        else if (n.includes("HPG")) detectedEntity = "HPG";
+        else if (n.includes("CIT")) detectedEntity = "CIT";
+        else if (n.includes("CID")) detectedEntity = "CID";
+        else if (n.includes("ALHIKMA") || n.includes("AL HIKMA")) detectedEntity = "ALHIKMA";
+        
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rawJson = XLSX.utils.sheet_to_json(sheet, {header: 1, raw: false});
+                const cleanData = cleanRawData(rawJson, detectedEntity);
+                
+                if (cleanData.length > 0) {
+                     const loader = document.getElementById('loadingOverlay');
+                     if(loader) { loader.style.display = 'flex'; document.getElementById('loadingText').textContent = "Sauvegarde : " + detectedEntity; }
+                     google.script.run.withSuccessHandler(() => {
+                         loadExpensesData(); 
+                         if(loader) loader.style.display = 'none';
+                         resolve(true);
+                     }).saveExpensesData(cleanData);
+                } else { resolve(false); }
+            } catch (err) { console.error(err); resolve(false); }
+        };
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+function cleanRawData(rawData, entityName) {
+    let cleanRows = [];
+    let headerFound = false;
+    let colMap = { date: -1, action: -1, montant: -1, nature: -1, typeDep: -1, ordre: -1 };
+    
+    const dateRegex = /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/;
+
+    for (let i = 0; i < rawData.length; i++) {
+        const row = rawData[i];
+        if (!row || row.length === 0) continue;
+        const rowString = row.join(' ').trim();
+        if (rowString.toLowerCase().includes("sous total")) break; 
+        
+        if (!headerFound) {
+            const rowUpper = rowString.toUpperCase();
+            if (rowUpper.includes("DATE") || rowUpper.includes("MONTANT") || rowUpper.includes("BENEFICIAIRE") || rowUpper.includes("LIBELLE")) {
+                headerFound = true;
+                row.forEach((cell, index) => {
+                    if (!cell) return;
+                    const c = String(cell).toUpperCase().trim();
+                    if (c === "DATE" || c.includes("DATE OP")) colMap.date = index;
+                    if ( (c.includes("BENEF") || c.includes("TIERS") || c.includes("LIBELL") || c.includes("FOURNISSEUR") || c.includes("NOM ")) && !c.includes("DATE") ) colMap.action = index;
+                    else if (c.includes("ACTION") && !c.includes("TRANSACTION") && colMap.action === -1) colMap.action = index;
+                    if ( (c.includes("MONTANT") || c.includes("MAD") || c.includes("DEBIT") || c.includes("VALEUR")) && !c.includes("DATE") ) colMap.montant = index;
+                    if (c.includes("NATURE") || c.includes("RUBRIQUE")) colMap.nature = index;
+                    if (c.includes("TYPE") || c.includes("CATEGORIE") || c.includes("FAMILLE") || c.includes("POSTE")) colMap.typeDep = index;
+                    if (c.includes("ORDRE") || c.includes("REF") || c.includes("N°")) colMap.ordre = index;
+                });
+            }
+            continue;
+        }
+        
+        if (colMap.montant === -1) continue;
+        const montantRaw = row[colMap.montant];
+        if (montantRaw == null || montantRaw === "") continue;
+        
+        let montant = 0;
+        if (typeof montantRaw === 'number') montant = montantRaw;
+        else montant = parseFloat(String(montantRaw).replace(/[^0-9.-]/g, ''));
+        if (isNaN(montant)) continue; 
+        
+        let dateVal = colMap.date > -1 ? row[colMap.date] : null;
+        let day = "", month = "", year = "";
+        let monthName = "DEC";
+        let anneeCalcule = new Date().getFullYear();
+
+        if (dateVal) {
+             let jsDate = null;
+             if (typeof dateVal === 'number') {
+                 jsDate = new Date(Math.round((dateVal - 25569) * 86400 * 1000));
+             } else if (dateVal instanceof Date) {
+                 jsDate = dateVal;
+             } else {
+                 let s = String(dateVal).trim();
+                 let match = s.match(dateRegex);
+                 if (match) {
+                     if (match[3].length === 4) {
+                         jsDate = new Date(parseInt(match[3]), parseInt(match[2])-1, parseInt(match[1]));
+                     } else if (match[3].length === 2) {
+                         jsDate = new Date(parseInt("20"+match[3]), parseInt(match[2])-1, parseInt(match[1]));
+                     }
+                 } else {
+                     let tryDate = new Date(s);
+                     if (!isNaN(tryDate.getTime())) jsDate = tryDate;
+                 }
+             }
+
+             if (jsDate && !isNaN(jsDate.getTime())) {
+                 day = jsDate.getDate();
+                 monthName = depMonthOrder[jsDate.getMonth()];
+                 year = jsDate.getFullYear();
+                 anneeCalcule = year;
+             }
+        }
+        
+        let actionVal = colMap.action > -1 ? row[colMap.action] : "Inconnu";
+        let natureVal = colMap.nature > -1 ? row[colMap.nature] : "";
+        let typeVal = colMap.typeDep > -1 ? row[colMap.typeDep] : "Autre";
+        let ordreVal = colMap.ordre > -1 ? row[colMap.ordre] : "";
+        
+        cleanRows.push([entityName, day, monthName, anneeCalcule, actionVal||"", montant, natureVal||"", typeVal||"Non défini", ordreVal]);
+    }
+    return cleanRows;
+}
+
+if (typeof formatMoney !== 'function') {
+    window.formatMoney = function(amount) { return (amount === undefined || amount === null) ? "0" : Math.round(amount).toLocaleString('fr-FR') + " "; };
+}
+</script>

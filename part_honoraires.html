@@ -1,0 +1,303 @@
+<div id="view-honoraires" class="view-section export-section" data-export-title="Honoraires Médecins">
+    
+    <div id="honoLoadingContainer" style="display:none; margin-bottom:15px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:5px; font-size:0.85em; color:#363795; font-weight:bold;">
+            <span>Chargement des données Honoraires...</span>
+            <span id="honoProgressText">0%</span>
+        </div>
+        <div style="width:100%; background:#e0e0e0; border-radius:10px; height:8px; overflow:hidden;">
+            <div id="honoProgressBar" style="width:0%; height:100%; background:linear-gradient(90deg, #363795, #2980b9); transition:width 0.3s ease;"></div>
+        </div>
+    </div>
+
+    <div id="trendTooltip" style="display:none; position:fixed; z-index:10000; background:rgba(255, 255, 255, 0.98); padding:20px; border-radius:12px; box-shadow:0 15px 40px rgba(0,0,0,0.3); pointer-events:none; min-width:380px; border:1px solid #e1e8f0; backdrop-filter: blur(5px);">
+        <div style="border-bottom:1px solid #eee; padding-bottom:10px; margin-bottom:15px;">
+            <h5 id="trendTooltipTitle" style="margin:0; font-size:1.1em; color:#2c3e50; text-transform:uppercase; font-weight:800;">TENDANCE</h5>
+            <div id="trendTooltipSpec" style="font-size:0.9em; color:#e67e22; font-weight:600; margin-top:2px;">-</div>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:20px;">
+            <div style="background:#f8faff; padding:10px; border-radius:8px; text-align:center;">
+                <div style="font-size:0.7em; color:#666; text-transform:uppercase; font-weight:700;">Total Période</div>
+                <div id="ttTotal" style="font-size:1.2em; color:#363795; font-weight:800;">--</div>
+            </div>
+            <div style="background:#f8faff; padding:10px; border-radius:8px; text-align:center;">
+                <div style="font-size:0.7em; color:#666; text-transform:uppercase; font-weight:700;">Moyenne / Mois</div>
+                <div id="ttAvg" style="font-size:1.2em; color:#2980b9; font-weight:800;">--</div>
+            </div>
+            <div style="background:#f0fbf4; padding:10px; border-radius:8px; text-align:center; border:1px solid #e8f5e9;">
+                <div style="font-size:0.7em; color:#27ae60; text-transform:uppercase; font-weight:700;">Max</div>
+                <div id="ttMax" style="font-size:1.1em; color:#27ae60; font-weight:700;">--</div>
+                <div id="ttMaxPeriod" style="font-size:0.75em; color:#999; margin-top:2px; font-style:italic;">-</div>
+            </div>
+            <div style="background:#fff5f5; padding:10px; border-radius:8px; text-align:center; border:1px solid #ffebee;">
+                <div style="font-size:0.7em; color:#c0392b; text-transform:uppercase; font-weight:700;">Min</div>
+                <div id="ttMin" style="font-size:1.1em; color:#c0392b; font-weight:700;">--</div>
+                <div id="ttMinPeriod" style="font-size:0.75em; color:#999; margin-top:2px; font-style:italic;">-</div>
+            </div>
+        </div>
+        <div style="height:150px; position:relative;">
+            <canvas id="trendTooltipCanvas"></canvas>
+        </div>
+    </div>
+
+    <div style="background: white; padding: 20px; margin-bottom: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); border-left: 5px solid #2c3e50;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px; margin-bottom:10px;">
+            <div>
+                <h2 style="margin: 0; color: #2c3e50; font-size: 1.6em; font-weight: 800; letter-spacing:-0.5px;">HONORAIRES MÉDECINS</h2>
+                <div id="honorairesLastUpdate" style="font-size: 0.8em; color: #888; font-style: italic; margin-top: 4px;">
+                    Date d'actualisation : --/--/----
+                </div>
+            </div>
+            
+            <div style="background: #f8f9fa; padding: 8px 15px; border-radius: 50px; border: 1px dashed #cbd5e0; display: flex; align-items: center; gap: 10px;">
+                <input type="file" id="fileHonoraires" accept=".xlsx, .xls" multiple style="display:none;" onchange="handleHonorairesFileSelect(event)">
+                <button class="action-btn" onclick="document.getElementById('fileHonoraires').click()" style="background:#2c3e50; color:white; border-radius:20px; padding:8px 20px; font-size:0.85em; cursor:pointer; border:none; box-shadow:0 3px 6px rgba(0,0,0,0.1); transition: transform 0.2s;">
+                    <i class="fas fa-file-import"></i> Importer Honoraires
+                </button>
+                <span id="fileHonoraireDisplay" style="font-size:0.8em; color:#666;">Aucun fichier</span>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; border-top: 1px solid #eee; padding-top: 15px; align-items: flex-end;">
+             <div class="sec-filter-group"><label>Entité</label><select id="honoFilterEntite" onchange="updateHonorairesView('ENTITE')" style="background:#f8f9fa;"></select></div>
+             
+             <div class="sec-filter-group" id="honoSubEntityContainer" style="display:none; animation:fadeIn 0.3s;">
+                 <label style="color:#363795;">Sous-entité</label>
+                 <select id="honoFilterSubEntity" onchange="updateHonorairesView('SUB')" style="background:#f0f4ff; border-color:#363795; font-weight:600;">
+                     <option value="">Global</option>
+                     <option value="HIA">HIA (Multi)</option>
+                     <option value="CIOA">CIOA (Onco)</option>
+                 </select>
+             </div>
+
+             <div class="sec-filter-group"><label>Année</label><select id="honoFilterAnnee" onchange="updateHonorairesView('ANNEE')" style="background:#f8f9fa;"></select></div>
+             <div class="sec-filter-group"><label>Trimestre</label><select id="honoFilterTrim" onchange="updateHonorairesView('TRIM')" style="background:#f8f9fa;"><option value="">TOUT</option><option value="T1">T1</option><option value="T2">T2</option><option value="T3">T3</option><option value="T4">T4</option></select></div>
+             <div class="sec-filter-group"><label>Mois</label><select id="honoFilterMois" onchange="updateHonorairesView('MOIS')" style="background:#f8f9fa;"></select></div>
+             <div class="sec-filter-group"><label>Spécialité</label><select id="honoFilterSpec" onchange="updateHonorairesView('SPEC')" style="background:#f8f9fa; max-width:180px;"></select></div>
+             <div class="sec-filter-group"><label>Médecin</label><select id="honoFilterMedecin" onchange="updateHonorairesView('MED')" style="background:#f8f9fa; max-width:180px;"></select></div>
+             <div class="sec-filter-group"><label>Statut</label><select id="honoFilterRegle" onchange="updateHonorairesView('STATUT')" style="background:#f8f9fa;">
+                 <option value="">TOUT</option><option value="OUI">Réglé</option><option value="NON">Non Réglé</option>
+             </select></div>
+        </div>
+    </div>
+
+    <div id="honoKPIs" class="export-section cards-row" data-export-title="Honoraires - Indicateurs" style="align-items: stretch; grid-template-columns: repeat(4, 1fr); margin-bottom:20px;">
+        <div class="stat-card" style="border-top: 4px solid #2c3e50; position:relative; overflow:hidden;">
+            <div style="position:relative; z-index:2;">
+                <div class="stat-title">TOTAL BRUT</div>
+                <div id="kpiHonoBrut" class="stat-value" style="color: #2c3e50; font-size:1.6em;">--</div>
+            </div>
+            <i class="fas fa-coins card-bg-icon"></i>
+        </div>
+        <div class="stat-card" style="border-top: 4px solid #8e44ad; position:relative; overflow:hidden;">
+            <div style="position:relative; z-index:2;">
+                <div class="stat-title">TOP 3 MÉDECINS (Brut)</div>
+                <div id="kpiHonoTopMed" style="font-size:0.85em; margin-top:5px;">--</div>
+            </div>
+            <i class="fas fa-user-md card-bg-icon"></i>
+        </div>
+        <div class="stat-card" style="border-top: 4px solid #2980b9; position:relative; overflow:hidden;">
+            <div style="position:relative; z-index:2;">
+                <div class="stat-title">TOP 3 SPÉCIALITÉS (Brut)</div>
+                <div id="kpiHonoTopSpec" style="font-size:0.85em; margin-top:5px;">--</div>
+            </div>
+            <i class="fas fa-briefcase-medical card-bg-icon"></i>
+        </div>
+        <div class="stat-card" style="border-top: 4px solid #2ecc71; position:relative; overflow:hidden;">
+            <div style="position:relative; z-index:2;">
+                <div class="stat-title">TAUX DES HONORAIRES RÉGLÉS</div>
+                <div id="kpiHonoTauxRecouv" class="stat-value" style="color: #2ecc71; font-size:1.6em;">-- %</div>
+                <div class="stat-sub" style="color:#e74c3c; font-size:0.85em; margin-top:4px;">Non Réglé : <span id="kpiHonoTauxNonRegle">-- %</span></div>
+            </div>
+            <i class="fas fa-check-circle card-bg-icon" style="color:#2ecc71;"></i>
+        </div>
+    </div>
+
+    <div id="honoDelais" class="export-section cards-row" data-export-title="Honoraires - Délais & Poids" style="align-items: stretch; grid-template-columns: repeat(3, 1fr); margin-bottom:25px;">
+        <div class="stat-card" style="border-top: 4px solid #f39c12; cursor: pointer; position:relative; overflow:hidden;" onclick="openHonoDelayDetail()">
+            <div style="position:relative; z-index:2;">
+                <div class="stat-title">DÉLAI MOYEN RÈGLEMENT</div>
+                <div id="kpiHonoDelai" class="stat-value" style="color: #f39c12; font-size:1.8em;">-- Jours</div>
+                <div class="stat-sub">Calculé sur les dossiers réglés</div>
+            </div>
+            <i class="fas fa-hourglass-half card-bg-icon" style="color:#f39c12;"></i>
+        </div>
+        
+        <div class="stat-card" style="border-top: 4px solid #3498db; background:#f4fbff; position:relative; overflow:hidden;">
+            <div style="position:relative; z-index:2;">
+                <div class="stat-title" style="color:#2980b9; font-weight:bold;">À PAYER (ESTIMATIF PROCHAIN PAIEMENT)</div>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div id="kpiHonoAPayer" class="stat-value" style="color: #2980b9; font-size:1.8em;">--</div>
+                    <button onclick="openAPayerModal()" style="background:#2980b9; color:white; border:none; padding:5px 10px; border-radius:15px; cursor:pointer; font-size:0.75em;">
+                        <i class="fas fa-list"></i> Détail
+                    </button>
+                </div>
+                <div class="stat-sub">Eligible & Non Réglé</div>
+            </div>
+            <i class="fas fa-file-invoice-dollar card-bg-icon" style="color:#3498db;"></i>
+        </div>
+
+        <div class="stat-card" style="border-top: 4px solid #9b59b6; position:relative; overflow:hidden; cursor:pointer;" onclick="openPoidsCADetail()">
+            <div style="position:relative; z-index:2;">
+                <div class="stat-title">POIDS / CA ENTITÉ</div>
+                <div id="kpiHonoPoidsCA" class="stat-value" style="color: #9b59b6; font-size:1.6em;">-- %</div>
+                <div class="stat-sub" id="kpiHonoRefCA">CA Facturé : --</div>
+            </div>
+            <i class="fas fa-balance-scale card-bg-icon" style="color:#9b59b6;"></i>
+        </div>
+    </div>
+
+    <div id="honoCharts" class="export-section" data-export-title="Honoraires - Graphiques" style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 25px;">
+        <div class="chart-container" style="flex: 2; min-width: 400px; height: 380px; background:white; border-radius:12px; box-shadow:0 4px 6px rgba(0,0,0,0.04); padding:20px; position:relative;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:10px;">
+                <div>
+                    <h4 style="margin:0; color:#333; font-size:1em; font-weight:700;">Analyse & Répartition</h4>
+                </div>
+                
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <div style="background:#f4f6f8; border-radius:20px; padding:3px; display:flex; gap:2px;">
+                        <button onclick="updateEvolGraphType('ENTITY')" class="toggle-chart-btn active" id="btnGraphEntity">Entité</button>
+                        <button onclick="updateEvolGraphType('TIME')" class="toggle-chart-btn" id="btnGraphTime">Période</button>
+                        <button onclick="updateEvolGraphType('SPEC')" class="toggle-chart-btn" id="btnGraphSpec">Spécialité</button>
+                        <button onclick="updateEvolGraphType('MED')" class="toggle-chart-btn" id="btnGraphMed">Médecin</button>
+                    </div>
+
+                    <div style="background:#eef2ff; border-radius:20px; padding:3px; display:flex; gap:2px; margin-left:10px; border:1px solid #e0e7ff;">
+                        <button onclick="updateHonoChartMode('TOTAL')" class="toggle-chart-btn active" id="btnChartTotal">Global</button>
+                        <button onclick="updateHonoChartMode('SPLIT')" class="toggle-chart-btn" id="btnChartSplit">Réparti</button>
+                    </div>
+                </div>
+            </div>
+            <div style="height: 300px;"><canvas id="chartHonoEvolution"></canvas></div>
+        </div>
+        <div class="chart-container" style="flex: 1; min-width: 300px; height: 380px; background:white; border-radius:12px; box-shadow:0 4px 6px rgba(0,0,0,0.04); padding:20px;">
+            <h4 style="margin:0 0 15px 0; color:#333; font-size:1em; font-weight:700; text-align:center;">Répartition par Type Organisme</h4>
+            <div style="height: 300px;"><canvas id="chartHonoTypeOrg"></canvas></div>
+        </div>
+    </div>
+
+    <div id="honoMainTable" class="export-section table-container" data-export-title="Honoraires - Tableau Détail" style="background:white; border-radius:12px; overflow:hidden; box-shadow:0 4px 6px rgba(0,0,0,0.04); height: 700px; display:flex; flex-direction:column;">
+        <div style="padding:15px; background:#f4f6f9; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <div style="display:flex; gap:15px; align-items:center; flex-wrap:wrap;">
+                <h4 style="margin:0; color:#2c3e50; font-weight:700;">ANALYSE DÉTAILLÉE</h4>
+                
+                <div style="background:white; border:1px solid #ccc; border-radius:20px; padding:2px; display:flex;">
+                    <button id="btnHonoMed" onclick="updateHonoViewMode('MEDECIN')" style="border:none; background:#2c3e50; color:white; padding:5px 15px; border-radius:18px; cursor:pointer; font-weight:600; font-size:0.85em;">Par Médecin</button>
+                    <button id="btnHonoSpec" onclick="updateHonoViewMode('SPECIALITE')" style="border:none; background:transparent; color:#666; padding:5px 15px; border-radius:18px; cursor:pointer; font-weight:600; font-size:0.85em;">Par Spécialité</button>
+                    <button id="btnHonoAgeing" onclick="updateHonoViewMode('AGEING')" style="border:none; background:transparent; color:#666; padding:5px 15px; border-radius:18px; cursor:pointer; font-weight:600; font-size:0.85em;">Balance Âgée</button>
+                </div>
+
+                <div style="display:flex; align-items:center; gap:5px;">
+                    <span style="font-size:0.85em; color:#666; font-weight:600;">Top:</span>
+                    <select id="honoTopN" onchange="updateHonoTopN(this.value)" style="padding:4px 8px; border-radius:15px; border:1px solid #ddd; font-size:0.85em; cursor:pointer;">
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="1000">Tout</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div style="display:flex; gap:10px;">
+                <button onclick="exportHonoSummaryExcel()" style="background:transparent; border:none; cursor:pointer; font-size:1.5em; color:#27ae60;" title="Exporter Excel">
+                    <i class="fas fa-file-excel"></i>
+                </button>
+                <button onclick="printHonoSummaryPDF()" style="background:transparent; border:none; cursor:pointer; font-size:1.5em; color:#c0392b;" title="Exporter PDF">
+                    <i class="fas fa-file-pdf"></i>
+                </button>
+            </div>
+        </div>
+        <div style="flex:1; overflow-y:auto;">
+            <table id="tableHonoraires" style="width:100%; border-collapse:collapse; font-size:0.8em; min-width:1800px;">
+                <thead style="position:sticky; top:0; background:#f9f9f9; z-index:5; box-shadow:0 2px 2px rgba(0,0,0,0.05);"></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+    
+    <div id="honoDetailModal" style="display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background-color:rgba(0,0,0,0.5); backdrop-filter:blur(2px);">
+        <div style="background-color:#fff; margin:2% auto; border-radius:10px; width:95%; max-width:1400px; height:90vh; display:flex; flex-direction:column; box-shadow:0 10px 25px rgba(0,0,0,0.2);">
+            <div style="padding:15px 20px; background:#2c3e50; color:white; border-radius:10px 10px 0 0; display:flex; justify-content:space-between; align-items:center;">
+                <h3 id="honoModalTitle" style="margin:0;">Détail</h3>
+                <div style="display:flex; gap:15px; align-items:center;">
+                    <button onclick="exportHonoDetailExcel()" style="background:transparent; border:none; color:white; font-size:1.5em; cursor:pointer;" title="Exporter Excel"><i class="fas fa-file-excel"></i></button>
+                    <button onclick="printHonoDetailData()" style="background:transparent; border:none; color:white; font-size:1.5em; cursor:pointer;" title="Imprimer"><i class="fas fa-print"></i></button>
+                    <span onclick="document.getElementById('honoDetailModal').style.display='none'" style="cursor:pointer; font-size:2em; margin-left:10px;">&times;</span>
+                </div>
+            </div>
+            <div id="honoPrintArea" style="flex:1; overflow-y:auto; padding:0; position:relative;">
+                <table class="detail-table" id="honoExportTable" style="width:100%; border-collapse:collapse; font-size:0.85em;">
+                    <thead style="position:sticky; top:0; background:#fcfcfc; z-index:10; box-shadow:0 1px 2px rgba(0,0,0,0.1);">
+                        <tr>
+                            <th style="padding:10px; border-bottom:2px solid #eee; text-align:left;">Entité</th>
+                            <th style="padding:10px; border-bottom:2px solid #eee; text-align:center;">Date Sortie</th>
+                            <th style="padding:10px; border-bottom:2px solid #eee; text-align:left;">Dossier</th>
+                            <th style="padding:10px; border-bottom:2px solid #eee; text-align:left;">Médecin</th>
+                            <th style="padding:10px; border-bottom:2px solid #eee; text-align:left;">Spécialité</th>
+                            <th style="padding:10px; border-bottom:2px solid #eee; text-align:left;">Organisme</th>
+                            <th style="padding:10px; border-bottom:2px solid #eee; text-align:left;">Type Org</th>
+                            <th style="padding:10px; border-bottom:2px solid #eee; text-align:right;">État Dossier</th>
+                            <th style="padding:10px; border-bottom:2px solid #eee; text-align:right;">Brut</th>
+                            <th style="padding:10px; border-bottom:2px solid #eee; text-align:center;">Réglé ?</th>
+                        </tr>
+                    </thead>
+                    <tbody id="honoModalBody"></tbody>
+                </table>
+            </div>
+            <div style="padding:15px; border-top:1px solid #eee; background:#f4f6f9; display:flex; justify-content:space-between; align-items:center; border-radius:0 0 10px 10px;">
+                <div style="display:flex; gap:20px; align-items:center;">
+                    <div style="font-weight:700; color:#555;">SÉLECTION :</div>
+                    <div style="background:#e67e22; color:white; padding:5px 15px; border-radius:20px; font-weight:bold; font-size:0.95em;"><i class="fas fa-file-invoice"></i> <span id="honoDetailCount">0</span> Dossiers</div>
+                    <div style="background:#2c3e50; color:white; padding:5px 15px; border-radius:20px; font-weight:bold; font-size:0.95em;"><i class="fas fa-coins"></i> <span id="honoDetailTotal">0 DH</span></div>
+                </div>
+                <button onclick="document.getElementById('honoDetailModal').style.display='none'" style="padding:8px 30px; background:#555; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:600;">Fermer</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="honoPoidsCAModal" style="display:none; position:fixed; z-index:10000; left:0; top:0; width:100%; height:100%; background-color:rgba(0,0,0,0.5); backdrop-filter:blur(2px);">
+        <div style="background-color:#fff; margin:5% auto; border-radius:10px; width:60%; max-width:800px; height:60vh; display:flex; flex-direction:column; box-shadow:0 10px 25px rgba(0,0,0,0.2);">
+            <div style="padding:15px 20px; background:#9b59b6; color:white; border-radius:10px 10px 0 0; display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0; font-size:1.2em;">Détail : Poids Honoraires / CA</h3>
+                <span onclick="document.getElementById('honoPoidsCAModal').style.display='none'" style="cursor:pointer; font-size:2em;">&times;</span>
+            </div>
+            <div style="flex:1; overflow-y:auto; padding:20px;">
+                <table class="detail-table" style="width:100%; border-collapse:collapse; font-size:0.9em;">
+                    <thead style="background:#f4f6f9; color:#333; font-weight:bold;">
+                        <tr>
+                            <th style="text-align:left; padding:10px;">Période</th>
+                            <th style="text-align:right; padding:10px;">Montant Honoraires</th>
+                            <th style="text-align:right; padding:10px;">Chiffre d'Affaires</th>
+                            <th style="text-align:center; padding:10px;">% Poids</th>
+                        </tr>
+                    </thead>
+                    <tbody id="honoPoidsCABody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalAPayer" style="display:none; position:fixed; z-index:10000; left:0; top:0; width:100%; height:100%; background-color:rgba(0,0,0,0.5); backdrop-filter:blur(2px);">
+        <div style="background-color:#fff; margin:5% auto; border-radius:10px; width:70%; max-width:900px; height:80vh; display:flex; flex-direction:column; box-shadow:0 10px 25px rgba(0,0,0,0.2);">
+            <div style="padding:15px 20px; background:#2980b9; color:white; border-radius:10px 10px 0 0; display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0; font-size:1.2em;">Répartition Montant À Payer (Estimatif)</h3>
+                <span onclick="document.getElementById('modalAPayer').style.display='none'" style="cursor:pointer; font-size:2em;">&times;</span>
+            </div>
+            <div style="flex:1; overflow-y:auto; padding:20px;">
+                <table id="tableAPayer" style="width:100%; border-collapse:collapse; font-size:0.9em;">
+                    <thead><tr style="background:#f4f6f9; color:#2c3e50; border-bottom:2px solid #ddd;"><th style="padding:10px; text-align:left;">Médecin / Bénéficiaire</th><th style="padding:10px; text-align:right;">Espèce</th><th style="padding:10px; text-align:center;">%</th><th style="padding:10px; text-align:right;">Virement</th><th style="padding:10px; text-align:center;">%</th><th style="padding:10px; text-align:right; font-weight:800;">Total À Payer</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.toggle-chart-btn { border:1px solid #d1d5db; background:white; padding:4px 12px; border-radius:15px; cursor:pointer; font-size:0.85em; color:#666; font-weight:600; transition:all 0.2s; }
+.toggle-chart-btn:hover { background:#f3f4f6; }
+.toggle-chart-btn.active { background:#363795; color:white; border-color:#363795; box-shadow:0 2px 5px rgba(54,55,149,0.2); }
+.card-bg-icon { position: absolute; right: -15px; bottom: -20px; font-size: 6em; opacity: 0.08; transform: rotate(-15deg); pointer-events: none; }
+.detail-table th, .detail-table td { padding: 8px 10px; border: 1px solid #eee; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+</style>

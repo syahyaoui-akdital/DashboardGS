@@ -1,0 +1,771 @@
+<div id="view-rh" class="view-section export-section" data-export-title="Ressources Humaines">
+  <style>
+    :root{
+      --bg:#F5F8FC;
+      --card:#FFFFFF;
+      --text:#0F172A;
+      --muted:#64748B;
+      --line:#E8EEF6;
+      --blue:#2E90FA;
+      --green:#10B981;
+      --red:#EF4444;
+      --pink:#EC4899;
+      --violet:#6366F1;
+      --radius:16px;
+      --shadow:0 10px 25px rgba(15,23,42,0.06);
+    }
+
+    /* Ajustement du wrapper pour export PDF (100% au lieu de 100vw) */
+    .rh-wrapper{
+      width: 100%;
+      box-sizing:border-box;
+      padding:10px 5px;
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+      overflow:auto;
+      font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+    }
+
+    .rh-header{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:12px 16px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      flex-wrap: wrap;
+    }
+    .rh-title{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      font-weight:900;
+      color:#0B2B5C;
+      letter-spacing:.2px;
+    }
+    .rh-title .tag{
+      background:#EAF2FF;
+      color:#0B2B5C;
+      padding:8px 12px;
+      border-radius:12px;
+      font-weight:900;
+      border:1px solid #D7E6FF;
+    }
+
+    .rh-filters{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap: wrap;
+    }
+    .rh-filters .lblf{
+      font-weight:800;
+      color:#5B6B82;
+      font-size:12px;
+      letter-spacing:.3px;
+      text-transform:uppercase;
+    }
+    .rh-select{
+      border:1px solid var(--line);
+      border-radius:12px;
+      padding:9px 12px;
+      background:#FBFDFF;
+      color:#0F172A;
+      font-weight:800;
+      outline:none;
+      min-width:120px;
+    }
+    .rh-btn{
+      border:none;
+      border-radius:12px;
+      padding:10px 14px;
+      background:#173B7A;
+      color:#fff;
+      font-weight:900;
+      cursor:pointer;
+    }
+
+    .kpi-section{
+      display:grid;
+      grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));
+      gap:12px;
+    }
+    .kpi-card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:12px 14px;
+      position:relative;
+      overflow:hidden;
+    }
+    .kpi-card::after{
+      content:"";
+      position:absolute;
+      right:-24px; top:-24px;
+      width:96px; height:96px;
+      border-radius:50%;
+      background:rgba(46,144,250,0.08);
+    }
+    .kpi-head{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:8px;
+    }
+    .lbl{
+      font-size:11px;
+      font-weight:900;
+      letter-spacing:.45px;
+      text-transform:uppercase;
+      color:#94A3B8;
+    }
+    .kpi-card.b-blue   .lbl{ color:var(--blue); }
+    .kpi-card.b-green  .lbl{ color:var(--green); }
+    .kpi-card.b-red    .lbl{ color:var(--red); }
+    .kpi-card.b-violet .lbl{ color:var(--violet); }
+
+    .icon{
+      font-size:18px;
+      color:#BFD4F5;
+    }
+
+    .val{
+      font-size:32px;
+      font-weight:1000;
+      color:#0F172A;
+      letter-spacing:.3px;
+      line-height:1;
+    }
+    .sub{
+      margin-top:6px;
+      font-weight:800;
+      color:#64748B;
+      font-size:12px;
+    }
+
+    .b-blue{ border-left:5px solid var(--blue); }
+    .b-green{ border-left:5px solid var(--green); }
+    .b-red{ border-left:5px solid var(--red); }
+    .b-violet{ border-left:5px solid var(--violet); }
+
+    .charts-section{
+      display:grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap:12px;
+      align-items:stretch;
+    }
+    .chart-box{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:12px 14px;
+      overflow:hidden;
+    }
+    .chart-header{
+      font-weight:1000;
+      color:#0F172A;
+      text-transform:uppercase;
+      letter-spacing:.4px;
+      font-size:12px;
+      margin-bottom:10px;
+    }
+    .cv-wrap{ height:220px; }
+
+    /* ===== Effectif par catégorie => LIST + PROGRESS + % ===== */
+    .cat-list{
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+      padding:6px 2px 2px;
+    }
+    .cat-row{
+      display:grid;
+      grid-template-columns: 140px 1fr 60px;
+      align-items:center;
+      gap:14px;
+    }
+    .cat-label{
+      font-weight:900;
+      color:#334155;
+      font-size:13px;
+    }
+    .cat-bar{
+      height:10px;
+      background:#EAF0F8;
+      border-radius:999px;
+      overflow:hidden;
+    }
+    .cat-fill{
+      height:100%;
+      width:0%;
+      border-radius:999px;
+      transition:width .35s ease;
+    }
+    .cat-pct{
+      text-align:right;
+      font-weight:1000;
+      color:#334155;
+      font-size:13px;
+    }
+
+    /* ===== Répartition par âge => cartes/progress ===== */
+    .age-section{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:12px 14px;
+      overflow:hidden;
+    }
+    .age-grid{
+      display:grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap:12px;
+    }
+    .age-card{
+      border:1px solid var(--line);
+      border-radius:14px;
+      background:#FBFDFF;
+      padding:12px 12px 10px;
+    }
+    .age-top{
+      display:flex;
+      align-items:baseline;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:6px;
+    }
+    .age-val{
+      font-weight:1000;
+      color:#1D4ED8;
+      font-size:18px;
+    }
+    .age-pct{
+      font-weight:1000;
+      color:#64748B;
+      font-size:12px;
+    }
+    .age-label{
+      font-weight:900;
+      color:#334155;
+      font-size:12px;
+      margin-bottom:8px;
+    }
+    .age-bar{
+      height:8px;
+      background:#EAF0F8;
+      border-radius:999px;
+      overflow:hidden;
+    }
+    .age-fill{
+      height:100%;
+      width:0%;
+      border-radius:999px;
+      transition:width .35s ease;
+      background:#6366F1;
+    }
+
+    /* MODAL */
+    #rhModalMask{
+      position:fixed; inset:0;
+      background:rgba(15,23,42,0.55);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index:9999;
+    }
+    .rh-modal{
+      background:#fff;
+      border-radius:16px;
+      padding:0;
+      width:92%;
+      max-width:960px;
+      max-height:85vh;
+      overflow:auto;
+      box-shadow:0 25px 50px rgba(15,23,42,0.3);
+    }
+    .rh-modal-head{
+      background:#f1f5f9;
+      border-bottom:1px solid #e2e8f0;
+      padding:16px 20px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      border-radius:16px 16px 0 0;
+    }
+    .rh-modal-head > div{
+      font-weight:1000;
+      font-size:15px;
+      color:#1e293b;
+      text-transform:uppercase;
+      letter-spacing:.3px;
+    }
+    .rh-modal-head button{
+      border:none;
+      background:#cbd5e1;
+      color:#1e293b;
+      padding:7px 12px;
+      border-radius:8px;
+      font-weight:900;
+      cursor:pointer;
+      font-size:12px;
+      text-transform:uppercase;
+    }
+    .rh-modal-head button:hover{ background:#94a3b8; }
+
+    .rh-modal-body{
+      padding:20px;
+      height:450px;
+    }
+    .rh-modal-body canvas{ width:100%!important; height:100%!important; }
+
+    #rhHoverTip{
+      position:absolute;
+      display:none;
+      background:#fff;
+      border:1px solid #e2e8f0;
+      border-radius:10px;
+      padding:10px 12px;
+      box-shadow:0 10px 25px rgba(15,23,42,0.15);
+      font-size:13px;
+      color:#1e293b;
+      pointer-events:none;
+      z-index:9998;
+      white-space:nowrap;
+    }
+
+    .filter-card{display:flex;align-items:center;gap:8px}
+    .filter-card .f-label{font-weight:800;color:#5B6B82;font-size:12px;letter-spacing:.3px;text-transform:uppercase}
+
+    /* ========== MASSE SALARIALE ========== */
+    .mass-wrap{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:14px 16px;
+      display:grid;
+      grid-template-columns:1fr;
+      gap:16px;
+    }
+
+    .mass-left{display:flex;flex-direction:column;gap:14px}
+
+    .mass-kpis{
+      display:grid;
+      grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));
+      gap:12px;
+      margin-bottom:8px;
+    }
+
+    .mini-kpi{
+      border:1px solid #E8EEF6;
+      border-radius:14px;
+      background:#FBFDFF;
+      padding:12px 14px;
+      position:relative;
+    }
+
+    .mini-kpi.kpi-budget{border-left:4px solid #0EA5E9}
+    .mini-kpi.kpi-masse{border-left:4px solid #6366F1}
+    .mini-kpi.kpi-taux{border-left:4px solid #F59E0B}
+    .mini-kpi.kpi-vars{border-left:4px solid #10B981}
+
+    .kpi-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:6px}
+    .mini-kpi .t{font-size:11px;font-weight:900;text-transform:uppercase;color:#64748B;letter-spacing:.4px}
+    .mini-kpi .v{font-size:26px;font-weight:1000;color:#0F172A;letter-spacing:.2px}
+    .mini-kpi .s{font-size:11px;font-weight:800;color:#94A3B8;margin-top:4px}
+
+    .mass-charts{
+      display:grid;
+      grid-template-columns:2fr 1fr;
+      gap:12px;
+    }
+
+    .chart-card{
+      border:1px solid #E8EEF6;
+      border-radius:14px;
+      background:#FBFDFF;
+      padding:14px;
+    }
+
+    .chart-card.chart-lg{grid-column:1/2}
+
+    .chart-title{
+      font-weight:900;
+      text-transform:uppercase;
+      letter-spacing:.4px;
+      font-size:12px;
+      color:#334155;
+      margin-bottom:12px;
+    }
+
+    .chart-card canvas{
+      max-height:280px;
+      width:100%!important;
+      height:100%!important;
+    }
+
+    .table-mini{width:100%;border-collapse:collapse;font-size:13px}
+    .table-mini thead{background:#f1f5f9;border-bottom:2px solid #cbd5e1}
+    .table-mini th{padding:8px 10px;text-align:left;font-weight:900;color:#334155;text-transform:uppercase;font-size:11px;letter-spacing:.3px}
+    .table-mini td{padding:8px 10px;color:#475569;border-bottom:1px solid #e2e8f0;font-weight:700}
+    .table-mini tbody tr:last-child td{border-bottom:none}
+    .table-mini tbody tr:hover{background:#f8fafc}
+
+    /* ========== CARTE DÉTAIL RUBRIQUES ========== */
+    .rh-masse-detail-card{
+      border:1px solid #E8EEF6;
+      border-radius:14px;
+      background:#FBFDFF;
+      padding:14px;
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+    }
+
+    .rh-masse-detail-head{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding-bottom:10px;
+      border-bottom:1px solid #E8EEF6;
+    }
+
+    .rh-masse-detail-title{
+      font-weight:900;
+      text-transform:uppercase;
+      letter-spacing:.4px;
+      font-size:12px;
+      color:#334155;
+      display:flex;
+      align-items:center;
+      gap:8px;
+    }
+
+    .rh-zoom-icon{font-size:16px}
+
+    .rh-masse-detail-badge{
+      font-size:11px;
+      font-weight:800;
+      color:#0EA5E9;
+      background:#EFF8FF;
+      border:1px solid #B9E0FA;
+      border-radius:999px;
+      padding:4px 10px;
+    }
+
+    .rh-masse-bars{
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+    }
+
+    .rh-masse-bar-row{
+      display:grid;
+      grid-template-columns:80px 1fr auto;
+      align-items:center;
+      gap:10px;
+    }
+
+    .rh-masse-bar-label{
+      font-weight:900;
+      font-size:12px;
+      color:#475569;
+      text-transform:uppercase;
+      letter-spacing:.3px;
+    }
+
+    .rh-masse-bar-track{
+      height:12px;
+      background:#E8EEF6;
+      border-radius:999px;
+      overflow:hidden;
+      position:relative;
+    }
+
+    .rh-masse-bar-fill{
+      height:100%;
+      width:0%;
+      border-radius:999px;
+      transition:width .4s ease;
+    }
+
+    .rh-masse-bar-fill.actes{background:linear-gradient(90deg,#0EA5E9,#06B6D4)}
+    .rh-masse-bar-fill.garde{background:linear-gradient(90deg,#6366F1,#8B5CF6)}
+    .rh-masse-bar-fill.df{background:linear-gradient(90deg,#F59E0B,#FBBF24)}
+    .rh-masse-bar-fill.autres{background:linear-gradient(90deg,#94A3B8,#CBD5E1)}
+
+    .rh-masse-bar-val{
+      display:flex;
+      align-items:baseline;
+      gap:8px;
+      min-width:140px;
+      justify-content:flex-end;
+    }
+
+    .rh-masse-bar-val .amt{
+      font-weight:1000;
+      font-size:14px;
+      color:#0F172A;
+    }
+
+    .rh-masse-bar-val .pct{
+      font-weight:900;
+      font-size:11px;
+      color:#64748B;
+    }
+
+    .kpi-chip{font-size:12px;font-weight:700;color:#334155;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:999px;padding:4px 10px;min-width:56px;text-align:center}
+    
+    @media (max-width: 900px){.mass-charts{grid-template-columns:1fr}}
+  </style>
+
+  <div class="rh-wrapper">
+    <div id="rhHoverTip"></div>
+
+    <div class="rh-header">
+      <div class="rh-title">
+        <div class="tag">RESSOURCES HUMAINES</div>
+        <div style="color:#94A3B8;font-weight:900;">›</div>
+        <div style="color:#64748B;font-weight:900;">Vue Globale</div>
+      </div>
+
+      <div class="rh-filters">
+        <div class="filter-card">
+          <div class="f-label">entité</div>
+          <select id="rhEntite" class="rh-select"></select>
+        </div>
+
+        <div class="filter-card" id="rhSubEntiteWrap" style="display:none;">
+          <div class="f-label">sous-entité</div>
+          <select id="rhSousEntite" class="rh-select"></select>
+        </div>
+
+        <div class="filter-card">
+          <div class="f-label">trimestre</div>
+          <select id="rhTrimestre" class="rh-select">
+            <option value="">TOUT</option>
+            <option value="T1">T1</option>
+            <option value="T2">T2</option>
+            <option value="T3">T3</option>
+            <option value="T4">T4</option>
+          </select>
+        </div>
+
+        <div class="filter-card">
+          <div class="f-label">année</div>
+          <select id="rhAnnee" class="rh-select"></select>
+        </div>
+
+        <div class="filter-card">
+          <div class="f-label">mois</div>
+          <select id="rhMois" class="rh-select"></select>
+        </div>
+      </div>
+    </div>
+
+    <div class="kpi-section">
+      <div class="kpi-card b-blue">
+        <div class="kpi-head">
+          <span class="lbl">personnel actif</span>
+          <i class="fas fa-user-nurse icon"></i>
+        </div>
+        <div class="val" id="kpi-nbpers">--</div>
+        <div class="sub" id="kpi-nbpers-sub">--</div>
+      </div>
+
+      <div class="kpi-card b-green">
+        <div class="kpi-head">
+          <span class="lbl">recrutements</span>
+          <i class="fas fa-user-plus icon"></i>
+        </div>
+        <div class="val" style="color:var(--green)" id="kpi-recrut">--</div>
+        <div class="sub" style="color:var(--green)" id="kpi-recrut-sub">--</div>
+      </div>
+
+      <div class="kpi-card b-red">
+        <div class="kpi-head">
+          <span class="lbl">départs</span>
+          <i class="fas fa-user-minus icon"></i>
+        </div>
+        <div class="val" style="color:var(--red)" id="kpi-depart">--</div>
+        <div class="sub" style="color:var(--red)" id="kpi-depart-sub">--</div>
+      </div>
+
+      <div class="kpi-card b-blue">
+        <div class="kpi-head">
+          <span class="lbl">turnover</span>
+          <i class="fas fa-sync-alt icon"></i>
+        </div>
+        <div class="val" style="color:var(--blue)" id="kpi-turn">--</div>
+        <div class="sub">mensuel</div>
+      </div>
+
+      <div class="kpi-card b-red">
+        <div class="kpi-head">
+          <span class="lbl">absentéisme</span>
+          <i class="fas fa-exclamation-circle icon"></i>
+        </div>
+        <div class="val" style="color:var(--red)" id="kpi-abs">--</div>
+        <div class="sub" id="kpi-abs-sub">--</div>
+      </div>
+
+      <div class="kpi-card b-violet">
+        <div class="kpi-head">
+          <span class="lbl">patients</span>
+          <i class="fas fa-procedures icon"></i>
+        </div>
+        <div class="val" id="kpi-pat">--</div>
+        <div class="sub" id="kpi-pat-sub">--</div>
+      </div>
+
+      <div class="kpi-card b-violet">
+        <div class="kpi-head">
+          <span class="lbl">ratio pat./pers.</span>
+          <i class="fas fa-divide icon"></i>
+        </div>
+        <div class="val" style="color:var(--blue)" id="kpi-ratio">--</div>
+        <div class="sub">objectif: 4.0</div>
+      </div>
+    </div>
+
+    <div class="charts-section">
+      <div class="chart-box">
+        <div class="chart-header">effectif par catégorie</div>
+        <div id="rhCatList" class="cat-list"></div>
+      </div>
+
+      <div class="chart-box">
+        <div class="chart-header">flux entrants vs sortants</div>
+        <div class="cv-wrap"><canvas id="chartRhFlux"></canvas></div>
+      </div>
+
+      <div class="chart-box">
+        <div class="chart-header">parité h/f</div>
+        <div class="cv-wrap"><canvas id="chartRhGenre"></canvas></div>
+      </div>
+    </div>
+
+    <div class="age-section">
+      <div class="chart-header">répartition par âge</div>
+      <div id="rhAgeGrid" class="age-grid"></div>
+    </div>
+
+    <div class="mass-wrap" id="rhMassSection">
+      <div class="mass-left">
+        <div class="chart-header" style="margin-bottom:12px;">masse salariale vs budget</div>
+
+        <div class="mass-kpis">
+          <div class="mini-kpi kpi-budget">
+            <div class="kpi-top">
+              <div class="t">budget</div>
+              <div class="kpi-chip" id="kpi-ms-budget-chip">—</div>
+            </div>
+            <div id="kpi-ms-budget" class="v">--</div>
+            <div class="s" id="kpi-ms-budget-sub">mois</div>
+          </div>
+          <div class="mini-kpi kpi-masse">
+            <div class="kpi-top">
+              <div class="t">masse salariale</div>
+              <div class="kpi-chip" id="kpi-ms-real-chip">—</div>
+            </div>
+            <div id="kpi-ms-real" class="v">--</div>
+            <div class="s" id="kpi-ms-real-sub">mois</div>
+          </div>
+          <div class="mini-kpi kpi-taux">
+            <div class="kpi-top">
+              <div class="t">% réalisation</div>
+              <div class="kpi-chip" id="kpi-ms-taux-chip">—</div>
+            </div>
+            <div id="kpi-ms-taux" class="v">--</div>
+            <div class="s">masse / budget</div>
+          </div>
+          <div class="mini-kpi kpi-vars">
+            <div class="kpi-top">
+              <div class="t">total variables</div>
+              <div class="kpi-chip" id="kpi-var-total-chip">—</div>
+            </div>
+            <div id="kpi-var-total" class="v">--</div>
+            <div class="s">total sans nd</div>
+          </div>
+        </div>
+
+        <div class="mass-charts">
+          <div class="chart-card chart-lg">
+            <div class="chart-title">suivi mensuel</div>
+            <canvas id="rhChartMasse"></canvas>
+          </div>
+          
+          <div class="rh-masse-detail-card">
+            <div class="rh-masse-detail-head">
+              <div class="rh-masse-detail-title">
+                <span class="rh-zoom-icon">🔍</span>
+                <span id="rhMasseDetailTitle">DÉTAIL DU MOIS : —</span>
+              </div>
+              <div class="rh-masse-detail-badge" id="rhMasseDetailBadge">—</div>
+            </div>
+
+            <div class="rh-masse-bars">
+              <div class="rh-masse-bar-row">
+                <div class="rh-masse-bar-label">Actes</div>
+                <div class="rh-masse-bar-track"><div class="rh-masse-bar-fill actes" id="rhBarActes" style="width:0%"></div></div>
+                <div class="rh-masse-bar-val">
+                  <div class="amt" id="rhValActes">—</div>
+                  <div class="pct" id="rhPctActes">—</div>
+                </div>
+              </div>
+
+              <div class="rh-masse-bar-row">
+                <div class="rh-masse-bar-label">Garde</div>
+                <div class="rh-masse-bar-track"><div class="rh-masse-bar-fill garde" id="rhBarGarde" style="width:0%"></div></div>
+                <div class="rh-masse-bar-val">
+                  <div class="amt" id="rhValGarde">—</div>
+                  <div class="pct" id="rhPctGarde">—</div>
+                </div>
+              </div>
+
+              <div class="rh-masse-bar-row">
+                <div class="rh-masse-bar-label">DF</div>
+                <div class="rh-masse-bar-track"><div class="rh-masse-bar-fill df" id="rhBarDf" style="width:0%"></div></div>
+                <div class="rh-masse-bar-val">
+                  <div class="amt" id="rhValDf">—</div>
+                  <div class="pct" id="rhPctDf">—</div>
+                </div>
+              </div>
+
+              <div class="rh-masse-bar-row">
+                <div class="rh-masse-bar-label">Autres</div>
+                <div class="rh-masse-bar-track"><div class="rh-masse-bar-fill autres" id="rhBarAutres" style="width:0%"></div></div>
+                <div class="rh-masse-bar-val">
+                  <div class="amt" id="rhValAutres">—</div>
+                  <div class="pct" id="rhPctAutres">—</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="rhModalMask">
+    <div class="rh-modal">
+      <div class="rh-modal-head">
+        <div id="rhModalTitle">historique</div>
+        <button id="rhModalClose">fermer</button>
+      </div>
+      <div class="rh-modal-body">
+        <canvas id="rhHistChart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,516 @@
+<script>
+  // ---------------------------------------------------------
+  //  LOGIQUE : CA VS BUDGET (VERSION FINALE & DESIGN)
+  //  - Variation dynamique (N-1 ou M-1)
+  //  - Style Moderne Top/Flop
+  //  - Correction Management
+  // ---------------------------------------------------------
+  
+  let budgetViewMode = 'trend'; 
+  const BUDGET_ENTITY_ORDER = ["HIA CIOA", "CIT", "CID", "PIL", "HPG", "ALHIKMA", "AL HIKMA"];
+
+  function setBudgetMode(mode) {
+      budgetViewMode = mode;
+      document.querySelectorAll('.budget-nav-btn').forEach(btn => btn.classList.remove('active'));
+      const activeBtn = document.getElementById(mode === 'trend' ? 'btnModeTrend' : 'btnModeComparison');
+      if(activeBtn) activeBtn.classList.add('active');
+      
+      updateCaBudgetView();
+  }
+
+  function safeSetText(id, text) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+  }
+
+  // --- 1. GESTION DES FILTRES ---
+  function syncBudgetFilters(source) {
+      const lEntite = document.getElementById('localBudgetEntite');
+      const lTrim = document.getElementById('localBudgetTrimestre');
+      const lMois = document.getElementById('localBudgetMois');
+      const lAnnee = document.getElementById('localBudgetAnnee');
+      
+      const hEntite = document.getElementById('entite'); 
+      const hTrim = document.getElementById('trimestre'); 
+      const hMois = document.getElementById('mois');
+      const hAnnee = document.getElementById('annee');
+
+      if(source === 'entite' && hEntite) { hEntite.value = lEntite.value; }
+      if(source === 'annee' && hAnnee) { hAnnee.value = lAnnee.value; }
+      if(source === 'trimestre' && hTrim) { 
+          hTrim.value = lTrim.value; 
+          if(lTrim.value !== '') { lMois.value = ''; hMois.value = ''; }
+          if(typeof updateMonthOptions === 'function') updateMonthOptions();
+      }
+      if(source === 'mois' && hMois) { hMois.value = lMois.value; }
+
+      if (source === 'entite') {
+          const elSub = document.getElementById('localSubFilter');
+          if(elSub) elSub.value = "";
+      }
+
+      updateCaBudgetView();
+  }
+
+  function populateBudgetFilters(caData) {
+      const keys = Object.keys(caData);
+      
+      // Filtre les entités techniques
+      const entitesDispo = keys.filter(e => {
+          const upper = e.toUpperCase();
+          return e !== 'Entité' && !upper.includes('TOTAL') && !upper.includes('RÉGION') && !upper.includes('REGION') && e !== 'HIA' && e !== 'CIOA';
+      });
+      
+      // Ajoute HIA CIOA si les données sources existent
+      if (keys.includes('HIA') && keys.includes('CIOA')) {
+          entitesDispo.push('HIA CIOA');
+      }
+      
+      entitesDispo.sort((a,b) => {
+         let idxA = BUDGET_ENTITY_ORDER.indexOf(a); let idxB = BUDGET_ENTITY_ORDER.indexOf(b);
+         if(idxA === -1) idxA = 99; if(idxB === -1) idxB = 99;
+         return idxA - idxB;
+      });
+
+      const lEntite = document.getElementById('localBudgetEntite');
+      if(lEntite) {
+           const currentVal = lEntite.value;
+           lEntite.innerHTML = '';
+           lEntite.add(new Option('TOUT', ''));
+           entitesDispo.forEach(e => lEntite.add(new Option(e, e)));
+           
+           if (currentUserContext && currentUserContext.entity !== 'ALL') {
+               lEntite.value = currentUserContext.entity;
+           } else {
+               const currentGlobal = document.getElementById('entite');
+               if(currentGlobal && currentGlobal.value) {
+                   lEntite.value = currentGlobal.value;
+               } else if (currentVal) {
+                   lEntite.value = currentVal;
+               }
+           }
+      }
+      
+      const lAnnee = document.getElementById('localBudgetAnnee');
+      if(lAnnee && lAnnee.options.length <= 1) {
+          lAnnee.innerHTML = '<option value="">TOUT</option>';
+          ["2026", "2025"].forEach(y => lAnnee.add(new Option(y, y)));
+          const currentAnnee = document.getElementById('annee');
+          lAnnee.value = (currentAnnee && currentAnnee.value) ? currentAnnee.value : "2026";
+      }
+
+      const lTrim = document.getElementById('localBudgetTrimestre');
+      if(lTrim && lTrim.options.length <= 1) {
+          lTrim.innerHTML = '<option value="">TOUT</option>';
+          ['T1', 'T2', 'T3', 'T4'].forEach(t => lTrim.add(new Option(t, t)));
+          const currentTrim = document.getElementById('trimestre');
+          if(currentTrim) lTrim.value = currentTrim.value;
+      }
+      
+      const lMois = document.getElementById('localBudgetMois');
+      if(lMois && lMois.options.length <= 1) {
+          lMois.innerHTML = '<option value="">TOUT</option>';
+          window.monthOrder.forEach(m => lMois.add(new Option(m, m)));
+          const currentMois = document.getElementById('mois');
+          if(currentMois) lMois.value = currentMois.value;
+      }
+  }
+
+  // --- 2. FONCTION PRINCIPALE ---
+  function updateCaBudgetView() {
+      const caData = window.rawData.caData || {};
+      populateBudgetFilters(caData);
+
+      let selectedEntite = document.getElementById('localBudgetEntite') ? document.getElementById('localBudgetEntite').value : '';
+      let trim = document.getElementById('localBudgetTrimestre') ? document.getElementById('localBudgetTrimestre').value : '';
+      let mois = document.getElementById('localBudgetMois') ? document.getElementById('localBudgetMois').value : '';
+      let selectedYear = document.getElementById('localBudgetAnnee') ? document.getElementById('localBudgetAnnee').value : '';
+      
+      let isComparison = (selectedYear === "" || selectedYear === "TOUT");
+      let refYear = isComparison ? "2026" : selectedYear;
+      let prevYear = (parseInt(refYear) - 1).toString();
+
+      const subFilterContainer = document.getElementById('subFilterHiaCioa');
+      const elSubFilter = document.getElementById('localSubFilter');
+      let subFilterValue = elSubFilter ? elSubFilter.value : '';
+      
+      let calcEntite = selectedEntite; 
+      
+      if (selectedEntite === 'HIA CIOA') {
+          if(subFilterContainer) subFilterContainer.style.display = 'flex';
+          if (subFilterValue === 'HIA') calcEntite = 'HIA';
+          else if (subFilterValue === 'CIOA') calcEntite = 'CIOA';
+      } else {
+          if(subFilterContainer) subFilterContainer.style.display = 'none';
+          if(elSubFilter) elSubFilter.value = ""; 
+          subFilterValue = "";
+      }
+
+      let activeMonths = window.monthOrder; 
+      if (mois && mois !== "") { activeMonths = [mois]; } 
+      else if (trim && trim !== "") { activeMonths = window.quarters[trim]; }
+
+      // --- CALCULS ---
+      let mainRows = []; 
+      let totalRef = 0;
+      let totalPrev = 0;
+      let totalBudget = 0;
+
+      Object.keys(caData).forEach(ent => {
+          
+          if (calcEntite === 'HIA CIOA') {
+              if (ent !== 'HIA' && ent !== 'CIOA') return;
+          } else if (calcEntite && ent !== calcEntite) {
+              return;
+          }
+
+          const upper = ent.toUpperCase();
+          if (upper.includes('TOTAL') || upper.includes('RÉGION')) return;
+          if (!calcEntite && (ent === 'HIA' || ent === 'CIOA')) return;
+
+          const dRef = caData[ent] ? caData[ent][refYear] : null;
+          const dPrevYearData = caData[ent] ? caData[ent][prevYear] : null;
+
+          let valRef = 0, valPrev = 0;
+          let budRef = 0;
+          
+          activeMonths.forEach(m => {
+              if(dRef && dRef.caMensuel) valRef += (dRef.caMensuel[m] || 0);
+          });
+
+          if (activeMonths.length === 1) {
+              const currentMonthStr = activeMonths[0];
+              const monthIndex = window.monthOrder.indexOf(currentMonthStr);
+              
+              if (monthIndex === 0) {
+                  const prevYearStr = (parseInt(refYear) - 1).toString();
+                  if (caData[ent] && caData[ent][prevYearStr] && caData[ent][prevYearStr].caMensuel) {
+                      valPrev = caData[ent][prevYearStr].caMensuel["DEC"] || 0;
+                  } else { valPrev = 0; }
+              } else {
+                  const prevMonthStr = window.monthOrder[monthIndex - 1];
+                  if (dRef && dRef.caMensuel) { valPrev = dRef.caMensuel[prevMonthStr] || 0; }
+              }
+          } else {
+              activeMonths.forEach(m => {
+                  if(dPrevYearData && dPrevYearData.caMensuel) valPrev += (dPrevYearData.caMensuel[m] || 0);
+              });
+          }
+          
+          if(dRef) budRef = (dRef.budgetAnnuel || 0) / 12 * activeMonths.length;
+
+          totalRef += valRef;
+          totalPrev += valPrev;
+          totalBudget += budRef;
+
+          mainRows.push({
+              name: ent,
+              caRef: valRef,
+              caPrev: valPrev,
+              budget: budRef,
+              monthlyRef: dRef ? dRef.caMensuel : {},
+              monthlyPrev: dPrevYearData ? dPrevYearData.caMensuel : {}
+          });
+      });
+
+      // --- MISE A JOUR UI ---
+      const titleDisplay = selectedEntite || "Région Grand-Sud";
+      safeSetText('ctxBudgetTitle', titleDisplay + (subFilterValue ? ` (${subFilterValue})` : ""));
+      safeSetText('ctxBudgetSubtitle', `Période : ${mois || trim || (isComparison ? 'Comparatif 2025/2026' : 'Année '+refYear)}`);
+      
+      // -- CORRECTION MANAGEMENT --
+      // On détermine l'entité à chercher dans contactData
+      let lookupEntite = (calcEntite === 'HIA CIOA' || calcEntite === 'HIA' || calcEntite === 'CIOA') ? 'HIA' : calcEntite;
+      if (!lookupEntite || lookupEntite === '') lookupEntite = "Région Grand-Sud"; // Fallback Global
+
+      // Récupération sécurisée
+      let ctInfo = { respExploit: '--', dirMedical: '--' };
+      if (window.extraContactData) {
+          if (window.extraContactData[lookupEntite]) {
+              ctInfo = window.extraContactData[lookupEntite];
+          } else if (window.extraContactData[selectedEntite]) {
+              ctInfo = window.extraContactData[selectedEntite];
+          }
+      }
+                     
+      safeSetText('budgetResp', ctInfo.respExploit || '--');
+      safeSetText('budgetDirMed', ctInfo.dirMedical || '--');
+
+      // KPI CARDS
+      safeSetText('cardCaRealise', window.formatMoney(totalRef));
+      
+      const elEvol = document.getElementById('cardCaEvol');
+      if(elEvol) {
+          if (totalPrev > 0) {
+              let diff = totalRef - totalPrev;
+              let pct = (diff / totalPrev) * 100;
+              let labelComp = prevYear; 
+              if (activeMonths.length === 1) {
+                  if (activeMonths[0] === 'JAN') labelComp = "Déc " + (parseInt(refYear)-1);
+                  else labelComp = "M-1";
+              }
+              elEvol.textContent = `${diff >= 0 ? '+' : ''}${pct.toFixed(1)}% vs ${labelComp}`;
+              elEvol.className = `evolution-tag ${diff >= 0 ? 'pos' : 'neg'}`;
+          } else { 
+              elEvol.textContent = "-"; 
+              elEvol.className = `evolution-tag`; 
+          }
+      }
+      
+      safeSetText('cardBudget', window.formatMoney(totalBudget));
+      safeSetText('cardBudgetMensuel', "Moy. Période : " + window.formatMoney(totalRef / (activeMonths.length || 1)));
+
+      let valReste = totalBudget - totalRef; 
+      const elReste = document.getElementById('cardResteFaire');
+      if(elReste && totalBudget > 0) {
+          const cardContainer = document.getElementById('cardResteContainer');
+          const cardTitle = document.getElementById('cardResteTitle');
+          
+          if (valReste > 0) {
+              elReste.textContent = window.formatMoney(valReste);
+              elReste.style.color = '#e74c3c';
+              if(cardContainer) cardContainer.style.borderTopColor = '#e74c3c';
+              if(cardTitle) cardTitle.textContent = "MANQUE À GAGNER";
+              safeSetText('cardResteMois', `Ecart : -${((valReste/totalBudget)*100).toFixed(1)}%`);
+          } else {
+              elReste.textContent = "+" + window.formatMoney(Math.abs(valReste));
+              elReste.style.color = '#27ae60';
+              if(cardContainer) cardContainer.style.borderTopColor = '#27ae60';
+              if(cardTitle) cardTitle.textContent = "OBJECTIF DÉPASSÉ";
+              safeSetText('cardResteMois', `Surperf. : +${((Math.abs(valReste)/totalBudget)*100).toFixed(1)}%`);
+          }
+      } else if (elReste) {
+          elReste.textContent = "-";
+          safeSetText('cardResteMois', "");
+      }
+
+      let realisation = totalBudget > 0 ? (totalRef / totalBudget) * 100 : 0;
+      safeSetText('cardTaux', totalBudget > 0 ? realisation.toFixed(0) + " %" : "-");
+      const elTaux = document.getElementById('cardTaux');
+      if(elTaux) elTaux.className = `kpi-value ${realisation >= 100 ? 'green' : 'red'}`;
+      
+      const diffVal = totalRef - totalBudget;
+      safeSetText('cardEcart', totalBudget > 0 ? `${(diffVal >= 0 ? '+' : '')}${window.formatMoney(diffVal)}` : "-");
+      const elEcart = document.getElementById('cardEcart');
+      if(elEcart) elEcart.style.color = diffVal >= 0 ? '#27ae60' : '#e74c3c';
+
+      drawBudgetChart(mainRows, calcEntite, activeMonths, isComparison, refYear, prevYear);
+      updateCaTable(mainRows, isComparison, refYear, prevYear);
+      
+      // Mise à jour Top/Flop avec style moderne
+      updateSideWidgets(mainRows);
+  }
+
+  // --- 3. TOP PERF / A SUIVRE (STYLE MODERNE) ---
+  function updateSideWidgets(rows) {
+      const validRows = rows.filter(r => r.budget > 0);
+      
+      validRows.sort((a, b) => {
+          const rateA = (a.caRef / a.budget);
+          const rateB = (b.caRef / b.budget);
+          return rateB - rateA;
+      });
+
+      const top3 = validRows.slice(0, 3);
+      const topContainer = document.getElementById('topPerfList');
+      if (topContainer) {
+          topContainer.innerHTML = '';
+          if(top3.length === 0) topContainer.innerHTML = '<div style="color:#aaa; font-style:italic;">Aucune donnée</div>';
+          top3.forEach(r => {
+              const rate = (r.caRef / r.budget * 100).toFixed(0);
+              // CARD STYLE MODERNE (Vert)
+              topContainer.innerHTML += `
+                  <div style="background: white; border-radius: 12px; padding: 12px 16px; margin-bottom: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.04); display: flex; align-items: center; justify-content: space-between; border-left: 5px solid #2ecc71; transition: transform 0.2s;">
+                      <div style="font-weight: 700; color: #34495e; font-size: 0.95rem;">${r.name}</div>
+                      <div style="background: #e8f8f5; color: #27ae60; font-weight: 800; padding: 4px 10px; border-radius: 20px; font-size: 0.9rem;">${rate}%</div>
+                  </div>`;
+          });
+      }
+
+      const flop3 = validRows.slice(-3).reverse();
+      const flopContainer = document.getElementById('toFollowList');
+      if (flopContainer) {
+          flopContainer.innerHTML = '';
+          if(flop3.length === 0) flopContainer.innerHTML = '<div style="color:#aaa; font-style:italic;">Aucune donnée</div>';
+          flop3.forEach(r => {
+              const rate = (r.caRef / r.budget * 100).toFixed(0);
+              // CARD STYLE MODERNE (Rouge/Orange)
+              flopContainer.innerHTML += `
+                  <div style="background: white; border-radius: 12px; padding: 12px 16px; margin-bottom: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.04); display: flex; align-items: center; justify-content: space-between; border-left: 5px solid #e74c3c; transition: transform 0.2s;">
+                      <div style="font-weight: 700; color: #34495e; font-size: 0.95rem;">${r.name}</div>
+                      <div style="background: #fdedec; color: #c0392b; font-weight: 800; padding: 4px 10px; border-radius: 20px; font-size: 0.9rem;">${rate}%</div>
+                  </div>`;
+          });
+      }
+  }
+
+  // --- 4. GRAPHIQUE (CORRECTION VARIATION 2025 SANS 2024) ---
+  function drawBudgetChart(mainRows, calcEntite, activeMonths, isComparison, refYear, prevYear) {
+      const cvs = document.getElementById('caBudgetChart');
+      if(!cvs) return;
+      const ctx = cvs.getContext('2d');
+      if (window.caChartInstance) window.caChartInstance.destroy();
+
+      const isDark = document.body.classList.contains('dark-mode');
+      const textColor = isDark ? '#eee' : '#444';
+      const gradientStd = ctx.createLinearGradient(0, 0, 0, 400); 
+      gradientStd.addColorStop(0, '#363795'); gradientStd.addColorStop(1, '#005c97');
+
+      let config = {
+          type: 'bar',
+          data: { labels: [], datasets: [] },
+          options: {
+              responsive: true, maintainAspectRatio: false,
+              animation: { duration: 1000, easing: 'easeOutQuart' },
+              plugins: { 
+                  legend: { display: true, position: 'top', labels: { color: textColor, usePointStyle:true } }, 
+                  datalabels: { font: { weight: 'bold', size: 11 }, color: textColor } 
+              },
+              scales: { 
+                  y: { display: false, grid: { display: false } }, 
+                  x: { grid: { display: false }, ticks: { color: textColor } } 
+              }
+          }
+      };
+
+      if (!calcEntite || calcEntite === '') {
+          mainRows.sort((a,b) => {
+             let idxA = BUDGET_ENTITY_ORDER.indexOf(a.name); let idxB = BUDGET_ENTITY_ORDER.indexOf(b.name);
+             if(idxA === -1) idxA = 99; if(idxB === -1) idxB = 99; return idxA - idxB;
+          });
+      }
+
+      if (budgetViewMode === 'trend') {
+          // --- MODE TREND ---
+          if (!calcEntite || calcEntite === '') {
+              // GLOBAL
+              config.data.labels = mainRows.map(r => r.name);
+              
+              if (isComparison) {
+                  config.data.datasets = [
+                      { label: prevYear, data: mainRows.map(r => r.caPrev), backgroundColor: '#95a5a6', borderRadius: 4, datalabels: { anchor: 'end', align: 'top', offset: -2, formatter: (val) => val > 0 ? (val/1000000).toFixed(1) : '' } },
+                      { label: refYear, data: mainRows.map(r => r.caRef), backgroundColor: gradientStd, borderRadius: 4, datalabels: { anchor: 'end', align: 'top', offset: -2, formatter: (val) => val > 0 ? (val/1000000).toFixed(1) : '' } }
+                  ];
+              } else {
+                  config.data.datasets = [{ label: refYear, data: mainRows.map(r => r.caRef), backgroundColor: gradientStd, borderRadius: 4, datalabels: { anchor: 'end', align: 'top', offset: -2, formatter: (val) => val > 0 ? (val/1000000).toFixed(1) : '' } }];
+              }
+          } else {
+              // DETAIL (Par Mois)
+              config.data.labels = activeMonths;
+              let aggRef = activeMonths.map(() => 0);
+              let aggPrev = activeMonths.map(() => 0);
+              mainRows.forEach(row => {
+                  activeMonths.forEach((m, i) => {
+                      aggRef[i] += (row.monthlyRef ? row.monthlyRef[m] : 0) || 0;
+                      aggPrev[i] += (row.monthlyPrev ? row.monthlyPrev[m] : 0) || 0;
+                  });
+              });
+              
+              // CALCUL DE LA VARIATION AVANCÉ
+              let variations = [];
+              aggRef.forEach((val, idx) => {
+                  let p = aggPrev[idx]; // Valeur N-1 (ex: Jan 2024)
+                  let pct = 0;
+
+                  // 1. Si on a une donnée N-1, on compare N vs N-1 (Classique)
+                  if (p > 0) {
+                      pct = ((val - p) / p) * 100;
+                  } 
+                  // 2. Si PAS de donnée N-1 mais qu'on a un mois précédent dans l'année (Evolution 2025)
+                  else if (idx > 0 && aggRef[idx-1] > 0) {
+                      let prevMonth = aggRef[idx-1];
+                      pct = ((val - prevMonth) / prevMonth) * 100;
+                  } 
+                  // 3. Sinon (Janvier 2025 sans 2024), pas de variation affichable
+                  else {
+                      pct = null; 
+                  }
+                  
+                  variations.push(pct);
+              });
+
+              config.data.datasets.push({
+                  type: 'line', label: 'Variation (%)', data: variations,
+                  borderColor: '#e67e22', borderWidth: 2, pointBackgroundColor: '#fff', pointRadius: 4, yAxisID: 'y1', tension: 0.3,
+                  spanGaps: false, // Coupe la ligne si donnée manquante
+                  datalabels: { align: 'top', anchor: 'center', offset: 6, color: '#e67e22', backgroundColor: isDark ? '#333' : 'white', borderRadius: 4, padding: 4, formatter: (v) => (v !== null) ? v.toFixed(0)+'%' : '' }
+              });
+
+              if (isComparison) {
+                  config.data.datasets.push({ type: 'bar', label: prevYear, data: aggPrev, backgroundColor: '#bdc3c7', borderRadius: 4, yAxisID: 'y', datalabels: { color: isDark ? '#888' : '#666', anchor: 'end', align: 'top', offset: -20, formatter: (val) => val > 0 ? (val/1000000).toFixed(1) : '' } });
+              }
+              config.data.datasets.push({ type: 'bar', label: refYear, data: aggRef, backgroundColor: gradientStd, borderRadius: 4, yAxisID: 'y', datalabels: { color: 'white', anchor: 'end', align: 'top', offset: -20, formatter: (val) => val > 0 ? (val/1000000).toFixed(1) : '' } });
+              config.options.scales.y1 = { display: false, position: 'right' };
+          }
+
+      } else {
+          // --- MODE CA vs BUDGET ---
+          let labels = [], dataCa = [], dataBudget = [], rates = [];
+
+          if (!calcEntite || calcEntite === '') {
+              labels = mainRows.map(r => r.name);
+              dataCa = mainRows.map(r => r.caRef);
+              dataBudget = mainRows.map(r => r.budget);
+              rates = mainRows.map(r => r.budget > 0 ? (r.caRef/r.budget)*100 : 0);
+          } else {
+              labels = activeMonths;
+              let aggCa = activeMonths.map(() => 0);
+              let aggBud = activeMonths.map(() => 0);
+              
+              mainRows.forEach(row => {
+                  activeMonths.forEach((m, i) => {
+                      aggCa[i] += (row.monthlyRef ? row.monthlyRef[m] : 0) || 0;
+                      // Correction du budget pour correspondre au panneau
+                      let monthlyB = row.budget > 0 ? (row.budget / activeMonths.length) : 0;
+                      aggBud[i] += monthlyB; 
+                  });
+              });
+              dataCa = aggCa; dataBudget = aggBud;
+              rates = aggBud.map((b, i) => b > 0 ? (aggCa[i]/b)*100 : 0);
+          }
+
+          config.data.labels = labels;
+          config.data.datasets.push({ type: 'line', label: 'Taux de Réalisation (%)', data: rates, borderColor: '#e67e22', backgroundColor: 'white', borderWidth: 2, pointRadius: 4, yAxisID: 'y1', order: 0, datalabels: { color: '#e67e22', backgroundColor: isDark ? '#333' : 'white', borderRadius: 4, align: 'top', anchor: 'center', offset: -15, formatter: (val) => val > 0 ? val.toFixed(0) + '%' : '' } });
+          config.data.datasets.push({ label: 'CA Réalisé', data: dataCa, backgroundColor: gradientStd, borderRadius: 4, order: 1, yAxisID: 'y', datalabels: { color: textColor, anchor: 'end', align: 'top', offset: -2, formatter: (val) => val > 0 ? (val/1000000).toFixed(1)+'M' : '' } });
+          config.data.datasets.push({ label: 'Budget', data: dataBudget, backgroundColor: '#ccc', borderRadius: 4, order: 2, yAxisID: 'y', datalabels: { color: isDark ? '#888' : '#666', anchor: 'end', align: 'top', offset: -2, formatter: (val) => val > 0 ? (val/1000000).toFixed(1)+'M' : '' } });
+          config.options.scales.y1 = { display: false, position: 'right' };
+      }
+      window.caChartInstance = new Chart(ctx, config);
+  }
+
+  // --- 5. TABLEAU ---
+  function updateCaTable(rows, isComparison, refYear, prevYear) {
+      const tbody = document.querySelector('#tableCaBudget tbody');
+      if(!tbody) return;
+      tbody.innerHTML = '';
+      
+      const thead = document.querySelector('#tableCaBudget thead tr');
+      if (isComparison) {
+          thead.innerHTML = `<th style="background:#f8faff; padding-left: 20px;">Entité</th><th style="background:#f8faff;">CA ${prevYear}</th><th style="background:#f8faff;">CA ${refYear}</th><th style="background:#f8faff;">Variation</th><th style="background:#f8faff;">Budget ${refYear}</th><th style="background:#f8faff; padding-right: 20px;">% Réal.</th>`;
+      } else {
+          thead.innerHTML = `<th style="background:#f8faff; padding-left: 20px;">Entité</th><th style="background:#f8faff;">CA ${refYear}</th><th style="background:#f8faff;">Variation vs N-1</th><th style="background:#f8faff;">Budget ${refYear}</th><th style="background:#f8faff; padding-right: 20px;">% Réal.</th>`;
+      }
+
+      rows.sort((a,b) => {
+         let idxA = BUDGET_ENTITY_ORDER.indexOf(a.name); let idxB = BUDGET_ENTITY_ORDER.indexOf(b.name);
+         if(idxA === -1) idxA = 99; if(idxB === -1) idxB = 99; return idxA - idxB;
+      });
+      
+      const fmtVal = (v) => (!v || v === 0) ? '-' : window.formatMoney(v);
+
+      rows.forEach(r => {
+          let varVal = r.caPrev > 0 ? ((r.caRef - r.caPrev) / r.caPrev * 100) : 0;
+          let realization = r.budget > 0 ? (r.caRef / r.budget * 100) : 0;
+          let varTxt = varVal !== 0 ? (varVal>0?'+':'')+varVal.toFixed(1)+'%' : '-';
+          let colorVar = varVal >= 0 ? '#27ae60' : '#e74c3c';
+
+          const tr = document.createElement('tr');
+          if (isComparison) {
+              tr.innerHTML = `<td style="text-align:left; font-weight:600; padding-left:20px;">${r.name}</td><td>${fmtVal(r.caPrev)}</td><td style="font-weight:bold; color:#363795;">${fmtVal(r.caRef)}</td><td style="color:${colorVar}; font-weight:bold;">${varTxt}</td><td>${fmtVal(r.budget)}</td><td style="padding-right:20px;"><span class="badge-perf ${realization >= 100 ? 'green' : 'red'}">${realization > 0 ? realization.toFixed(0)+'%' : '-'}</span></td>`;
+          } else {
+              tr.innerHTML = `<td style="text-align:left; font-weight:600; padding-left:20px;">${r.name}</td><td style="font-weight:bold; color:#363795;">${fmtVal(r.caRef)}</td><td style="color:${colorVar}; font-weight:bold;">${varTxt}</td><td>${fmtVal(r.budget)}</td><td style="padding-right:20px;"><span class="badge-perf ${realization >= 100 ? 'green' : 'red'}">${realization > 0 ? realization.toFixed(0)+'%' : '-'}</span></td>`;
+          }
+          tbody.appendChild(tr);
+      });
+  }
+</script>

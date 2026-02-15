@@ -1,0 +1,1220 @@
+<script>
+  // =======================================================================
+  //  1. UTILITAIRES & FORMATAGE
+  // =======================================================================
+  function formatValue(v) { 
+      if (v === 'N/A' || v === '--' || v == null || isNaN(v)) return '--'; 
+      return Math.round(parseFloat(v)).toLocaleString('fr-FR'); 
+  }
+  
+  function formatDecimal(v) { 
+      if (v === 'N/A' || v === '--' || v == null || isNaN(v) || !isFinite(v)) return '--'; 
+      return parseFloat(v).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }); 
+  }
+
+  function normalizeText(text) { 
+      if (!text) return ""; 
+      return text.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim(); 
+  }
+
+  function parseFrenchNumber(val) { 
+      if (val === null || val === undefined) return 0; 
+      if (typeof val === 'number') return val; 
+      return parseFloat(val.toString().replace(/\s/g, '').replace(/\u00A0/g, '').replace(',', '.')) || 0; 
+  }
+
+function calculateDynamicDivisor(filteredData, baseDivisor) {
+    const selectedMonth = document.getElementById('mois').value;
+    const selectedYear = document.getElementById('annee').value || new Date().getFullYear().toString();
+    
+    // Si on est sur le mois en cours, on réduit le diviseur de base (ex: 22j) 
+    // au prorata des jours travaillés écoulés
+    const divJours = getDiviseurJours([], selectedMonth, selectedYear);
+    const totalJoursMois = selectedMonth ? getDiviseurJours([], selectedMonth, "2020") : 30; // base fixe pour ratio
+
+    // Ratio d'écoulement du mois (ex: 15/31)
+    const ratio = divJours / totalJoursMois;
+    
+    if (selectedMonth && selectedMonth !== "") {
+        // Si mois en cours, on applique le ratio au diviseur (22j * ratio)
+        return Math.max(1, baseDivisor * ratio);
+    }
+    
+    const activeMonths = new Set(filteredData.map(r => r[1].toString()));
+    return activeMonths.size === 0 ? 1 : baseDivisor * activeMonths.size;
+}
+
+function getDiviseurJours(data, selectedMonth, selectedYear) {
+    const today = new Date();
+    const currentYear = today.getFullYear().toString();
+    const currentMonthIdx = today.getMonth(); // 0 pour Janvier
+    const monthNames = ["JAN", "FEV", "MAR", "AVR", "MAI", "JUIN", "JUIL", "AOU", "SEP", "OCT", "NOV", "DEC"];
+    const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+    // Ajustement pour année bissextile (2024, 2028, etc.)
+    if (parseInt(selectedYear) % 4 === 0) daysInMonth[1] = 29;
+
+    // CAS 1 : Années précédentes (ex: 2025) -> Base complète
+    if (selectedYear && selectedYear < currentYear) {
+        if (selectedMonth) return daysInMonth[monthNames.indexOf(selectedMonth)];
+        return 365; // Ou 366 si bissextile
+    }
+
+    // CAS 2 : Année en cours (2026)
+    if (selectedMonth) {
+        const targetMonthIdx = monthNames.indexOf(selectedMonth);
+        
+        if (targetMonthIdx < currentMonthIdx) {
+            // Mois passé : Nombre de jours total du mois
+            return daysInMonth[targetMonthIdx];
+        } else if (targetMonthIdx === currentMonthIdx) {
+            // Mois en cours : Nombre de jours écoulés jusqu'à aujourd'hui
+            return today.getDate();
+        } else {
+            // Mois futur : Éviter division par zéro, on peut retourner 1 ou le total
+            return daysInMonth[targetMonthIdx];
+        }
+    } else {
+        // Vue Annuelle Globale (Somme des jours écoulés dans l'année)
+        let totalElapsed = 0;
+        for (let i = 0; i < currentMonthIdx; i++) {
+            totalElapsed += daysInMonth[i];
+        }
+        totalElapsed += today.getDate();
+        return totalElapsed;
+    }
+}
+
+  function determineTargetMonth(mois, trim) {
+      if (mois && mois !== "") return mois;
+      if (trim && trim !== "") return quarters[trim][2]; 
+      return "DEC"; 
+  }
+
+  // --- LOGIQUE CAPACITÉ ---
+function getSmartCapacity(capacityDataYear, targetMonth) {
+    if (!capacityDataYear) return null;
+    const mIdx = monthOrder.indexOf(targetMonth);
+    if (mIdx === -1) return null;
+    
+    for (let i = mIdx; i >= 0; i--) {
+        const m = monthOrder[i];
+        const val = capacityDataYear[m];
+        if (val !== null && val !== undefined && val !== "") return parseFloat(val);
+    }
+    return null;
+}
+
+function checkCapacityChange(entite, keyName, year) {
+    const targetYear = year || new Date().getFullYear();
+    const sousFamVal = document.getElementById('sousFamille') ? document.getElementById('sousFamille').value : "";
+    const elementVal = document.getElementById('element') ? document.getElementById('element').value : "";
+    const norm = (t) => normalizeText(t);
+
+    // 1. Détermination de la clé de recherche et du mode (Global ou Spécifique)
+    let searchKey = "";
+    let isSpecificFilter = false;
+
+    if (elementVal && elementVal !== "" && elementVal !== "TOUT") {
+        searchKey = norm(elementVal);
+        isSpecificFilter = true;
+    } else if (sousFamVal && sousFamVal !== "" && sousFamVal !== "TOUT") {
+        searchKey = norm(sousFamVal);
+        isSpecificFilter = true;
+    } else {
+        searchKey = norm(keyName);
+        isSpecificFilter = false;
+    }
+
+    // 2. Initialisation des totaux mensuels (Jan à Déc)
+    // On va stocker le total de capacité pour chaque mois
+    let monthlyTotals = {};
+    window.monthOrder.forEach(m => monthlyTotals[m] = 0);
+    
+    let dataFound = false;
+
+    // 3. Parcours de toutes les données de capacité
+    Object.keys(extraCapacityData).forEach(key => {
+        const parts = key.split('_');
+        if (parts.length >= 2) {
+            const kEntite = parts[0];
+            const kService = parts.slice(1).join('_');
+            const nService = norm(kService);
+
+            // Filtre Entité
+            const entiteMatch = (!entite || entite === "" || entite === "ALL" || kEntite === entite);
+            
+            // Filtre Service (Logique identique à getCapacityForYear)
+            let serviceMatch = false;
+            if (isSpecificFilter) {
+                serviceMatch = (nService === searchKey);
+            } else {
+                // Mode Global : on agrège tout ce qui correspond à la famille
+                if (searchKey === "HOSPITALISATION") {
+                    serviceMatch = nService.includes("REANIMATION") || nService.includes("SOINS INTENSIFS") || 
+                                   nService.includes("MATERNITE") || nService.includes("HMC") || 
+                                   nService.includes("HOSPITALISATION") || nService.includes("LIT");
+                } else if (searchKey === "BLOC") {
+                    serviceMatch = nService.includes("BLOC") || nService.includes("SALLE");
+                } else {
+                    serviceMatch = nService.includes(searchKey) || searchKey.includes(nService);
+                }
+            }
+
+            // Si c'est une ligne pertinente, on ajoute ses capacités aux totaux mensuels
+            if (entiteMatch && serviceMatch && extraCapacityData[key][targetYear]) {
+                dataFound = true;
+                window.monthOrder.forEach(m => {
+                    // Utilise getSmartCapacity pour gérer les mois vides (report de la valeur précédente)
+                    const val = getSmartCapacity(extraCapacityData[key][targetYear], m);
+                    if (val !== null) {
+                        monthlyTotals[m] += val;
+                    }
+                });
+            }
+        }
+    });
+
+    if (!dataFound) return false;
+
+    // 4. Vérification de la variance
+    // On récupère les valeurs uniques cumulées.
+    // Ex: Si Jan=10, Fév=10, Mars=12 => Set contient {10, 12} => size 2 => Changement détecté.
+    const uniqueValues = new Set();
+    
+    Object.values(monthlyTotals).forEach(v => {
+        // On ignore les 0 initiaux s'ils sont dus à un manque de données, 
+        // mais si la capacité passe de 10 à 5, c'est un changement.
+        // Si la capacité est stable toute l'année, le Set aura une taille de 1.
+        if (v > 0) uniqueValues.add(v);
+    });
+
+    // Si on a plus d'une valeur de capacité différente au cours de l'année, c'est qu'il y a eu un changement.
+    return uniqueValues.size > 1;
+}
+
+  // =======================================================================
+  //  2. GÉNÉRATION HTML (CADRES & PILULES)
+  // =======================================================================
+  
+  function wrapInYearFrame(year, contentHtml) {
+      if (!contentHtml) return '';
+      const color = year === "2026" ? "#363795" : "#7f8c8d";
+      const bg = "#fff"; 
+      return `
+      <div style="display:flex; flex-direction:column; border: 1px solid ${color}; border-radius: 8px; background:${bg}; padding: 8px; margin-right:15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+          <div style="font-size: 1.1em; font-weight:800; color:${color}; text-align:center; margin-bottom:8px; border-bottom:1px solid #eee; padding-bottom:4px; letter-spacing:1px;">
+              ${year}
+          </div>
+          <div style="display:flex; gap:10px; align-items:center;">
+              ${contentHtml}
+          </div>
+      </div>`;
+  }
+
+  function generateMetricHTML(iconType, label, value, subLabel = '', clickParams = null, hasChanged = false, periodLabel = '') {
+      let svg = '';
+      if(iconType === 'bed') svg = '<svg viewBox="0 0 24 24"><path d="M19 7h-8v8H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4zM7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-1h-6c-1.1 0-2 .9-2 2v3h8v-3c0-1.1-.9-2-2-2z"/></svg>';
+      if(iconType === 'chair') svg = '<svg viewBox="0 0 24 24"><path d="M20 6h-3V4c0-1.1-.9-2-2-2H9c-1.1 0-2 .9-2 2v2H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zM9 4h6v2H9V4zm11 15H4v-9h16v9z"/></svg>';
+      if(iconType === 'dialyse') svg = '<svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14zM8 15c0 1.66 1.34 3 3 3s3-1.34 3-3V9h2V7h-4v6h-2V7H8v8z"/></svg>';
+      if(iconType === 'scalpel') svg = '<svg viewBox="0 0 24 24"><path d="M19 3H5c-1.11 0-2 .9-2 2v14c1.1 0 2 .9 2 2h14c0-1.1.9-2 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/><path d="M12 6c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/></svg>';
+      if(iconType === 'heart-pulse') svg = '<svg viewBox="0 0 24 24"><path d="M22 11h-4.17l-3.24-6.48-4.5 9L6.83 7H2v2h3.17l3.24 6.48 4.5-9L16.17 13H22z"/></svg>';
+      if(iconType === 'monitor') svg = '<svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14zM9 10v4h6v-4H9z"/></svg>';
+      if(iconType === 'rotate') svg = '<svg viewBox="0 0 24 24"><path d="M12 6v3l4-4-4-4v3c-4.42 0-8 3.58-8 8 0 1.57.46 3.03 1.24 4.26L6.7 14.8c-.45-.83-.7-1.79-.7-2.8 0-3.31 2.69-6 6-6zm6.76 1.74L17.3 9.2c.44.84.7 1.79.7 2.8 0 3.31-2.69 6-6 6v-3l-4 4 4 4v-3c4.42 0 8-3.58 8-8 0-1.57-.46-3.03-1.24-4.26z"/></svg>';
+      if(iconType === 'room') svg = '<svg viewBox="0 0 24 24"><path d="M3 5v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2zm12 4c0 1.66-1.34 3-3 3s-3-1.34-3-3 1.34-3 3-3 3 1.34 3 3zm-9 8c0-2 4-3.1 6-3.1s6 1.1 6 3.1v1H6v-1z"/></svg>';
+
+      let onclickAttr = '';
+      if(clickParams) {
+          onclickAttr = `onclick="window.openHistoryModal('${clickParams.type}', '${clickParams.entite}', '${clickParams.keyName}', '${clickParams.elementFilter}')"`;
+      }
+      let displayVal = value;
+      if(subLabel === 'TO' && !isNaN(parseFloat(value))) displayVal = Math.round(parseFloat(value)); 
+      
+      let warning = hasChanged ? '<div class="capacity-warning"><svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg></div>' : '';
+      
+      let bgStyle = `background: var(--pill-bg); border: 1px solid var(--pill-border);`;
+
+      return `<div class="metric-pill" style="${bgStyle}" ${onclickAttr} title="Cliquez pour voir l'évolution">
+              <div class="metric-icon">${svg}</div>
+              ${warning}
+              <div class="metric-info">
+                  <span class="metric-val ${subLabel === 'TO' ? (parseFloat(value)>100?'alert':'good') : ''}">${displayVal} ${subLabel==='TO'?'%':''}</span>
+                  <span class="metric-lbl">${label}</span>
+              </div>
+          </div>`;
+  }
+
+window.openHistoryModal = function(type, entite, keyName, elementFilter) {
+    document.getElementById('historyModal').style.display = 'flex';
+    const ctx = document.getElementById('historyChart').getContext('2d');
+    if(window.historyChartInstance) window.historyChartInstance.destroy();
+    
+    // Récupération des filtres UI
+    const currentElement = document.getElementById('element') ? document.getElementById('element').value : "";
+    const currentSousFamille = document.getElementById('sousFamille') ? document.getElementById('sousFamille').value : "";
+    const mVal = document.getElementById('mois') ? document.getElementById('mois').value : "";
+    const tVal = document.getElementById('trimestre') ? document.getElementById('trimestre').value : "";
+
+    // Détection du mode "Global" (Aucun filtre fin sélectionné)
+    const isGlobalView = (!currentElement || currentElement === "") && (!currentSousFamille || currentSousFamille === "");
+    const norm = (t) => normalizeText(t);
+    const kNameNorm = norm(keyName);
+
+    const displayTitle = currentElement || currentSousFamille || keyName || "Hospitalisation";
+    document.getElementById('modalTitle').textContent = `Évolution : ${displayTitle} (${entite || 'Global'})`;
+
+    // --- FONCTION DE FILTRAGE DU VOLUME (IDENTIQUE AUX BOUTONS) ---
+    const getVolumeForYear = (year) => {
+        return normalizedData.filter(r => {
+             // 1. Filtres de base (Entité & Année)
+             const eMatch = (!entite || r[0] === entite);
+             const yMatch = (String(r[6]) === String(year));
+             if (!eMatch || !yMatch) return false;
+
+             // 2. Logique spécifique au contexte (Global vs Détail)
+             if (isGlobalView) {
+                 const rFam = norm(r[2]);
+                 const rEl = norm(r[4]);
+
+                 // CAS A : HOSPITALISATION GLOBALE (Inclut Bloc + Cathé pour le TO)
+                 if (kNameNorm === "HOSPITALISATION") {
+                     return rFam === "HOSPITALISATION" || rFam === "BLOC" || rFam.includes("CATHE");
+                 }
+                 
+                 // CAS B : CHIMIO / DIALYSE (Filtre uniquement les Séances/HDJ)
+                 if (kNameNorm.includes("CHIMIO") || kNameNorm.includes("DIALYSE")) {
+                     return rFam.includes(kNameNorm) && (rEl.includes("SEANCE") || rEl.includes("HDJ"));
+                 }
+                 
+                 // CAS C : HOPITAL DU JOUR
+                 if (kNameNorm.includes("HOPITAL") && kNameNorm.includes("JOUR")) {
+                     return rFam.includes("JOUR") && (rEl.includes("HOPITAL DU JOUR") || rEl.includes("JOUR"));
+                 }
+                 
+                 // CAS D : CAS GÉNÉRAL (Famille simple)
+                 return rFam === kNameNorm;
+             } else {
+                 // Vue détaillée (Element ou Sous-Famille sélectionné)
+                 if (currentElement) return norm(r[4]) === norm(currentElement);
+                 if (currentSousFamille) return norm(r[3]) === norm(currentSousFamille);
+                 return false;
+             }
+        }).reduce((sum, r) => sum + parseFloat(r[5] || 0), 0);
+    };
+
+    // --- 1. CALCUL DES TAUX GLOBAUX (HEADER) ---
+    const calculateButtonRate = (year) => {
+        // Mois cible pour la capacité (Snapshot comme sur le dashboard)
+        let targetM = "DEC";
+        if (mVal && mVal !== "") targetM = mVal;
+        else if (tVal && window.quarters && window.quarters[tVal]) targetM = window.quarters[tVal][2];
+
+        // 1. Capacité
+        const cap = getCapacityForYear(entite, keyName, targetM, year);
+        if (!cap || cap === 0) return "--";
+
+        // 2. Diviseur (Jours écoulés ou 365)
+        const days = getDiviseurJours([], "", year); 
+
+        // 3. Volume total (avec la logique corrigée)
+        const vol = getVolumeForYear(year);
+
+        // 4. Calcul TO
+        const theo = cap * days;
+        return (theo > 0) ? ((vol / theo) * 100).toFixed(1) : "0.0";
+    };
+
+    const rate2025 = calculateButtonRate("2025");
+    const rate2026 = calculateButtonRate("2026");
+    const colors = { "2025": "#95a5a6", "2026": "#363795" };
+
+    if (type === 'occupation') {
+        document.getElementById('modalSubtitle').innerHTML = `
+            <div style="display:flex; justify-content:center; align-items:center; gap:15px; margin-bottom:5px;">
+                <span style="color:#666; font-size:0.9em;">Taux Annuel :</span>
+                <span style="color:${colors["2025"]}; font-weight:800; font-size:1.1em; background:#f0f2f5; padding:2px 8px; border-radius:4px;">
+                    2025 : ${rate2025}%
+                </span>
+                <span style="color:${colors["2026"]}; font-weight:800; font-size:1.1em; background:#f0f2f5; padding:2px 8px; border-radius:4px; border:1px solid ${colors["2026"]}">
+                    2026 : ${rate2026}%
+                </span>
+            </div>
+        `;
+    } else {
+        document.getElementById('modalSubtitle').textContent = "Comparatif Capacité 2025 vs 2026";
+    }
+
+    // --- 2. GÉNÉRATION DU GRAPHIQUE ---
+    const labels = ["JAN", "FEV", "MAR", "AVR", "MAI", "JUIN", "JUIL", "AOU", "SEP", "OCT", "NOV", "DEC"];
+    const yearsToDisplay = ["2025", "2026"]; 
+    let datasets = [];
+
+    yearsToDisplay.forEach(year => {
+        let dataPoints = [];
+        labels.forEach(m => {
+            let val = 0;
+            let cap = getCapacityForYear(entite, keyName, m, year);
+
+            if (type === 'capacity') {
+                val = cap;
+            } else if (type === 'occupation') {
+                if (cap > 0) {
+                    const days = getDiviseurJours([], m, year); 
+                    const theo = cap * days;
+                    
+                    // Calcul du volume mensuel avec la MÊME logique que le bouton (mais filtré par mois)
+                    const act = normalizedData.filter(r => {
+                        const eMatch = (!entite || r[0] === entite);
+                        const mMatch = (r[1] === m);
+                        const yMatch = (String(r[6]) === String(year));
+                        if (!eMatch || !yMatch || !mMatch) return false;
+
+                        // Réutilisation de la logique "Global View" pour le mois
+                        if (isGlobalView) {
+                            const rFam = norm(r[2]);
+                            const rEl = norm(r[4]);
+                            if (kNameNorm === "HOSPITALISATION") return rFam === "HOSPITALISATION" || rFam === "BLOC" || rFam.includes("CATHE");
+                            if (kNameNorm.includes("CHIMIO") || kNameNorm.includes("DIALYSE")) return rFam.includes(kNameNorm) && (rEl.includes("SEANCE") || rEl.includes("HDJ"));
+                            if (kNameNorm.includes("HOPITAL") && kNameNorm.includes("JOUR")) return rFam.includes("JOUR") && (rEl.includes("HOPITAL DU JOUR") || rEl.includes("JOUR"));
+                            return rFam === kNameNorm;
+                        } else {
+                            if (currentElement) return norm(r[4]) === norm(currentElement);
+                            if (currentSousFamille) return norm(r[3]) === norm(currentSousFamille);
+                            return false;
+                        }
+                    }).reduce((sum, r) => sum + parseFloat(r[5] || 0), 0);
+                    
+                    val = (theo > 0) ? (act / theo) * 100 : 0;
+                }
+            }
+            dataPoints.push(parseFloat(val).toFixed(1));
+        });
+
+        const pointRadii = labels.map(m => (m === mVal && year === "2026") ? 8 : 4);
+        const pointColors = labels.map(m => (m === mVal && year === "2026") ? "#E67E22" : colors[year]);
+
+        datasets.push({
+            label: `${type === 'capacity' ? 'Capacité' : 'TO'} ${year}`,
+            data: dataPoints,
+            borderColor: colors[year],
+            backgroundColor: (year === "2026") ? "rgba(54, 55, 149, 0.1)" : "transparent",
+            borderDash: (year === "2025" ? [5, 5] : []),
+            borderWidth: (year === "2026" ? 3 : 2),
+            pointRadius: pointRadii,
+            pointBackgroundColor: pointColors,
+            fill: (year === "2026"),
+            tension: 0.3,
+            datalabels: {
+                display: (ctx) => labels[ctx.dataIndex] === mVal && year === "2026",
+                align: 'top',
+                backgroundColor: '#E67E22',
+                color: 'white',
+                borderRadius: 3,
+                padding: 4,
+                formatter: (v) => v + (type === 'occupation' ? '%' : '')
+            }
+        });
+    });
+
+    window.historyChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: { labels: labels, datasets: datasets },
+        options: { 
+            responsive: true, 
+            maintainAspectRatio: false,
+            scales: { 
+                y: { 
+                    beginAtZero: true, 
+                    grace: '10%',
+                    title: { display: true, text: type === 'capacity' ? 'Nombre de Lits / Places' : 'Taux d\'occupation %' }
+                } 
+            },
+            plugins: {
+                legend: { position: 'top' },
+                clip: false 
+            }
+        },
+        plugins: [ChartDataLabels]
+    });
+}
+  
+  window.closeHistoryModal = function() { document.getElementById('historyModal').style.display = 'none'; }
+
+  // =======================================================================
+  //  4. MISE A JOUR KPI & FILTRES
+  // =======================================================================
+  function updateKpi(total, entite, mois, trim, famille, sousFamille, element, evolutionVolume, selectedYear) {
+      const yearToDisplay = (selectedYear && selectedYear !== "") ? selectedYear : new Date().getFullYear();
+      const e = entite || "Région Grand-Sud";
+      
+      const ct = extraContactData[e];
+      document.getElementById('sbRespExploit').textContent = ct ? ct.respExploit || '--' : '--';
+      document.getElementById('sbDirMedical').textContent = ct ? ct.dirMedical || '--' : '--';
+      
+      document.getElementById('ctxEntity').textContent = e;
+      document.getElementById('ctxPeriod').textContent = (mois || trim || (selectedYear ? "Année" : "Comparatif")) + " " + (selectedYear || "2025/2026");
+      document.getElementById('ctxFamily').textContent = (sousFamille || famille).toUpperCase();
+
+      const dCA = extraCAData[e] ? extraCAData[e][yearToDisplay] : null;
+      const caM = (mois && dCA) ? dCA.caMensuel[mois] : null;
+      const caA = dCA ? dCA.caAnnuel : null;
+      
+      let targetQuarter = trim; 
+      if ((!trim || trim === "") && mois && mois !== "") { targetQuarter = quarters['T'+(Math.floor(monthOrder.indexOf(mois)/3)+1)] ? 'T'+(Math.floor(monthOrder.indexOf(mois)/3)+1) : null; }
+      let caT = null; 
+      if (targetQuarter && quarters[targetQuarter] && dCA) { caT = 0; quarters[targetQuarter].forEach(m => { caT += (dCA.caMensuel[m] || 0); }); }
+      
+      document.getElementById('kpiCAMensuel').textContent = formatValue(caM); 
+      document.getElementById('kpiCAMensuel').className = (caM > 0) ? 'kpi-value green' : 'kpi-value';
+      document.getElementById('kpiCAAnnuel').textContent = formatValue(caA);
+      document.getElementById('kpiCATrim').textContent = caT !== null ? formatValue(caT) : '--';
+      
+      document.getElementById('kpiCAMensuelEvolution').textContent = ""; 
+      document.getElementById('kpiCATrimEvolution').textContent = "";
+      document.getElementById('kpiTotal').textContent = formatValue(total);
+      
+      const kpiContainerSub = document.querySelectorAll('.kpi-sub-container');
+      if (e.includes('CIOA')) { 
+          kpiContainerSub.forEach(el => el.style.display = 'flex');
+          const updateSub = (prefix, key) => {
+              const subD = (extraCAData[key] && extraCAData[key][yearToDisplay]) ? extraCAData[key][yearToDisplay] : null;
+              if (subD) {
+                  const valM = mois ? subD.caMensuel[mois] : 0;
+                  document.getElementById(prefix + '_M').textContent = mois ? formatValue(valM) : '--';
+                  document.getElementById(prefix + '_A').textContent = formatValue(subD.caAnnuel);
+                  let valT = 0; if(targetQuarter && quarters[targetQuarter]) quarters[targetQuarter].forEach(m => valT += (subD.caMensuel[m] || 0));
+                  document.getElementById(prefix + '_T').textContent = targetQuarter ? formatValue(valT) : '--';
+              }
+          };
+          updateSub('kpiHIA', 'HIA'); updateSub('kpiCIOA', 'CIOA');
+      } else { kpiContainerSub.forEach(el => el.style.display = 'none'); }
+  }
+
+  function populateFilters() {
+      const anneeSet = new Set(normalizedData.map(r => r[6]).filter(v => v !== "" && v != null));
+      const anneeSelect = document.getElementById('annee');
+      const localAnneeSelect = document.getElementById('localAnnee');
+      
+      const populateYear = (sel) => {
+          if (!sel) return;
+          sel.innerHTML = '<option value="">TOUT</option>'; 
+          Array.from(anneeSet).sort().reverse().forEach(y => sel.add(new Option(y, y)));
+          const currentYear = new Date().getFullYear();
+          if (anneeSet.has(currentYear)) sel.value = currentYear;
+          else if (sel.options.length > 1) sel.value = sel.options[1].value;
+      };
+      populateYear(anneeSelect);
+      populateYear(localAnneeSelect);
+
+      const familleSet = new Set(normalizedData.map(r => r[2].toString()).filter(isFilterValueValid));
+      const familyContainer = document.getElementById('familyButtons'); 
+      familyContainer.innerHTML = ''; 
+      let firstFamily = "Hospitalisation";
+      let sortedFam = Array.from(familleSet).sort((a, b) => { 
+          let idxA = FAMILIES_ORDER.indexOf(a); let idxB = FAMILIES_ORDER.indexOf(b); 
+          if(idxA === -1) idxA = 999; if(idxB === -1) idxB = 999; return idxA - idxB; 
+      });
+      sortedFam.forEach(item => { 
+          const button = document.createElement('button'); button.textContent = item; button.setAttribute('data-family', item); 
+          button.onclick = () => selectFamily(item); familyContainer.appendChild(button); 
+          if (item === "Hospitalisation") firstFamily = item; 
+      });
+      if (familyContainer.children.length > 0) { 
+          if (!Array.from(familleSet).includes("Hospitalisation")) firstFamily = sortedFam[0]; 
+          selectFamily(firstFamily); 
+      }
+  }
+
+  // =======================================================================
+  //  5. FOCUS PANELS AVEC CADRES 2025/2026
+  // =======================================================================
+
+function renderMetricsForYear(entite, typeService, data, year, targetM, moisFilter, isRotation=false, isTO=false) {
+      let html = "";
+      let nb = getCapacityForYear(entite, typeService, targetM, year);
+      
+      const yearData = data.filter(r => String(r[6]) === String(year));
+      let vol = 0;
+
+      if (typeService === 'Bloc' || typeService === 'Salle de cathé et rythmologie') {
+          vol = yearData.reduce((acc, r) => acc + parseFloat(r[5]||0), 0);
+      } else if (typeService === 'Chimiothérapie' || typeService === 'Dialyse') {
+          vol = yearData.filter(r => (normalizeText(r[4]).includes("SEANCE") || normalizeText(r[4]).includes("HDJ"))).reduce((acc, r) => acc + parseFloat(r[5]||0), 0);
+      } else if (typeService === 'Hôpital du jour') {
+          vol = yearData.filter(r => normalizeText(r[4]).includes("HOPITAL DU JOUR") || normalizeText(r[4]).includes("JOUR")).reduce((acc, r) => acc + parseFloat(r[5]||0), 0);
+      } else if (typeService === 'Hospitalisation') {
+          vol = yearData.reduce((acc, r) => acc + parseFrenchNumber(r[5]), 0);
+      }
+
+      if (nb !== null) {
+          let icon = (typeService==='Bloc')?'scalpel':(typeService==='Dialyse'?'dialyse':(typeService==='Chimiothérapie'?'chair':(typeService.includes('cathé')?'heart-pulse':(typeService.includes('Hôpital')?'room':'bed'))));
+          let lbl = (typeService==='Bloc'||typeService.includes('cathé'))?'Salles':(typeService==='Dialyse'?'Fauteuils':(typeService==='Chimiothérapie'?'Fauteuils':(typeService.includes('Hôpital')?'Box':'Lits')));
+          
+          let changed = checkCapacityChange(entite, typeService, year);
+          html += generateMetricHTML(icon, lbl, nb, '', { entite: entite, keyName: typeService, type: 'capacity' }, changed, year);
+
+          // CORRECTION : CALCUL ROTATION ALIGNÉ SUR T.O.
+          if (isRotation) {
+              let div = 365;
+              if (moisFilter) div = getDiviseurJours([], moisFilter, year);
+              else if (document.getElementById('trimestre').value) div = 90;
+              else div = getDiviseurJours([], "", year); // Diviseur annuel dynamique (365 ou écoulé)
+
+              let rot = (nb > 0 && div > 0) ? (vol / div / nb).toFixed(2) : "0.00";
+              html += generateMetricHTML('rotate', 'Rotation', rot, '', null, false, year);
+          }
+
+          if (isTO) {
+              let days = 365;
+              if (moisFilter) days = getDiviseurJours([], moisFilter, year);
+              else if (document.getElementById('trimestre').value) days = 90;
+              else days = getDiviseurJours([], "", year); // Diviseur annuel dynamique
+
+              const theo = nb * days;
+              let to = (theo > 0) ? (vol / theo) * 100 : 0;
+              html += generateMetricHTML('monitor', 'Occup.', to, 'TO', { entite: entite, keyName: typeService, type: 'occupation' }, false, year);
+          }
+      }
+      return html;
+  }
+
+  function getGlobalPanelData(entite, annee, trim, mois, famille) {
+      return normalizedData.filter(r => {
+          const mRow = r[1].toString();
+          const yRow = r[6].toString();
+          const entRow = r[0].toString();
+          let dateMatch = false;
+          if (mois) dateMatch = (mRow === mois);
+          else if (trim) dateMatch = quarters[trim].includes(mRow);
+          else dateMatch = true;
+          let yearMatch = (annee === "") ? true : (yRow === annee);
+          let entMatch = (!entite || entRow === entite);
+          return dateMatch && yearMatch && entMatch && r[2] === famille;
+      });
+  }
+
+  function updateFocusBloc(data, annee) {
+      const entite = document.getElementById('entite').value;
+      const mois = document.getElementById('mois').value;
+      const trim = document.getElementById('trimestre').value;
+      const targetM = determineTargetMonth(mois, trim);
+      const globalData = getGlobalPanelData(entite, "", trim, mois, "Bloc");
+
+      let html = '';
+      if (annee) { html = wrapInYearFrame(annee, renderMetricsForYear(entite, "Bloc", globalData, annee, targetM, mois, true, false)); } 
+      else { html = wrapInYearFrame("2025", renderMetricsForYear(entite, "Bloc", globalData, "2025", targetM, mois, true, false)) + wrapInYearFrame("2026", renderMetricsForYear(entite, "Bloc", globalData, "2026", targetM, mois, true, false)); }
+      document.getElementById('headerMetrics').innerHTML = html || '<div style="font-size:0.85em; color:#999; font-style:italic;">Données capacité non disponibles</div>';
+      
+      let c1 = globalData.filter(r => { 
+          if(annee && String(r[6])!==String(annee)) return false;
+          const el = normalizeText(r[4]); 
+          return (el.includes("COEUR") || el.includes("CEC")) && !el.includes("HORS"); 
+      }).reduce((acc,r) => acc + r[5], 0);
+      document.getElementById('valCEC').textContent = formatValue(c1);
+      
+      const dataForTop = annee ? globalData.filter(r => String(r[6]) === String(annee)) : globalData;
+      const counts = {}; dataForTop.forEach(r => { const el = r[4]; counts[el] = (counts[el] || 0) + r[5]; }); 
+      const sorted = Object.entries(counts).sort((a,b) => b[1] - a[1]).slice(0,3); 
+      if(sorted[0]) { document.getElementById('lblBlocTop1').textContent = sorted[0][0]; document.getElementById('valBlocTop1').textContent = formatValue(sorted[0][1]); } 
+      if(sorted[1]) { document.getElementById('lblBlocTop2').textContent = sorted[1][0]; document.getElementById('valBlocTop2').textContent = formatValue(sorted[1][1]); } 
+      if(sorted[2]) { document.getElementById('lblBlocTop3').textContent = sorted[2][0]; document.getElementById('valBlocTop3').textContent = formatValue(sorted[2][1]); } 
+  }
+
+  function updateFocusCathe(data, annee) {
+      const entite = document.getElementById('entite').value;
+      const mois = document.getElementById('mois').value;
+      const trim = document.getElementById('trimestre').value;
+      const targetM = determineTargetMonth(mois, trim);
+      const globalData = getGlobalPanelData(entite, "", trim, mois, "Salle de cathé et rythmologie");
+
+      let html = '';
+      if (annee) { html = wrapInYearFrame(annee, renderMetricsForYear(entite, "Salle de cathé et rythmologie", globalData, annee, targetM, mois, true, false)); } 
+      else { html = wrapInYearFrame("2025", renderMetricsForYear(entite, "Salle de cathé et rythmologie", globalData, "2025", targetM, mois, true, false)) + wrapInYearFrame("2026", renderMetricsForYear(entite, "Salle de cathé et rythmologie", globalData, "2026", targetM, mois, true, false)); }
+      document.getElementById('headerMetrics').innerHTML = html || '<div style="font-size:0.85em; color:#999; font-style:italic;">Données capacité non disponibles</div>';
+
+      const workingData = annee ? globalData.filter(r => String(r[6]) === String(annee)) : globalData;
+      let dila=0, coro=0;
+      workingData.forEach(r => { 
+          const val = parseFloat(r[5]) || 0; 
+          const elUpper = normalizeText(r[4]); 
+          if(elUpper.includes("DILATATION")) dila += val; 
+          if(elUpper.includes("CORO")) coro += val; 
+      }); 
+      const div = calculateDynamicDivisor(workingData, 22);
+      document.getElementById('valDilatation').textContent = formatValue(dila); document.getElementById('valMoyDilatation').textContent = "Moy. " + formatDecimal(dila/div) + " /j"; 
+      document.getElementById('valCoro').textContent = formatValue(coro); document.getElementById('valMoyCoro').textContent = "Moy. " + formatDecimal(coro/div) + " /j"; 
+  }
+
+  function updateFocusChimio(data, annee) {
+      const entite = document.getElementById('entite').value;
+      const mois = document.getElementById('mois').value;
+      const trim = document.getElementById('trimestre').value;
+      const targetM = determineTargetMonth(mois, trim);
+      const globalData = getGlobalPanelData(entite, "", trim, mois, "Chimiothérapie");
+
+      let html = '';
+      if (annee) { html = wrapInYearFrame(annee, renderMetricsForYear(entite, "Chimiothérapie", globalData, annee, targetM, mois, true, false)); } 
+      else { html = wrapInYearFrame("2025", renderMetricsForYear(entite, "Chimiothérapie", globalData, "2025", targetM, mois, true, false)) + wrapInYearFrame("2026", renderMetricsForYear(entite, "Chimiothérapie", globalData, "2026", targetM, mois, true, false)); }
+      document.getElementById('headerMetrics').innerHTML = html || '<div style="font-size:0.85em; color:#999; font-style:italic;">Données capacité non disponibles</div>';
+
+      const workingData = annee ? globalData.filter(r => String(r[6]) === String(annee)) : globalData;
+      let s=0, n=0; 
+      workingData.forEach(r => { 
+          const el = normalizeText(r[4]); 
+          if(el.includes("SEANCE") || el.includes("HDJ")) s += r[5]; 
+          if(el.includes("NOUVEAU") && el.includes("CHIMIO")) n += r[5]; 
+      }); 
+      const div = calculateDynamicDivisor(workingData, 22); 
+      document.getElementById('valSeanceChimio').textContent = formatValue(s); 
+      document.getElementById('valMoyennePassageChimio').innerHTML = `${formatDecimal(s/div)} <span style="font-size:0.6em">/j</span>`; 
+      document.getElementById('valNouveauxCasChimio').textContent = formatValue(n); 
+  }
+
+  function updateFocusDialyse(data, annee) {
+      const entite = document.getElementById('entite').value;
+      const mois = document.getElementById('mois').value;
+      const trim = document.getElementById('trimestre').value;
+      const targetM = determineTargetMonth(mois, trim);
+      const globalData = getGlobalPanelData(entite, "", trim, mois, "Dialyse");
+
+      let html = '';
+      if (annee) { html = wrapInYearFrame(annee, renderMetricsForYear(entite, "Dialyse", globalData, annee, targetM, mois, true, false)); } 
+      else { html = wrapInYearFrame("2025", renderMetricsForYear(entite, "Dialyse", globalData, "2025", targetM, mois, true, false)) + wrapInYearFrame("2026", renderMetricsForYear(entite, "Dialyse", globalData, "2026", targetM, mois, true, false)); }
+      document.getElementById('headerMetrics').innerHTML = html || '<div style="font-size:0.85em; color:#999; font-style:italic;">Données capacité non disponibles</div>';
+
+      const workingData = annee ? globalData.filter(r => String(r[6]) === String(annee)) : globalData;
+      let seance=0, nouv=0; 
+      workingData.forEach(r => { 
+          const el = normalizeText(r[4]);
+          if(el.includes("SEANCE") || el.includes("HDJ")) seance += r[5]; 
+          if(el.includes("NOUVEAU")) nouv += r[5]; 
+      }); 
+      const div = calculateDynamicDivisor(workingData, 26); 
+      document.getElementById('valSeanceDialyse').textContent = formatValue(seance); 
+      const footer = document.querySelector('#focusPanelDialyse .bg-dialyse .focus-footer');
+      if(footer) footer.innerHTML = `<span>Moy. ${formatDecimal(seance/div)} /j</span>`; 
+      else { const parent = document.querySelector('#focusPanelDialyse .bg-dialyse'); if(parent) parent.insertAdjacentHTML('beforeend', `<div class="focus-footer"><span>Moy. ${formatDecimal(seance/div)} /j</span></div>`); }
+      document.getElementById('valNouveauxCasDialyse').textContent = formatValue(nouv); 
+  }
+
+  function updateFocusHopitalJour(data, m, annee) {
+      const entite = document.getElementById('entite').value;
+      const targetM = determineTargetMonth(m, "");
+      const globalData = getGlobalPanelData(entite, "", document.getElementById('trimestre').value, m, "Hôpital du jour");
+
+      let html = '';
+      if (annee) { html = wrapInYearFrame(annee, renderMetricsForYear(entite, "Hôpital du jour", globalData, annee, targetM, m, false, false)); } 
+      else { html = wrapInYearFrame("2025", renderMetricsForYear(entite, "Hôpital du jour", globalData, "2025", targetM, m, false, false)) + wrapInYearFrame("2026", renderMetricsForYear(entite, "Hôpital du jour", globalData, "2026", targetM, m, false, false)); }
+      document.getElementById('headerMetrics').innerHTML = html || '<div style="font-size:0.85em; color:#999; font-style:italic;">Données capacité non disponibles</div>';
+
+      const workingData = annee ? globalData.filter(r => String(r[6]) === String(annee)) : globalData;
+      let hj=0, hjc=0; 
+      workingData.forEach(r => { 
+          const el = normalizeText(r[4]); 
+          if (el === "HOPITAL DU JOUR" || el === "HÔPITAL DU JOUR") hj += r[5]; 
+          else if (el.includes("CARDIO") && el.includes("JOUR")) hjc += r[5]; 
+      }); 
+      const d = calculateDynamicDivisor(workingData, 22); 
+      document.getElementById('valHopitalJour').textContent = formatValue(hj); 
+      document.getElementById('valMoyHopitalJour').innerHTML = `Moy. ${formatDecimal(hj/d)} /j`; 
+      document.getElementById('valHopitalJourCardio').textContent = formatValue(hjc); 
+      document.getElementById('valMoyHopitalJourCardio').textContent = "Moy. " + formatDecimal(hjc/d) + " /j"; 
+  }
+
+function updateFocusHospitalisationDynamic(filteredData, m, sousFam, entite, element, annee) {
+    const container = document.getElementById('focusPanelHospitalisation'); 
+    container.innerHTML = ''; 
+    container.style.display = 'flex';
+    
+    // Filtres contextuels
+    const currentTrim = document.getElementById('trimestre').value;
+    const refMonth = determineTargetMonth(m, currentTrim);
+    
+    // Normalisation des filtres pour comparaison
+    const elFilter = normalizeText(element);
+    const sfFilter = normalizeText(sousFam);
+
+    // =======================================================================
+    // 1. RÉCUPÉRATION DES DONNÉES (HOSPITALISATION + BLOC + CATHÉ)
+    // =======================================================================
+    
+    // A. Données Hospitalisation (Pour les panneaux Bleus : Réa, SI, etc.)
+    const globalHospData = getGlobalPanelData(entite, annee, currentTrim, m, "Hospitalisation");
+    
+    // B. Données Bloc (Pour CEC et Gynéco/Césarienne/Accouchement)
+    const globalBlocData = getGlobalPanelData(entite, annee, currentTrim, m, "Bloc");
+    
+    // C. Données Cathé (Pour Dilatation et Coro)
+    const globalCatheData = getGlobalPanelData(entite, annee, currentTrim, m, "Salle de cathé et rythmologie");
+
+    // =======================================================================
+    // 2. CALCULS DES INDICATEURS
+    // =======================================================================
+
+    // --- Indicateurs Bleus (Base Hospitalisation) ---
+    let rea = 0, si = 0, hmc = 0, mat = 0;
+    globalHospData.forEach(r => { 
+        const sf = normalizeText(r[3]); 
+        const val = parseFrenchNumber(r[5]); 
+        if (sf.includes("REANIMATION")) rea += val; 
+        else if (sf.includes("SOINS INTENSIFS")) si += val; 
+        else if (sf.includes("HMC")) hmc += val; 
+        else if (sf.includes("MATERNITE")) mat += val; 
+    });
+
+    // --- Indicateurs Jaunes & CEC (Base Bloc) ---
+    let gyneco = 0, cesarienne = 0, accouchement = 0; 
+    let cec = 0;
+    globalBlocData.forEach(r => {
+        const el = normalizeText(r[4]);
+        const val = parseFrenchNumber(r[5]);
+        
+        // Maternité (Bloc)
+        if (el.includes("GYNECO") || el.includes("GYNÉCO")) gyneco += val;
+        if (el.includes("CESARIENNE") || el.includes("CÉSARIENNE")) cesarienne += val;
+        if (el.includes("ACCOUCHEMENT")) accouchement += val;
+        
+        // CEC (Bloc)
+        if (el.includes("(CEC)") || el.includes("OUVERT")) cec += val;
+    });
+
+    // --- Indicateurs Cathé (Base Salle de cathé) ---
+    let dilatation = 0, coroHosp = 0;
+    globalCatheData.forEach(r => {
+        const el = normalizeText(r[4]);
+        const val = parseFrenchNumber(r[5]);
+        
+        if (el.includes("DILATATION")) dilatation += val;
+        if (el.includes("CORO")) coroHosp += val;
+    });
+
+    // Diviseur pour moyennes
+    let periodDays = 0;
+    if (annee) periodDays = getDiviseurJours([], m, annee);
+    else periodDays = getDiviseurJours([], m, "2025") + getDiviseurJours([], m, "2026");
+
+    // =======================================================================
+    // 3. GÉNÉRATION HEADER (LITS & T.O.)
+    // =======================================================================
+    // Concaténation pour le calcul global du T.O.
+    const globalDataForTO = [...globalHospData, ...globalBlocData, ...globalCatheData];
+
+    const generateHtmlForYearHospit = (year) => {
+        let totalLits = null;
+        
+        // Recherche capacité
+        if (elFilter !== "" && element !== null) totalLits = getCapacityForYear(entite, element, refMonth, year);
+        else if (sfFilter !== "" && sousFam !== null) totalLits = getCapacityForYear(entite, sousFam, refMonth, year);
+        else {
+            // Somme globale par défaut
+            let sumHosp = 0; let foundAny = false;
+            Object.keys(extraCapacityData).forEach(key => {
+                const parts = key.split('_');
+                if (parts.length >= 2) {
+                    const kEntite = parts[0];
+                    const kLabel = parts.slice(1).join('_');
+                    if ((!entite || entite === "" || kEntite === entite)) {
+                        const nLab = normalizeText(kLabel);
+                        const isHospit = nLab.includes("REANIMATION") || nLab.includes("SOINS INTENSIFS") || nLab.includes("MATERNITE") || nLab.includes("HMC") || nLab.includes("HOSPITALISATION");
+                        if (isHospit && extraCapacityData[key][year]) {
+                            const cap = getSmartCapacity(extraCapacityData[key][year], refMonth);
+                            if (cap !== null) { sumHosp += cap; foundAny = true; }
+                        }
+                    }
+                }
+            });
+            totalLits = foundAny ? sumHosp : null;
+        }
+
+        if (totalLits === null) return '';
+
+        const capacityKeyForChange = (element && element !== "") ? element : (sousFam && sousFam !== "" ? sousFam : "Hospitalisation");
+        const changed = checkCapacityChange(entite, capacityKeyForChange, year);
+
+        let html = generateMetricHTML('bed', 'Lits', totalLits, '', { entite: entite, keyName: capacityKeyForChange, type: 'capacity' }, changed, year);
+        
+        // Calcul T.O. sur la base des données filtrées par l'année
+        const yearData = globalDataForTO.filter(r => {
+            if (String(r[6]) !== String(year)) return false;
+            // Filtrage supplémentaire pour correspondre à la sélection utilisateur (Service/Sous-famille)
+            if (elFilter !== "") return normalizeText(r[4]) === elFilter;
+            if (sfFilter !== "") return normalizeText(r[3]) === sfFilter;
+            return true; 
+        });
+        
+        const num = yearData.reduce((s, r) => s + parseFrenchNumber(r[5]), 0);
+        let days = getDiviseurJours([], m, year);
+        const theo = totalLits * days;
+        let to = (theo > 0) ? (num / theo) * 100 : 0;
+        
+        html += generateMetricHTML('monitor', 'Occup.', to, 'TO', { entite: entite, keyName: capacityKeyForChange, type: 'occupation' }, false, year);
+        return html;
+    };
+
+    let finalHeaderHtml = '';
+    if (annee) finalHeaderHtml = wrapInYearFrame(annee, generateHtmlForYearHospit(annee));
+    else finalHeaderHtml = wrapInYearFrame("2025", generateHtmlForYearHospit("2025")) + wrapInYearFrame("2026", generateHtmlForYearHospit("2026"));
+    
+    document.getElementById('headerMetrics').innerHTML = finalHeaderHtml || '<div style="font-size:0.85em; color:#999; font-style:italic;">Données capacité non disponibles</div>';
+
+    // =======================================================================
+    // 4. RENDU DES PANNEAUX (LOGIQUE D'AFFICHAGE MODIFIÉE)
+    // =======================================================================
+
+    // Panneaux Bleus (Toujours affichés en vue Hospitalisation)
+    let focusRowsHtml = `<div class="focus-row">
+        <div class="focus-box bg-hospit"><div class="focus-content"><div class="focus-label">RÉANIMATION</div><div class="focus-value">${formatValue(rea)}</div></div><div class="focus-footer"><div>Moy. ${formatDecimal(rea/periodDays)} /j</div></div></div>
+        <div class="focus-box bg-hospit"><div class="focus-content"><div class="focus-label">SOINS INTENSIFS</div><div class="focus-value">${formatValue(si)}</div></div><div class="focus-footer"><div>Moy. ${formatDecimal(si/periodDays)} /j</div></div></div>
+        <div class="focus-box bg-hospit"><div class="focus-content"><div class="focus-label">HMC</div><div class="focus-value">${formatValue(hmc)}</div></div><div class="focus-footer"><div>Moy. ${formatDecimal(hmc/periodDays)} /j</div></div></div>
+        <div class="focus-box bg-hospit"><div class="focus-content"><div class="focus-label">MATERNITÉ</div><div class="focus-value">${formatValue(mat)}</div></div><div class="focus-footer"><div>Moy. ${formatDecimal(mat/periodDays)} /j</div></div></div>
+    </div>`;
+
+    let extraRowsHtml = `<div class="focus-row" style="margin-top:20px;">`;
+
+    // 1. Panneaux Maternité (Jaunes) : Seulement si filtre Sous-famille ou Element = Maternité
+    if (sfFilter.includes("MATERNITE") || elFilter.includes("MATERNITE")) {
+        extraRowsHtml += `
+            <div class="focus-box bg-urgence-sec"><div class="focus-content"><div class="focus-label">GYNÉCOLOGIE</div><div class="focus-value">${formatValue(gyneco)}</div></div></div>
+            <div class="focus-box bg-urgence-sec"><div class="focus-content"><div class="focus-label">CÉSARIENNES</div><div class="focus-value">${formatValue(cesarienne)}</div></div></div>
+            <div class="focus-box bg-urgence-sec"><div class="focus-content"><div class="focus-label">ACCOUCHEMENTS</div><div class="focus-value">${formatValue(accouchement)}</div></div></div>`;
+    }
+
+    // 2. Panneau CEC : Si filtre Element = USI CCV ou Réanimation CCV
+    if (elFilter === "USI CCV" || elFilter === "REANIMATION CCV") {
+        extraRowsHtml += `<div class="focus-box bg-bloc"><div class="focus-content"><div class="focus-label">CHIRURGIE CŒUR OUVERT (CEC)</div><div class="focus-value">${formatValue(cec)}</div></div></div>`;
+    }
+
+    // 3. Panneaux Dilatation & Coro : Seulement si filtre Element = USI CCV
+    if (elFilter === "USI CCV") {
+        extraRowsHtml += `
+            <div class="focus-box bg-cathe"><div class="focus-content"><div class="focus-label">DILATATION</div><div class="focus-value">${formatValue(dilatation)}</div></div></div>
+            <div class="focus-box bg-cathe-sec"><div class="focus-content"><div class="focus-label">CORONAROGRAPHIE</div><div class="focus-value">${formatValue(coroHosp)}</div></div></div>`;
+    }
+    
+    extraRowsHtml += `</div>`;
+    
+    // Nettoyage si vide
+    if (extraRowsHtml === `<div class="focus-row" style="margin-top:20px;"></div>`) extraRowsHtml = "";
+
+    container.innerHTML = focusRowsHtml + extraRowsHtml;
+}
+
+  function updateFocusRadio(data) { 
+      const annee = document.getElementById('annee').value;
+      const globalData = getGlobalPanelData(document.getElementById('entite').value, annee, document.getElementById('trimestre').value, document.getElementById('mois').value, "Radiothérapie");
+      
+      let s=0, n=0; 
+      globalData.forEach(r => { 
+          const el = normalizeText(r[4]); 
+          if(el.includes("SEANCE") || el.includes("PASSAGE")) s += r[5]; 
+          if(el.includes("TECHNIQUE") && el.includes("NOUVEAU")) n += r[5]; 
+      }); 
+      document.getElementById('valSeanceRadio').textContent = formatValue(s); 
+      const div = calculateDynamicDivisor(globalData, 22); 
+      document.getElementById('valMoyennePassageRadio').textContent = formatDecimal(s/div); 
+      document.getElementById('valNouveauxCasRadio').textContent = formatValue(n); 
+  }
+  function updateFocusImagerie(data, m) { let scan=0, irm=0, rx=0, echo=0, mammo=0; data.forEach(r => { const el = r[4].toUpperCase(); const val = r[5]; if(el.includes("SCANNER") || el.includes("TDM")) scan += val; else if(el.includes("IRM")) irm += val; else if(el.includes("RX") || el.includes("RADIOGRAPHIE") || el.includes("CONVENTIONNELLE")) rx += val; else if(el.includes("ECHOGRAPHIE") || el.includes("ÉCHOGRAPHIE")) echo += val; else if(el.includes("MAMMOGRAPHIE")) mammo += val; }); const d = calculateDynamicDivisor(data, 22); document.getElementById('focusPanelImagerie').innerHTML = `<div class="focus-box bg-imagerie"><div class="focus-content"><div class="focus-label">RADIO (RX)</div><div class="focus-value">${formatValue(rx)}</div></div><div class="focus-footer"><div>Moy. ${formatDecimal(rx/d)} /j</div></div></div><div class="focus-box bg-imagerie"><div class="focus-content"><div class="focus-label">SCANNER (TDM)</div><div class="focus-value">${formatValue(scan)}</div></div><div class="focus-footer"><div>Moy. ${formatDecimal(scan/d)} /j</div></div></div><div class="focus-box bg-imagerie-2"><div class="focus-content"><div class="focus-label">IRM</div><div class="focus-value">${formatValue(irm)}</div></div><div class="focus-footer"><div>Moy. ${formatDecimal(irm/d)} /j</div></div></div><div class="focus-box bg-imagerie-2"><div class="focus-content"><div class="focus-label">ECHOGRAPHIE</div><div class="focus-value">${formatValue(echo)}</div></div><div class="focus-footer"><div>Moy. ${formatDecimal(echo/d)} /j</div></div></div><div class="focus-box bg-imagerie-2"><div class="focus-content"><div class="focus-label">MAMMOGRAPHIE</div><div class="focus-value">${formatValue(mammo)}</div></div><div class="focus-footer"><div>Moy. ${formatDecimal(mammo/d)} /j</div></div></div>`; }
+  function updateFocusLabo(data, m) { let ext=0, int=0, tot=0; data.forEach(r => { tot += r[5]; if(r[4].toLowerCase().includes("externe")) ext += r[5]; if(r[4].toLowerCase().includes("interne")) int += r[5]; }); const d = calculateDynamicDivisor(data, 22); document.getElementById('valLaboExt').textContent = formatValue(ext); document.getElementById('valMoyLaboExt').textContent = "Moy. " + formatDecimal(ext/d) + " /j"; document.getElementById('valPctLaboExt').textContent = (tot ? (ext/tot*100).toFixed(1) : 0) + " %"; document.getElementById('valLaboInt').textContent = formatValue(int); document.getElementById('valMoyLaboInt').textContent = "Moy. " + formatDecimal(int/d) + " /j"; document.getElementById('valPctLaboInt').textContent = (tot ? (int/tot*100).toFixed(1) : 0) + " %"; }
+  function updateFocusNucleaire(data) { let pet=0, scinti=0; data.forEach(r => { const el = r[4].toLowerCase(); if(el.includes("pet")) pet += r[5]; if(el.includes("scintigraphie")) scinti += r[5]; }); document.getElementById('valPetScan').textContent = formatValue(pet); const div = calculateDynamicDivisor(data, 22); document.getElementById('valMoyPetScan').textContent = "Moy. " + formatDecimal(pet/div) + " /j"; document.getElementById('valScintigraphie').textContent = formatValue(scinti); document.getElementById('valMoyScintigraphie').textContent = "Moy. " + formatDecimal(scinti/div) + " /j"; }
+  function updateFocusConsultation(data) { const counts = {}; data.forEach(r => { const el = r[4]; counts[el] = (counts[el] || 0) + r[5]; }); const sorted = Object.entries(counts).sort((a,b) => b[1] - a[1]).slice(0,3); if(sorted[0]) { document.getElementById('lblTop1').textContent = sorted[0][0]; document.getElementById('valTop1').textContent = formatValue(sorted[0][1]); } if(sorted[1]) { document.getElementById('lblTop2').textContent = sorted[1][0]; document.getElementById('valTop2').textContent = formatValue(sorted[1][1]); } if(sorted[2]) { document.getElementById('lblTop3').textContent = sorted[2][0]; document.getElementById('valTop3').textContent = formatValue(sorted[2][1]); } }
+  
+  function updateFocusUrgence(data, m) { 
+      let passage=0, admission=0; 
+      const annee = document.getElementById('annee').value;
+      const globalData = getGlobalPanelData(document.getElementById('entite').value, annee, document.getElementById('trimestre').value, m, "Urgence");
+      
+      globalData.forEach(r => { 
+          const el = normalizeText(r[4]); 
+          if(el.includes("URGENCE") || el.includes("PASSAGE")) passage += r[5]; 
+          if(el.includes("ADMISSION") && (el.includes("URGENCE") || el.includes("URG"))) admission += r[5]; 
+      }); 
+      const d = calculateDynamicDivisor(globalData, 30); 
+      document.getElementById('valPassageUrgence').textContent = formatValue(passage); 
+      document.getElementById('valMoyPassageUrgence').textContent = "Moy. " + formatDecimal(passage/d) + " /j"; 
+      document.getElementById('valAdmissionUrgence').textContent = formatValue(admission); 
+      document.getElementById('valPctRecrutementUrgence').textContent = (passage > 0 ? (admission/passage*100).toFixed(1) : 0) + " %"; 
+      document.getElementById('valTauxRecrutementUrgence').textContent = (passage > 0 ? (admission/passage*100).toFixed(1) : 0) + " %"; 
+  }
+
+  // =======================================================================
+  //  6. DRAW CHARTS & SELECTION
+  // =======================================================================
+
+  function drawCharts() {
+      const entite = document.getElementById('entite').value; 
+      const mois = document.getElementById('mois').value; 
+      const trim = document.getElementById('trimestre').value;
+      const annee = document.getElementById('annee') ? document.getElementById('annee').value : "";
+      
+      const familleBtn = document.querySelector('#familyButtons button.active'); 
+      const famille = familleBtn ? familleBtn.getAttribute('data-family') : ''; 
+      let sousFamille = document.getElementById('sousFamille').value; 
+      let element = document.getElementById('element').value; 
+      
+      if (famille && (!sousFamille || sousFamille === '') && (!element || element === '')) {
+          if (famille === 'Radiothérapie') sousFamille = "Passage sur la machine"; 
+          else if (famille === 'Chimiothérapie') sousFamille = "Passage au niveau de l'HDJ"; 
+          else if (famille === 'Dialyse') sousFamille = "Passage au niveau de l'HDJ"; 
+          else if (famille === 'Urgence') sousFamille = "Nombre d'urgence";
+      }
+
+      document.querySelectorAll('.focus-panel-container').forEach(el => el.style.display = 'none'); 
+      document.querySelectorAll('.focus-panel-column').forEach(el => el.style.display = 'none');
+      document.getElementById('pieChartWrapper').style.display = 'none'; 
+      document.getElementById('headerMetrics').innerHTML = '<div style="font-size:0.85em; color:#999; font-style:italic;">Aucune donnée de capacité</div>';
+
+      let monthsToKeep = null; if(mois && mois !== "") { monthsToKeep = [mois]; } else if (trim && trim !== "") { monthsToKeep = quarters[trim] || []; }
+      
+      let chartFiltered = normalizedData.filter(r => {
+          const m = r[1].toString(); 
+          const dateMatch = (monthsToKeep === null) || monthsToKeep.includes(m);
+          const yearMatch = (annee === "") ? true : (String(r[6]) === String(annee)); 
+          const basicMatch = (!entite || r[0].toString() === entite) && dateMatch && (r[2].toString() === famille) && (!sousFamille || r[3].toString() === sousFamille) && (!element || r[4].toString() === element);
+          
+          if(famille === 'Hospitalisation' && !sousFamille && !element && basicMatch) { 
+              const sf = normalizeText(r[3]); 
+              return yearMatch && (sf.includes("REANIMATION") || sf.includes("SOINS INTENSIFS") || sf.includes("HMC") || sf.includes("MATERNITE")); 
+          }
+          return basicMatch && yearMatch;
+      });
+
+      const panelData = chartFiltered;
+      
+      if (famille) {
+          const f = famille.toUpperCase();
+          if (f.includes("BLOC")) { document.getElementById('focusPanelBloc').style.display = 'flex'; updateFocusBloc(panelData, annee); } 
+          else if (f.includes("CHIMIO")) { document.getElementById('focusPanelChimio').style.display = 'flex'; updateFocusChimio(panelData, annee); } 
+          else if (f.includes("CATH") || f.includes("RYTHMOLOGIE")) { document.getElementById('focusPanelCathe').style.display = 'flex'; updateFocusCathe(panelData, annee); } 
+          else if (f.includes("DIALYSE")) { document.getElementById('focusPanelDialyse').style.display = 'flex'; updateFocusDialyse(panelData, annee); } 
+          else if (f.includes("HOSPITALISATION")) { document.getElementById('focusPanelHospitalisation').style.display = 'flex'; updateFocusHospitalisationDynamic(panelData, mois, sousFamille, entite, element, annee); } 
+          else if (f.includes("JOUR") || f.includes("HOPITAL DU JOUR")) { document.getElementById('focusPanelHopitalJour').style.display = 'flex'; updateFocusHopitalJour(panelData, mois, annee); }
+          else if (f.includes("URGENCE")) { document.getElementById('focusPanelUrgence').style.display = 'flex'; updateFocusUrgence(panelData, mois); } 
+          else if (f.includes("RADIO") && !f.includes("LOGIE")) { document.getElementById('focusPanelRadio').style.display = 'flex'; updateFocusRadio(panelData); } 
+          else if (f.includes("IMAGERIE") || f.includes("RADIOLOGIE")) { document.getElementById('focusPanelImagerie').style.display = 'flex'; updateFocusImagerie(panelData, mois); } 
+          else if (f.includes("LABORATOIRE")) { document.getElementById('focusPanelLabo').style.display = 'flex'; updateFocusLabo(panelData, mois); document.getElementById('pieChartWrapper').style.display = 'flex'; updateLaboPieChart(chartFiltered); } 
+          else if (f.includes("NUCL")) { document.getElementById('focusPanelNucleaire').style.display = 'flex'; updateFocusNucleaire(panelData); } 
+          else if (f.includes("CONSULTATION")) { document.getElementById('focusPanelConsultation').style.display = 'flex'; updateFocusConsultation(panelData); } 
+      }
+
+      const totalFiltered = chartFiltered.reduce((sum, row) => sum + parseFloat(row[5] || 0), 0);
+      updateKpi(totalFiltered, entite, mois, trim, famille, sousFamille, element, null, annee); 
+
+      let groupByAxis = 4; let segmentBy = null; let chartTitle = "";
+      if (annee === "") {
+          segmentBy = 6; groupByAxis = 1; 
+          chartTitle = `Comparatif 2025 vs 2026 - ${entite || "Région"} - ${element || sousFamille || famille}`;
+      } else {
+          chartTitle = `Évolution ${annee} - ${entite || "Région"} - ${element || sousFamille || famille}`;
+          if (entite === '' && mois === '' && (!sousFamille || sousFamille === '') && (!element || element === '')) { groupByAxis = 1; } 
+          else if (entite !== '' && mois === '') { groupByAxis = 1; } 
+          else if (element !== '') { groupByAxis = (entite === '') ? 0 : (mois === '' ? 1 : 0); }
+      }
+      if(famille === 'Hospitalisation' && !sousFamille && !element && groupByAxis === 4) { groupByAxis = 3; }
+
+      const aggregated = chartFiltered.reduce((acc, row) => { 
+          const ax = row[groupByAxis].toString(); const seg = (segmentBy !== null) ? row[segmentBy].toString() : 'Total'; const val = parseFloat(row[5]); 
+          if (!isNaN(val)) { acc[ax] = acc[ax] || {}; acc[ax][seg] = (acc[ax][seg] || 0) + val; } return acc; 
+      }, {});
+
+      let entries = Object.entries(aggregated); 
+      if (groupByAxis === 1) { entries.sort((a, b) => monthOrder.indexOf(a[0]) - monthOrder.indexOf(b[0])); } 
+      else { entries.sort((a, b) => { const sumA = Object.values(a[1]).reduce((acc, v) => acc + v, 0); const sumB = Object.values(b[1]).reduce((acc, v) => acc + v, 0); return sumB - sumA; }); }
+      let chartLabels = entries.map(e => e[0]);
+
+      const ctx = document.getElementById('kpiChart').getContext('2d'); 
+      const gradientDesign = ctx.createLinearGradient(0, 0, 0, 400); 
+      gradientDesign.addColorStop(0, '#d57ee3'); gradientDesign.addColorStop(1, '#f64f59'); 
+
+      let chartDatasets = [];
+      if (segmentBy !== null) {
+          let segList = ["2025", "2026"]; 
+          segList.forEach((seg, index) => { 
+              let data = chartLabels.map(lbl => aggregated[lbl] ? aggregated[lbl][seg] || 0 : 0);
+              let dsColor = (seg === "2026") ? gradientDesign : "#bdc3c7"; 
+              chartDatasets.push({ type: 'bar', label: seg, data: data, backgroundColor: dsColor, borderRadius: 8, barPercentage: 0.7, categoryPercentage: 0.8, order: (seg==="2026"?1:2) }); 
+          }); 
+      } else { 
+          const data = chartLabels.map(lbl => Object.values(aggregated[lbl]).reduce((a, b) => a + b, 0));
+          const validData = data.filter(d => d > 0);
+          const avg = validData.length > 0 ? validData.reduce((a,b)=>a+b,0)/validData.length : 0;
+          const avgLine = chartLabels.map(() => avg);
+          const maxVal = Math.max(...data);
+          const minVal = Math.min(...validData);
+          const bgColors = data.map(v => {
+              if (v === maxVal) return '#2ecc71'; if (v === minVal && v > 0) return '#e74c3c'; return gradientDesign;
+          });
+
+          chartDatasets = [
+              { type: 'line', label: 'Moyenne', data: avgLine, borderColor: '#f39c12', borderWidth: 2, borderDash: [5, 5], pointRadius: 0, order: 0, datalabels: {display:false} },
+              { type: 'bar', label: annee || 'Total', data: data, backgroundColor: bgColors, borderRadius: 10, barPercentage: 0.6, order: 1 }
+          ];
+      }
+      
+      const showLegend = (annee === "");
+      renderChart(chartLabels, chartDatasets, false, groupByAxis, chartTitle, showLegend);
+  }
+
+  function renderChart(labels, datasets, isStacked, groupByAxis, chartTitle, showLegend) {
+      const ctx = document.getElementById('kpiChart').getContext('2d');
+      if (kpiChartInstance) kpiChartInstance.destroy();
+      if (labels.length === 0) { document.getElementById('noDataMessage').style.display = 'block'; return; }
+      document.getElementById('noDataMessage').style.display = 'none';
+      const isDark = document.body.classList.contains('dark-mode');
+      kpiChartInstance = new Chart(ctx, { 
+          type: 'bar', 
+          data: { labels: labels, datasets: datasets }, 
+          options: { 
+              responsive: true, maintainAspectRatio: false, 
+              plugins: { 
+                  legend: { display: showLegend, position: 'top', labels: { color: isDark ? '#ddd' : '#666' } }, 
+                  datalabels: { color: '#333', font: { weight: 'bold', size: 12 }, anchor: 'end', align: 'top', offset: -4, formatter: v => v > 0 ? formatValue(v) : null }, 
+                  title: { display: true, text: chartTitle, font: { size: 16 } } 
+              }, 
+              scales: { x: { stacked: false, grid: {display: false}, ticks: { color: isDark ? '#aaa' : '#666' } }, y: { beginAtZero: true, stacked: false, grid: {display: false, drawBorder: false}, ticks: { color: isDark ? '#aaa' : '#666' } } } 
+          } 
+      });
+  }
+  function updateLaboPieChart(data) { let ext = 0, int = 0; data.forEach(r => { if(r[4].toLowerCase().includes("externe")) ext += r[5]; if(r[4].toLowerCase().includes("interne")) int += r[5]; }); const ctxPie = document.getElementById('laboPieChart').getContext('2d'); if (laboChartInstance) laboChartInstance.destroy(); const colorExt = '#d04ed6'; const colorInt = '#4b6cb7'; const isDark = document.body.classList.contains('dark-mode'); laboChartInstance = new Chart(ctxPie, { type: 'doughnut', data: { labels: ['Externe', 'Interne'], datasets: [{ data: [ext, int], backgroundColor: [colorExt, colorInt], borderWidth: 0, hoverOffset: 6 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20, font: { size: 12, family: "'Segoe UI', sans-serif" }, color: isDark ? '#ddd' : '#666' } }, datalabels: { color: '#fff', font: { weight: 'bold', size: 14 }, formatter: (value, ctx) => { let sum = 0; let dataArr = ctx.chart.data.datasets[0].data; dataArr.map(data => { sum += data; }); return (value*100 / sum).toFixed(0)+"%"; } } } }, plugins: [{ id: 'centerText', beforeDraw: function(chart) { var width = chart.width, height = chart.height, ctx = chart.ctx; ctx.restore(); var fontSize = (height / 140).toFixed(2); ctx.font = "bold " + fontSize + "em sans-serif"; ctx.textBaseline = "middle"; ctx.fillStyle = isDark ? "#fff" : "#333"; var total = ext + int; var text = formatValue(total); var textX = Math.round((width - ctx.measureText(text).width) / 2); var textY = height / 2.4; ctx.fillText(text, textX, textY); ctx.font = "normal " + (height/240).toFixed(2) + "em sans-serif"; ctx.fillStyle = isDark ? "#aaa" : "#888"; var text2 = "Total"; var text2X = Math.round((width - ctx.measureText(text2).width) / 2); ctx.fillText(text2, text2X, textY + 25); ctx.save(); } }] }); }
+
+  function selectFamily(family) { 
+      document.querySelectorAll('#familyButtons button').forEach(btn => { 
+          btn.classList.toggle('active', btn.getAttribute('data-family') === family); 
+      }); 
+      const labelElement = document.querySelector('label[for="element"]');
+      if(labelElement) { labelElement.textContent = (family === 'Hospitalisation') ? 'Service' : 'Élément'; }
+      
+      populateSousFamille(family); 
+      populateEntiteFilter(family); 
+      
+      const lEntite = document.getElementById('localEntite'); 
+      const entiteSelect = document.getElementById('entite');
+      if(lEntite && entiteSelect) { lEntite.innerHTML = entiteSelect.innerHTML; lEntite.value = entiteSelect.value; }
+
+      const lAnnee = document.getElementById('localAnnee');
+      const anneeSelect = document.getElementById('annee');
+      if(lAnnee && anneeSelect) { lAnnee.innerHTML = anneeSelect.innerHTML; lAnnee.value = anneeSelect.value; }
+      
+      // FORÇAGE INITIALISATION FILTRES
+      const lMois = document.getElementById('localMois'); const moisSelect = document.getElementById('mois');
+      if(moisSelect.options.length <= 1) { 
+          moisSelect.innerHTML = '<option value="">TOUT</option>'; 
+          monthOrder.forEach(m => moisSelect.add(new Option(m, m)));
+      }
+      if(lMois) { lMois.innerHTML = moisSelect.innerHTML; lMois.value = moisSelect.value; }
+      
+      const lTrim = document.getElementById('localTrimestre'); const trimSelect = document.getElementById('trimestre');
+      if(trimSelect.options.length <= 1) { 
+          trimSelect.innerHTML = '<option value="">TOUT</option><option value="T1">T1</option><option value="T2">T2</option><option value="T3">T3</option><option value="T4">T4</option>'; 
+      }
+      if(lTrim) { lTrim.innerHTML = trimSelect.innerHTML; lTrim.value = trimSelect.value; }
+  }
+
+  function populateEntiteFilter(selectedFamille) { 
+      const entiteSelect = document.getElementById('entite'); 
+      const currentSelection = entiteSelect.value; 
+      const familyFilteredData = normalizedData.filter(r => r[2].toString() === selectedFamille); 
+      const newEntiteSet = new Set(familyFilteredData.map(r => r[0].toString()).filter(v => v.trim() !== '')); 
+      entiteSelect.innerHTML = '<option value="">TOUT</option>'; 
+      Array.from(newEntiteSet).sort((a, b) => { 
+          let idxA = ENTITY_ORDER.indexOf(a); let idxB = ENTITY_ORDER.indexOf(b); 
+          if (idxA === -1) idxA = 999; if (idxB === -1) idxB = 999; 
+          return idxA - idxB; 
+      }).forEach(item => entiteSelect.add(new Option(item, item))); 
+      entiteSelect.value = (currentSelection && newEntiteSet.has(currentSelection)) ? currentSelection : ''; 
+      const lEntite = document.getElementById('localEntite'); if(lEntite) { lEntite.innerHTML = entiteSelect.innerHTML; lEntite.value = entiteSelect.value; } 
+  }
+
+  function populateSousFamille(selectedFamille) { 
+      const sousFamilleSelect = document.getElementById('sousFamille'); 
+      const currentSelection = sousFamilleSelect.value; 
+      const targetData = normalizedData.filter(r => r[2].toString() === selectedFamille); 
+      const sousFamilleSet = new Set(targetData.map(r => r[3].toString()).filter(isFilterValueValid)); 
+      sousFamilleSelect.innerHTML = '<option value="">TOUT</option>'; 
+      Array.from(sousFamilleSet).sort().forEach(item => sousFamilleSelect.add(new Option(item, item))); 
+      sousFamilleSelect.value = (currentSelection && sousFamilleSet.has(currentSelection)) ? currentSelection : ''; 
+      populateElementFilter(selectedFamille, sousFamilleSelect.value); 
+  }
+
+  function populateElementFilter(selectedFamille, selectedSousFamille) { 
+      const elementSelect = document.getElementById('element'); 
+      const currentSelection = elementSelect.value; 
+      const filteredData = normalizedData.filter(r => r[2].toString() === selectedFamille && (!selectedSousFamille || r[3].toString() === selectedSousFamille)); 
+      const elementSet = new Set(filteredData.map(r => r[4].toString()).filter(isFilterValueValid)); 
+      elementSelect.innerHTML = '<option value="">TOUT</option>'; 
+      Array.from(elementSet).sort().forEach(item => elementSelect.add(new Option(item, item))); 
+      elementSelect.value = (currentSelection && elementSet.has(currentSelection)) ? currentSelection : ''; 
+      drawCharts(); 
+  }
+function getCapacityForYear(entite, keySuffix, targetMonth, year) {
+    const targetYear = (year && year !== "") ? year : new Date().getFullYear(); 
+    let sum = 0;
+    
+    // Récupération des valeurs des filtres pour la recherche
+    const sousFamVal = document.getElementById('sousFamille') ? document.getElementById('sousFamille').value : "";
+    const elementVal = document.getElementById('element') ? document.getElementById('element').value : "";
+    
+    // Normalisation
+    const norm = (t) => normalizeText(t);
+    
+    // Est-ce qu'on filtre précisément ?
+    const isSpecificFilter = (elementVal && elementVal !== "" && elementVal !== "TOUT") || 
+                             (sousFamVal && sousFamVal !== "" && sousFamVal !== "TOUT");
+
+    // Détermination de la clé de recherche
+    let searchKey = "";
+    if (elementVal && elementVal !== "" && elementVal !== "TOUT") {
+        searchKey = norm(elementVal);
+    } else if (sousFamVal && sousFamVal !== "" && sousFamVal !== "TOUT") {
+        searchKey = norm(sousFamVal);
+    } else {
+        searchKey = norm(keySuffix);
+    }
+
+    Object.keys(extraCapacityData).forEach(key => {
+        const parts = key.split('_');
+        if (parts.length >= 2) {
+            const kEntite = parts[0];
+            // Le reste de la clé est le nom du service (qui peut contenir des underscores)
+            const kService = parts.slice(1).join('_');
+            const nService = norm(kService);
+            
+            // 1. Vérification Entité
+            const entiteMatch = (!entite || entite === "" || entite === "ALL" || kEntite === entite);
+
+            // 2. Vérification Service (Le cœur de la correction)
+            let serviceMatch = false;
+
+            if (isSpecificFilter) {
+                // Si l'utilisateur a choisi un service précis, on veut une correspondance stricte
+                serviceMatch = (nService === searchKey);
+            } else {
+                // Si on est en vue GLOBALE (seulement Entité ou Année), on agrège
+                if (searchKey === "HOSPITALISATION") {
+                    // On additionne tout ce qui ressemble à de l'hospitalisation
+                    serviceMatch = nService.includes("REANIMATION") || 
+                                   nService.includes("SOINS INTENSIFS") || 
+                                   nService.includes("MATERNITE") || 
+                                   nService.includes("HMC") || 
+                                   nService.includes("HOSPITALISATION") ||
+                                   nService.includes("LIT");
+                } else if (searchKey === "BLOC") {
+                    serviceMatch = nService.includes("BLOC") || nService.includes("SALLE");
+                } else {
+                    // Pour les autres (Dialyse, Chimio...), on cherche si le mot clé est inclus
+                    serviceMatch = nService.includes(searchKey) || searchKey.includes(nService);
+                }
+            }
+
+            if (entiteMatch && serviceMatch && extraCapacityData[key][targetYear]) {
+                const cap = getSmartCapacity(extraCapacityData[key][targetYear], targetMonth);
+                if (cap !== null) {
+                    sum += cap;
+                }
+            }
+        }
+    });
+    
+    return sum;
+}
+</script>
