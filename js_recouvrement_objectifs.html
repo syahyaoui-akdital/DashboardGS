@@ -1,531 +1,424 @@
 <script>
 /**
- * MODULE : RECOUVREMENT & EXPEDITION - OBJECTIFS VS RÉALISATIONS
- * Fonctionnalités : Drill-down, Projection, Comparaison Entités
+ * MODULE : RECOUVREMENT - OBJECTIFS VS RÉALISATIONS
+ * Fix : Import correct, gestion état chargement (évite boucle infinie), Graphique Hybride
  */
 
-let objChartInstance = null;
-let currentObjView = 'MONTH'; // 'MONTH' (vue annuelle par mois) ou 'DAY' (vue mensuelle par jour)
-let drillMonth = null;        // Mois sélectionné pour le détail jour
+// Variables globales (var pour compatibilité)
+var objChartInstance = objChartInstance || null;
+var currentObjView = currentObjView || 'MONTH'; 
+var drillMonth = drillMonth || null;        
+var objTableMode = objTableMode || 'ENTITY'; // 'ENTITY', 'PERIOD', 'ORG'
+var detailOrgData = null; // null = pas encore chargé
+var isOrgDataLoading = false; // Verrou pour éviter double appel
 
-// --- 1. IMPORTATION (Déjà gérée par le backend, ici pour rappel interface) ---
+// --- 1. IMPORTATION ---
 window.triggerObjRealImport = function() {
-    if(!confirm("Lancer l'importation des objectifs ?")) return;
+    if(!confirm("Lancer l'importation complète (Objectifs + Détails Organismes) ?")) return;
     const btn = document.querySelector('button[onclick="triggerObjRealImport()"]');
     const txt = btn.innerHTML;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ...';
     btn.disabled = true;
+    
     google.script.run
-        .withSuccessHandler(res => { alert(res); btn.innerHTML = txt; btn.disabled = false; loadRecouvData(); })
-        .withFailureHandler(err => { alert("Erreur: "+err.message); btn.innerHTML = txt; btn.disabled = false; })
-        .importObjRealData();
+        .withSuccessHandler(function(res1) {
+            // Une fois l'import terminé, on recharge la page ou les données
+            alert(res1);
+            btn.innerHTML = txt;
+            btn.disabled = false;
+            // On force le rechargement des données locales
+            if(typeof loadRecouvData === 'function') loadRecouvData();
+            // On reset le cache organisme pour forcer un re-fetch si on clique dessus
+            detailOrgData = null;
+        })
+        .withFailureHandler(function(err) { 
+            alert("Erreur: "+err.message); 
+            btn.innerHTML = txt; 
+            btn.disabled = false; 
+        })
+        .importDetailsOrganisme(); // On appelle la nouvelle fonction qui gère tout
 };
 
-// --- 2. UPDATE DASHBOARD ---
-window.updateObjRealDashboard = function() {
-    // 1. Récupération Filtres
-    const fEnt = document.getElementById('recouvFilterEntite').value;
-    // On force l'année en string pour la comparaison
-    const fAn = document.getElementById('recouvFilterAnnee').value; 
-    const fMois = document.getElementById('recouvFilterMois').value;
-    const fSub = document.getElementById('recouvFilterSubEntity') ? document.getElementById('recouvFilterSubEntity').value : "";
+// --- 2. TRAITEMENT LISSAGE ---
+function distributeMonthlyGoals(data) {
+    const groups = {};
+    data.forEach(function(d) {
+        const key = d.famille + '|' + d.entite + '|' + d.annee + '|' + d.mois;
+        if (!groups[key]) groups[key] = { meta: d, days: {} };
+        if (!groups[key].days[d.jour]) groups[key].days[d.jour] = Object.assign({}, d);
+        else { groups[key].days[d.jour].objectif += d.objectif; groups[key].days[d.jour].realisation += d.realisation; }
+    });
+
+    let processedData = [];
+    Object.keys(groups).forEach(function(k) {
+        const group = groups[k];
+        const daysMap = group.days;
+        const d1 = daysMap[1];
+        let monthlyObj = (d1 && d1.objectif > 0) ? d1.objectif : 0;
+        
+        if (monthlyObj > 0) {
+            const monthIndex = REC_MONTHS.indexOf(group.meta.mois); 
+            const year = parseInt(group.meta.annee);
+            const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+            let workingDaysCount = 0;
+            for (let j = 1; j <= daysInMonth; j++) {
+                const d = new Date(year, monthIndex, j).getDay();
+                if (d !== 0 && d !== 6) workingDaysCount++;
+            }
+            const dailyObj = workingDaysCount > 0 ? (monthlyObj / workingDaysCount) : 0;
+            for (let j = 1; j <= daysInMonth; j++) {
+                const d = new Date(year, monthIndex, j).getDay();
+                let calcObj = (d === 0 || d === 6) ? 0 : dailyObj;
+                if (daysMap[j]) {
+                    const newItem = Object.assign({}, daysMap[j]);
+                    newItem.objectif = calcObj;
+                    processedData.push(newItem);
+                } else {
+                    processedData.push({ famille: group.meta.famille, entite: group.meta.entite, annee: group.meta.annee, mois: group.meta.mois, jour: j, objectif: calcObj, realisation: 0 });
+                }
+            }
+        } else {
+            Object.keys(daysMap).forEach(function(dk) { processedData.push(daysMap[dk]); });
+        }
+    });
+    return processedData;
+}
+
+// --- 3. CHARGEMENT DONNÉES ORGANISME ---
+window.loadDetailOrgData = function() {
+    if (isOrgDataLoading) return; // Déjà en cours
+    isOrgDataLoading = true;
+
+    // Détermine le type selon la famille active dans l'interface
+    let type = (typeof currentFamily !== 'undefined' && currentFamily.includes('Expédition')) ? 'EXP' : 'REC';
     
-    // 2. Détermination de la famille cible (Recouvrement ou Expédition)
-    // currentFamily est défini dans js_recouvrement_core.html
+    // Affichage loading temporaire dans le tableau
+    const tbody = document.querySelector('#tableObjPerf tbody');
+    if(tbody) tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:20px;"><i class="fas fa-spinner fa-spin"></i> Chargement des détails...</td></tr>';
+
+    google.script.run
+        .withSuccessHandler(function(data) {
+            detailOrgData = [];
+            if(data && data.length > 1) {
+                for(let i=1; i<data.length; i++){
+                    let d = data[i];
+                    let dateObj = new Date(d[1]);
+                    detailOrgData.push({
+                        entite: d[0],
+                        date: dateObj,
+                        mois: REC_MONTHS[dateObj.getMonth()],
+                        annee: dateObj.getFullYear(),
+                        organisme: d[2],
+                        montant: Number(d[3]||0)
+                    });
+                }
+            }
+            isOrgDataLoading = false;
+            // Si on est toujours sur l'onglet ORG, on met à jour l'affichage
+            if(objTableMode === 'ORG') updateObjRealDashboard();
+        })
+        .withFailureHandler(function(err) {
+            console.error(err);
+            isOrgDataLoading = false;
+            detailOrgData = []; // Vide pour éviter boucle
+            if(objTableMode === 'ORG') updateObjRealDashboard();
+        })
+        .getDetailsOrganismeData(type);
+};
+
+// --- 4. MISE À JOUR DASHBOARD ---
+window.updateObjRealDashboard = function() {
+    // Gestion du chargement différé pour le mode ORGANISME
+    if(objTableMode === 'ORG') {
+        if (detailOrgData === null) {
+            loadDetailOrgData();
+            return; // On attend le callback
+        }
+    }
+
+    const fEnt = document.getElementById('recouvFilterEntite') ? document.getElementById('recouvFilterEntite').value : "";
+    const fAn = document.getElementById('recouvFilterAnnee') ? document.getElementById('recouvFilterAnnee').value : ""; 
+    const fMois = document.getElementById('recouvFilterMois') ? document.getElementById('recouvFilterMois').value : "";
+    
     let targetFamily = (typeof currentFamily !== 'undefined') ? currentFamily : "Recouvrement";
     
-    // 3. Filtrage Données
-    let filtered = objRealData.filter(d => {
-        // A. Filtre Famille (Ex: ne garder que les lignes "Recouvrement" si on est dans l'onglet Recouvrement)
-        // On normalise en majuscules pour éviter les erreurs de saisie (recouvrement vs RECOUVREMENT)
+    // --- FILTRAGE PRINCIPAL (OBJ VS REAL) ---
+    if (!objRealData) return;
+    let filtered = objRealData.filter(function(d) {
         if (!d.famille.toUpperCase().includes(targetFamily.toUpperCase())) return false;
-
-        // B. Filtre Entité
-        if (fEnt === "HIA CIOA") {
-            // Si filtre global est HIA CIOA, on garde HIA et CIOA
-            if (d.entite !== "HIA" && d.entite !== "CIOA") return false;
-            // Si sous-filtre activé
-            if (fSub && d.entite !== fSub) return false;
-        } else if (fEnt && d.entite !== fEnt) {
-            // Si une entité spécifique est sélectionnée (ex: CID)
-            return false;
-        }
-
-        // C. Filtre Année (Comparaison String vs String)
+        if (fEnt && fEnt !== "HIA CIOA" && d.entite !== fEnt) return false;
+        if (fEnt === "HIA CIOA" && d.entite !== "HIA" && d.entite !== "CIOA") return false;
         if (fAn && String(d.annee) !== String(fAn)) return false;
-
         return true;
     });
 
-    // ... (Le reste de la fonction Gestion du Drill-down, Calcul KPI, etc. reste inchangé)
-    
-    // DEBUG : Si vous avez toujours 0, décommentez la ligne ci-dessous pour voir ce qui se passe dans la console (F12)
-    // console.log("Données filtrées :", filtered, "TargetFamily:", targetFamily, "Filtre Entité:", fEnt);
+    filtered = distributeMonthlyGoals(filtered);
 
+    // Vue Temporelle
+    const btnBack = document.getElementById('btnBackToMonth');
     if (fMois) {
-        currentObjView = 'DAY';
-        drillMonth = fMois;
-        document.getElementById('btnBackToMonth').style.display = 'none';
+        currentObjView = 'DAY'; drillMonth = fMois;
+        if(btnBack) btnBack.style.display = 'none';
     } else if (currentObjView === 'DAY' && drillMonth) {
-        document.getElementById('btnBackToMonth').style.display = 'flex';
+        if(btnBack) btnBack.style.display = 'flex';
     } else {
         currentObjView = 'MONTH';
-        document.getElementById('btnBackToMonth').style.display = 'none';
+        if(btnBack) btnBack.style.display = 'none';
     }
 
     if (currentObjView === 'DAY' && drillMonth) {
-        filtered = filtered.filter(d => d.mois === drillMonth);
+        filtered = filtered.filter(function(d) { return d.mois === drillMonth; });
     }
 
-    calculateObjKPIs(filtered, fMois);
-    renderObjChart(filtered);
-    renderObjTable(filtered);
+    // Calcul KPIs (toujours basé sur Obj vs Real)
+    calculateObjKPIs(filtered);
+
+    // --- RENDU SELON MODE ---
+    if (objTableMode === 'ORG') {
+        // Filtrage spécifique pour les données Organisme
+        let orgFiltered = (detailOrgData || []).filter(function(d) {
+            if (fEnt && fEnt !== "HIA CIOA" && d.entite !== fEnt) return false;
+            if (fEnt === "HIA CIOA" && d.entite !== "HIA" && d.entite !== "CIOA") return false;
+            if (fAn && String(d.annee) !== String(fAn)) return false;
+            if (drillMonth && d.mois !== drillMonth) return false; // Filtre mois si actif
+            return true;
+        });
+        
+        renderOrgChart(orgFiltered);
+        renderObjTable(orgFiltered); 
+    } else {
+        renderObjChart(filtered); 
+        renderObjTable(filtered); 
+    }
 };
 
-// --- 3. CALCUL KPIs ---
-function calculateObjKPIs(data, fMois) {
-    const totObj = data.reduce((s,d) => s + (d.objectif||0), 0);
-    const totReal = data.reduce((s,d) => s + (d.realisation||0), 0);
+// --- 5. KPIs ---
+function calculateObjKPIs(data) {
+    const totObj = data.reduce(function(s,d) { return s + (d.objectif||0); }, 0);
+    const totReal = data.reduce(function(s,d) { return s + (d.realisation||0); }, 0);
     const rate = totObj > 0 ? (totReal / totObj * 100) : 0;
-    const gap = totReal - totObj;
-
-    // Mise à jour DOM
+    
     safeSetText('kpiObjVal', formatMoney(totObj));
     safeSetText('kpiRealVal', formatMoney(totReal));
-    
-    const elGap = document.getElementById('kpiRealGap');
-    if (gap >= 0) { elGap.textContent = "+" + formatMoney(gap); elGap.style.color = "#10B981"; }
-    else { elGap.textContent = formatMoney(gap); elGap.style.color = "#EF4444"; }
-
     safeSetText('kpiRateVal', rate.toFixed(1) + "%");
-    const bar = document.getElementById('kpiRateBar');
-    bar.style.width = Math.min(rate, 100) + "%";
-    bar.style.backgroundColor = rate >= 100 ? "#10B981" : (rate >= 80 ? "#F59E0B" : "#EF4444");
-
-    // PROJECTION (Règle de 3 sur le temps écoulé)
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    const currentMonth = REC_MONTHS[today.getMonth()];
     
-    let projection = 0;
-    let projLabel = "Non disponible";
-
-    // On projette seulement si on regarde le mois en cours ou l'année en cours
-    const viewingCurrentPeriod = (currentObjView==='DAY' && drillMonth===currentMonth) || 
-                                 (currentObjView==='MONTH' && document.getElementById('recouvFilterAnnee').value == currentYear);
-
-    if (viewingCurrentPeriod && totReal > 0) {
-        let daysPassed = today.getDate();
-        let totalDays = new Date(currentYear, today.getMonth()+1, 0).getDate();
-        
-        if (currentObjView === 'MONTH') {
-            // Projection Annuelle approximative
-            let monthIndex = today.getMonth() + 1; // 1 à 12
-            projection = (totReal / monthIndex) * 12;
-            projLabel = "Projection Annuelle (Linéaire)";
-        } else {
-            // Projection Mensuelle
-            projection = (totReal / daysPassed) * totalDays;
-            projLabel = "Projection Fin de Mois";
-        }
-    } else {
-        projection = totReal; // Si période passée, projection = réalisé
-        projLabel = "Période Clôturée";
+    const bar = document.getElementById('kpiRateBar');
+    if(bar) { bar.style.width = Math.min(rate, 100) + "%"; bar.style.backgroundColor = rate>=100?"#10B981":rate>=80?"#F59E0B":"#EF4444"; }
+    
+    let projection = totReal;
+    const today = new Date();
+    const fAn = document.getElementById('recouvFilterAnnee') ? document.getElementById('recouvFilterAnnee').value : "";
+    if (String(fAn) === String(today.getFullYear())) {
+        const dayOfYear = (Date.now() - new Date(today.getFullYear(), 0, 0)) / 86400000;
+        if(dayOfYear>0) projection = (totReal/dayOfYear)*365;
     }
-
     safeSetText('kpiProjVal', formatMoney(projection));
-    safeSetText('kpiProjSub', projLabel);
 }
 
-// --- 4. GRAPHIQUE ---
+// --- 6. GRAPHIQUE STANDARD (OBJ vs REAL) ---
 function renderObjChart(data) {
-    const ctx = document.getElementById('chartObjMain').getContext('2d');
+    const ctx = document.getElementById('chartObjMain');
+    if(!ctx) return;
     if (objChartInstance) objChartInstance.destroy();
 
-    let labels = [], dObj = [], dReal = [];
     const titleEl = document.getElementById('chartObjTitle');
+    let labels=[], dObj=[], dReal=[];
+    const agg={};
+    const fmtCompact = function(v) { return v>=1000000?(v/1000000).toFixed(1).replace('.',',')+'M':v>=1000?(v/1000).toFixed(0)+'K':Math.round(v); };
 
     if (currentObjView === 'MONTH') {
-        titleEl.textContent = "Évolution Mensuelle";
-        // Agrégation par Mois
-        const agg = {};
-        REC_MONTHS.forEach(m => agg[m] = {o:0, r:0});
-        data.forEach(d => {
-            if(agg[d.mois]) { agg[d.mois].o += d.objectif; agg[d.mois].r += d.realisation; }
-        });
-        labels = REC_MONTHS;
-        dObj = labels.map(m => agg[m].o);
-        dReal = labels.map(m => agg[m].r);
-    } else {
-        titleEl.textContent = `Détail Quotidien : ${drillMonth}`;
-        // Agrégation par Jour (1 à 31)
-        const daysInMonth = 31; // Simplification
-        const agg = new Array(daysInMonth + 1).fill(0).map(() => ({o:0, r:0}));
-        data.forEach(d => {
-            if (d.jour >= 1 && d.jour <= 31) {
-                agg[d.jour].o += d.objectif;
-                agg[d.jour].r += d.realisation;
+        if(titleEl) titleEl.textContent = "Évolution Mensuelle";
+        REC_MONTHS.forEach(function(m){ agg[m]={o:0,r:0}; });
+        data.forEach(function(d){ if(agg[d.mois]){ agg[d.mois].o+=d.objectif; agg[d.mois].r+=d.realisation; } });
+        labels=REC_MONTHS;
+        dObj=labels.map(function(l){return agg[l].o;});
+        dReal=labels.map(function(l){return agg[l].r;});
+        const dRate=dObj.map(function(o,i){return o>0?(dReal[i]/o*100):0;});
+
+        objChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label:'Objectif', data:dObj, backgroundColor:'#CBD5E1', borderRadius:4, order:2, datalabels:{display:true, anchor:'end', align:'top', offset:-4, color:'#64748B', font:{size:9, weight:'bold'}, formatter:function(v){return v>0?fmtCompact(v):""}} },
+                    { label:'Réalisé', data:dReal, backgroundColor:'#0EA5E9', borderRadius:4, order:1, datalabels:{display:true, anchor:'end', align:'top', offset:-4, color:'#0F172A', font:{size:9, weight:'bold'}, formatter:function(v){return v>0?fmtCompact(v):""}} },
+                    { label:'Taux (%)', data:dRate, type:'line', yAxisID:'y1', borderColor:'#F59E0B', backgroundColor:'#F59E0B', borderWidth:2, pointRadius:3, order:0, datalabels:{display:true, align:'top', color:'#F59E0B', backgroundColor:'rgba(255,255,255,0.8)', borderRadius:3, font:{size:10, weight:'bold'}, formatter:function(v){return v>0?Math.round(v)+'%':''}} }
+                ]
+            },
+            options: {
+                responsive:true, maintainAspectRatio:false, layout:{padding:{top:20}},
+                plugins:{ legend:{position:'top', align:'end', labels:{usePointStyle:true, boxWidth:8}}, datalabels:{display:false} },
+                scales:{
+                    y:{grid:{display:false}, ticks:{callback:fmtCompact, font:{size:10}}, border:{display:false}},
+                    y1:{position:'right', beginAtZero:true, grid:{display:false}, ticks:{callback:function(v){return v+'%'}, color:'#F59E0B'}, border:{display:false}},
+                    x:{grid:{display:false}, border:{display:false}}
+                },
+                onClick: function(e, els){ if(els.length>0 && currentObjView==='MONTH'){ drillMonth=REC_MONTHS[els[0].index]; currentObjView='DAY'; updateObjRealDashboard(); } }
             }
         });
-        labels = Array.from({length: daysInMonth}, (_, i) => i + 1);
-        dObj = labels.map(j => agg[j].o);
-        dReal = labels.map(j => agg[j].r);
+
+    } else {
+        if(titleEl) titleEl.textContent = "Détail Quotidien : " + drillMonth;
+        for(let i=1; i<=31; i++) agg[i]={o:0,r:0};
+        data.forEach(function(d){ if(agg[d.jour]){ agg[d.jour].o+=d.objectif; agg[d.jour].r+=d.realisation; } });
+        // Masquer jours sans objectif (WE)
+        labels=Object.keys(agg).filter(function(k){ return agg[k].o > 0; });
+        dObj=labels.map(function(l){return agg[l].o;});
+        dReal=labels.map(function(l){return agg[l].r;});
+
+        objChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label:'Objectif', data:dObj, type:'line', borderColor:'#F59E0B', borderWidth:2, pointRadius:0, borderDash:[5,5], tension:0, order:0, datalabels:{display:false} },
+                    { label:'Réalisé', data:dReal, backgroundColor:'#0EA5E9', borderRadius:4, order:1, datalabels:{display:true, anchor:'end', align:'top', offset:-4, color:'#0F172A', font:{size:10, weight:'bold'}, formatter:function(v){return v>0?fmtCompact(v):""}} }
+                ]
+            },
+            options: {
+                responsive:true, maintainAspectRatio:false, layout:{padding:{top:20}},
+                plugins:{ legend:{position:'top', align:'end'}, datalabels:{display:false} },
+                scales:{ y:{grid:{display:false}, ticks:{callback:fmtCompact}, border:{display:false}}, x:{grid:{display:false}, border:{display:false}} }
+            }
+        });
+    }
+}
+
+// --- 7. GRAPHIQUE PAR ORGANISME (BARRES HORIZONTALES) ---
+function renderOrgChart(data) {
+    const ctx = document.getElementById('chartObjMain');
+    if(!ctx) return;
+    if (objChartInstance) objChartInstance.destroy();
+
+    const titleEl = document.getElementById('chartObjTitle');
+    if(titleEl) titleEl.textContent = "Répartition par Organisme (Top 10)";
+
+    // Si pas de données, on affiche un message vide (graphique vide)
+    if (!data || data.length === 0) {
+        objChartInstance = new Chart(ctx, { type: 'bar', data: {labels:[], datasets:[]}, options: {plugins:{title:{display:true, text:"Aucune donnée disponible"}}} });
+        return;
     }
 
-    // Couleurs RH
-    const colObj = '#94A3B8'; // Gris pour l'objectif
-    const colReal = ctx.createLinearGradient(0,0,0,400); // Dégradé bleu/violet
-    colReal.addColorStop(0, '#2E90FA'); colReal.addColorStop(1, '#6366F1');
+    const agg = {};
+    data.forEach(function(d) {
+        let org = d.organisme || "Inconnu";
+        agg[org] = (agg[org] || 0) + d.montant;
+    });
+
+    // Top 10
+    const sorted = Object.entries(agg).sort(function(a,b){return b[1]-a[1]}).slice(0, 10);
+    const labels = sorted.map(function(x){return x[0]});
+    const values = sorted.map(function(x){return x[1]});
+
+    const fmtCompact = function(v) { return v>=1000000?(v/1000000).toFixed(1).replace('.',',')+'M':v>=1000?(v/1000).toFixed(0)+'K':Math.round(v); };
 
     objChartInstance = new Chart(ctx, {
         type: 'bar',
         data: {
             labels: labels,
-            datasets: [
-                {
-                    label: 'Objectif', data: dObj,
-                    type: 'line', borderColor: '#F59E0B', borderWidth: 2, pointRadius: 0,
-                    borderDash: [5, 5], order: 0
-                },
-                {
-                    label: 'Réalisé', data: dReal,
-                    backgroundColor: colReal, borderRadius: 4, order: 1
-                }
-            ]
+            datasets: [{
+                label: 'Réalisé',
+                data: values,
+                backgroundColor: '#8B5CF6',
+                borderRadius: 4,
+                barPercentage: 0.6,
+                datalabels: { display:true, anchor:'end', align:'right', offset:4, color:'#4B5563', font:{weight:'bold', size:10}, formatter: fmtCompact }
+            }]
         },
         options: {
+            indexAxis: 'y',
             responsive: true, maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
-            plugins: {
-                legend: { position: 'top', labels: { usePointStyle: true } },
-                tooltip: {
-                    callbacks: {
-                        label: (ctx) => `${ctx.dataset.label}: ${formatMoney(ctx.raw)}`
-                    }
-                }
-            },
+            layout: { padding: { right: 40 } },
+            plugins: { legend: {display:false}, datalabels: {display:true} },
             scales: {
-                y: { beginAtZero: true, grid: { borderDash: [2,2] }, ticks: { callback: v => v/1000 + 'k' } },
-                x: { grid: { display: false } }
-            },
-            onClick: (e, els) => {
-                if (currentObjView === 'MONTH' && els.length > 0) {
-                    const idx = els[0].index;
-                    drillMonth = REC_MONTHS[idx];
-                    currentObjView = 'DAY';
-                    updateObjRealDashboard(); // Redessine
-                }
+                x: { grid:{display:false}, border:{display:false}, ticks:{display:false} },
+                y: { grid:{display:false}, border:{display:false}, ticks:{font:{size:10, weight:'600'}, color:'#374151'} }
             }
         }
     });
 }
 
-// --- 5. TABLEAU ENTITÉS ---
+// --- 8. TABLEAU ET MODES ---
+window.setObjTableMode = function(mode) {
+    objTableMode = mode;
+    // Mise à jour visuelle des boutons
+    const btns = ['btnTblEnt', 'btnTblPer', 'btnTblOrg'];
+    btns.forEach(function(bId) {
+        const el = document.getElementById(bId);
+        if(el) {
+            // Mapping simple: btnTblEnt->ENTITY, btnTblPer->PERIOD, btnTblOrg->ORG
+            let targetMode = bId === 'btnTblEnt' ? 'ENTITY' : (bId === 'btnTblPer' ? 'PERIOD' : 'ORG');
+            if (targetMode === mode) el.classList.add('active');
+            else el.classList.remove('active');
+        }
+    });
+    
+    // Si on bascule sur ORG et qu'on a changé de famille entre temps, on force le reload
+    if (mode === 'ORG') {
+        detailOrgData = null; 
+    }
+    
+    updateObjRealDashboard();
+};
+
 function renderObjTable(data) {
     const tbody = document.querySelector('#tableObjPerf tbody');
+    const thead = document.querySelector('#tableObjPerf thead');
+    if(!tbody || !thead) return;
+
     tbody.innerHTML = '';
 
-    // Agrégation par Entité
-    const agg = {};
-    data.forEach(d => {
-        if(!agg[d.entite]) agg[d.entite] = {o:0, r:0};
-        agg[d.entite].o += d.objectif;
-        agg[d.entite].r += d.realisation;
-    });
-
-    const sorted = Object.entries(agg).sort((a,b) => (b[1].r/b[1].o) - (a[1].r/a[1].o)); // Tri par taux
-
-    sorted.forEach(([ent, val]) => {
-        const rate = val.o > 0 ? (val.r / val.o * 100) : 0;
-        let badgeClass = rate >= 100 ? 'good' : (rate >= 80 ? 'mid' : 'bad');
+    if (objTableMode === 'ORG') {
+        // --- MODE ORGANISME ---
+        thead.innerHTML = '<tr><th style="text-align:left;">Organisme</th><th style="text-align:right;">Réalisé</th><th style="text-align:center;">% Total</th></tr>';
         
-        const row = `
-            <tr>
-                <td style="font-weight:700; color:#334155;">${ent}</td>
-                <td style="text-align:right; color:#64748B;">${formatMoney(val.o)}</td>
-                <td style="text-align:right; color:#0F172A; font-weight:700;">${formatMoney(val.r)}</td>
-                <td style="text-align:center;">
-                    <span class="badge-perf ${badgeClass}">${rate.toFixed(0)}%</span>
-                </td>
-            </tr>
-        `;
-        tbody.insertAdjacentHTML('beforeend', row);
-    });
-}
-
-// --- UTILS ---
-function resetObjZoom() {
-    currentObjView = 'MONTH';
-    drillMonth = null;
-    updateObjRealDashboard();
-}
-
-function normalizeTxt(s) {
-    return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-}
-</script><script>
-/**
- * MODULE : RECOUVREMENT & EXPEDITION - OBJECTIFS VS RÉALISATIONS
- * Fonctionnalités : Drill-down, Projection, Comparaison Entités
- */
-
-let objChartInstance = null;
-let currentObjView = 'MONTH'; // 'MONTH' (vue annuelle par mois) ou 'DAY' (vue mensuelle par jour)
-let drillMonth = null;        // Mois sélectionné pour le détail jour
-
-// --- 1. IMPORTATION (Déjà gérée par le backend, ici pour rappel interface) ---
-window.triggerObjRealImport = function() {
-    if(!confirm("Lancer l'importation des objectifs ?")) return;
-    const btn = document.querySelector('button[onclick="triggerObjRealImport()"]');
-    const txt = btn.innerHTML;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ...';
-    btn.disabled = true;
-    google.script.run
-        .withSuccessHandler(res => { alert(res); btn.innerHTML = txt; btn.disabled = false; loadRecouvData(); })
-        .withFailureHandler(err => { alert("Erreur: "+err.message); btn.innerHTML = txt; btn.disabled = false; })
-        .importObjRealData();
-};
-
-// --- 2. UPDATE DASHBOARD ---
-window.updateObjRealDashboard = function() {
-    // 1. Récupération Filtres
-    const fEnt = document.getElementById('recouvFilterEntite').value;
-    // On force l'année en string pour la comparaison
-    const fAn = document.getElementById('recouvFilterAnnee').value; 
-    const fMois = document.getElementById('recouvFilterMois').value;
-    const fSub = document.getElementById('recouvFilterSubEntity') ? document.getElementById('recouvFilterSubEntity').value : "";
-    
-    // 2. Détermination de la famille cible (Recouvrement ou Expédition)
-    // currentFamily est défini dans js_recouvrement_core.html
-    let targetFamily = (typeof currentFamily !== 'undefined') ? currentFamily : "Recouvrement";
-    
-    // 3. Filtrage Données
-    let filtered = objRealData.filter(d => {
-        // A. Filtre Famille (Ex: ne garder que les lignes "Recouvrement" si on est dans l'onglet Recouvrement)
-        // On normalise en majuscules pour éviter les erreurs de saisie (recouvrement vs RECOUVREMENT)
-        if (!d.famille.toUpperCase().includes(targetFamily.toUpperCase())) return false;
-
-        // B. Filtre Entité
-        if (fEnt === "HIA CIOA") {
-            // Si filtre global est HIA CIOA, on garde HIA et CIOA
-            if (d.entite !== "HIA" && d.entite !== "CIOA") return false;
-            // Si sous-filtre activé
-            if (fSub && d.entite !== fSub) return false;
-        } else if (fEnt && d.entite !== fEnt) {
-            // Si une entité spécifique est sélectionnée (ex: CID)
-            return false;
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#888;">Aucune donnée</td></tr>';
+            return;
         }
 
-        // C. Filtre Année (Comparaison String vs String)
-        if (fAn && String(d.annee) !== String(fAn)) return false;
-
-        return true;
-    });
-
-    // ... (Le reste de la fonction Gestion du Drill-down, Calcul KPI, etc. reste inchangé)
-    
-    // DEBUG : Si vous avez toujours 0, décommentez la ligne ci-dessous pour voir ce qui se passe dans la console (F12)
-    // console.log("Données filtrées :", filtered, "TargetFamily:", targetFamily, "Filtre Entité:", fEnt);
-
-    if (fMois) {
-        currentObjView = 'DAY';
-        drillMonth = fMois;
-        document.getElementById('btnBackToMonth').style.display = 'none';
-    } else if (currentObjView === 'DAY' && drillMonth) {
-        document.getElementById('btnBackToMonth').style.display = 'flex';
-    } else {
-        currentObjView = 'MONTH';
-        document.getElementById('btnBackToMonth').style.display = 'none';
-    }
-
-    if (currentObjView === 'DAY' && drillMonth) {
-        filtered = filtered.filter(d => d.mois === drillMonth);
-    }
-
-    calculateObjKPIs(filtered, fMois);
-    renderObjChart(filtered);
-    renderObjTable(filtered);
-};
-
-// --- 3. CALCUL KPIs ---
-function calculateObjKPIs(data, fMois) {
-    const totObj = data.reduce((s,d) => s + (d.objectif||0), 0);
-    const totReal = data.reduce((s,d) => s + (d.realisation||0), 0);
-    const rate = totObj > 0 ? (totReal / totObj * 100) : 0;
-    const gap = totReal - totObj;
-
-    // Mise à jour DOM
-    safeSetText('kpiObjVal', formatMoney(totObj));
-    safeSetText('kpiRealVal', formatMoney(totReal));
-    
-    const elGap = document.getElementById('kpiRealGap');
-    if (gap >= 0) { elGap.textContent = "+" + formatMoney(gap); elGap.style.color = "#10B981"; }
-    else { elGap.textContent = formatMoney(gap); elGap.style.color = "#EF4444"; }
-
-    safeSetText('kpiRateVal', rate.toFixed(1) + "%");
-    const bar = document.getElementById('kpiRateBar');
-    bar.style.width = Math.min(rate, 100) + "%";
-    bar.style.backgroundColor = rate >= 100 ? "#10B981" : (rate >= 80 ? "#F59E0B" : "#EF4444");
-
-    // PROJECTION (Règle de 3 sur le temps écoulé)
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    const currentMonth = REC_MONTHS[today.getMonth()];
-    
-    let projection = 0;
-    let projLabel = "Non disponible";
-
-    // On projette seulement si on regarde le mois en cours ou l'année en cours
-    const viewingCurrentPeriod = (currentObjView==='DAY' && drillMonth===currentMonth) || 
-                                 (currentObjView==='MONTH' && document.getElementById('recouvFilterAnnee').value == currentYear);
-
-    if (viewingCurrentPeriod && totReal > 0) {
-        let daysPassed = today.getDate();
-        let totalDays = new Date(currentYear, today.getMonth()+1, 0).getDate();
-        
-        if (currentObjView === 'MONTH') {
-            // Projection Annuelle approximative
-            let monthIndex = today.getMonth() + 1; // 1 à 12
-            projection = (totReal / monthIndex) * 12;
-            projLabel = "Projection Annuelle (Linéaire)";
-        } else {
-            // Projection Mensuelle
-            projection = (totReal / daysPassed) * totalDays;
-            projLabel = "Projection Fin de Mois";
-        }
-    } else {
-        projection = totReal; // Si période passée, projection = réalisé
-        projLabel = "Période Clôturée";
-    }
-
-    safeSetText('kpiProjVal', formatMoney(projection));
-    safeSetText('kpiProjSub', projLabel);
-}
-
-// --- 4. GRAPHIQUE ---
-function renderObjChart(data) {
-    const ctx = document.getElementById('chartObjMain').getContext('2d');
-    if (objChartInstance) objChartInstance.destroy();
-
-    let labels = [], dObj = [], dReal = [];
-    const titleEl = document.getElementById('chartObjTitle');
-
-    if (currentObjView === 'MONTH') {
-        titleEl.textContent = "Évolution Mensuelle";
-        // Agrégation par Mois
+        const total = data.reduce(function(s,d){return s+d.montant},0);
         const agg = {};
-        REC_MONTHS.forEach(m => agg[m] = {o:0, r:0});
-        data.forEach(d => {
-            if(agg[d.mois]) { agg[d.mois].o += d.objectif; agg[d.mois].r += d.realisation; }
+        data.forEach(function(d){ let o=d.organisme||"Inconnu"; agg[o]=(agg[o]||0)+d.montant; });
+        const sorted = Object.entries(agg).sort(function(a,b){return b[1]-a[1]});
+
+        sorted.forEach(function(item) {
+            const org = item[0];
+            const val = item[1];
+            const pct = total>0 ? (val/total*100) : 0;
+            tbody.insertAdjacentHTML('beforeend', '<tr><td style="font-weight:600; color:#334155;">'+org+'</td><td style="text-align:right; font-weight:700;">'+formatMoney(val)+'</td><td style="text-align:center;">'+pct.toFixed(1)+'%</td></tr>');
         });
-        labels = REC_MONTHS;
-        dObj = labels.map(m => agg[m].o);
-        dReal = labels.map(m => agg[m].r);
-    } else {
-        titleEl.textContent = `Détail Quotidien : ${drillMonth}`;
-        // Agrégation par Jour (1 à 31)
-        const daysInMonth = 31; // Simplification
-        const agg = new Array(daysInMonth + 1).fill(0).map(() => ({o:0, r:0}));
-        data.forEach(d => {
-            if (d.jour >= 1 && d.jour <= 31) {
-                agg[d.jour].o += d.objectif;
-                agg[d.jour].r += d.realisation;
-            }
-        });
-        labels = Array.from({length: daysInMonth}, (_, i) => i + 1);
-        dObj = labels.map(j => agg[j].o);
-        dReal = labels.map(j => agg[j].r);
-    }
 
-    // Couleurs RH
-    const colObj = '#94A3B8'; // Gris pour l'objectif
-    const colReal = ctx.createLinearGradient(0,0,0,400); // Dégradé bleu/violet
-    colReal.addColorStop(0, '#2E90FA'); colReal.addColorStop(1, '#6366F1');
-
-    objChartInstance = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [
-                {
-                    label: 'Objectif', data: dObj,
-                    type: 'line', borderColor: '#F59E0B', borderWidth: 2, pointRadius: 0,
-                    borderDash: [5, 5], order: 0
-                },
-                {
-                    label: 'Réalisé', data: dReal,
-                    backgroundColor: colReal, borderRadius: 4, order: 1
-                }
-            ]
-        },
-        options: {
-            responsive: true, maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
-            plugins: {
-                legend: { position: 'top', labels: { usePointStyle: true } },
-                tooltip: {
-                    callbacks: {
-                        label: (ctx) => `${ctx.dataset.label}: ${formatMoney(ctx.raw)}`
-                    }
-                }
-            },
-            scales: {
-                y: { beginAtZero: true, grid: { borderDash: [2,2] }, ticks: { callback: v => v/1000 + 'k' } },
-                x: { grid: { display: false } }
-            },
-            onClick: (e, els) => {
-                if (currentObjView === 'MONTH' && els.length > 0) {
-                    const idx = els[0].index;
-                    drillMonth = REC_MONTHS[idx];
-                    currentObjView = 'DAY';
-                    updateObjRealDashboard(); // Redessine
-                }
-            }
-        }
-    });
-}
-
-// --- 5. TABLEAU ENTITÉS ---
-function renderObjTable(data) {
-    const tbody = document.querySelector('#tableObjPerf tbody');
-    tbody.innerHTML = '';
-
-    // Agrégation par Entité
-    const agg = {};
-    data.forEach(d => {
-        if(!agg[d.entite]) agg[d.entite] = {o:0, r:0};
-        agg[d.entite].o += d.objectif;
-        agg[d.entite].r += d.realisation;
-    });
-
-    const sorted = Object.entries(agg).sort((a,b) => (b[1].r/b[1].o) - (a[1].r/a[1].o)); // Tri par taux
-
-    sorted.forEach(([ent, val]) => {
-        const rate = val.o > 0 ? (val.r / val.o * 100) : 0;
-        let badgeClass = rate >= 100 ? 'good' : (rate >= 80 ? 'mid' : 'bad');
+    } else if (objTableMode === 'ENTITY') {
+        // --- MODE ENTITÉ ---
+        thead.innerHTML = '<tr><th style="text-align:left;">Entité</th><th style="text-align:right;">Objectif</th><th style="text-align:right;">Réalisé</th><th style="text-align:center;">%</th></tr>';
+        const agg = {};
+        data.forEach(function(d){ if(!agg[d.entite]) agg[d.entite]={o:0,r:0}; agg[d.entite].o+=d.objectif; agg[d.entite].r+=d.realisation; });
+        const sorted = Object.entries(agg).sort(function(a,b){return (b[1].r/b[1].o||0)-(a[1].r/a[1].o||0)});
         
-        const row = `
-            <tr>
-                <td style="font-weight:700; color:#334155;">${ent}</td>
-                <td style="text-align:right; color:#64748B;">${formatMoney(val.o)}</td>
-                <td style="text-align:right; color:#0F172A; font-weight:700;">${formatMoney(val.r)}</td>
-                <td style="text-align:center;">
-                    <span class="badge-perf ${badgeClass}">${rate.toFixed(0)}%</span>
-                </td>
-            </tr>
-        `;
-        tbody.insertAdjacentHTML('beforeend', row);
-    });
+        sorted.forEach(function(item) {
+            const ent=item[0], val=item[1];
+            const rate = val.o>0 ? (val.r/val.o*100) : 0;
+            let badge = rate>=100?'good':rate>=80?'mid':'bad';
+            tbody.insertAdjacentHTML('beforeend', '<tr><td style="font-weight:600;">'+ent+'</td><td style="text-align:right;color:#94a3b8;">'+formatMoney(val.o)+'</td><td style="text-align:right;font-weight:700;">'+formatMoney(val.r)+'</td><td style="text-align:center;"><span class="badge-perf '+badge+'">'+rate.toFixed(0)+'%</span></td></tr>');
+        });
+    } else {
+        // --- MODE COMPARATIF ---
+        thead.innerHTML = '<tr><th style="text-align:left;">Période</th><th style="text-align:right;">Réalisé</th><th style="text-align:center;">% Obj.</th><th style="text-align:center;"></th></tr>';
+        const agg={};
+        data.forEach(function(d){ let k=(currentObjView==='MONTH')?d.mois:('Jour '+d.jour); if(!agg[k])agg[k]={o:0,r:0}; agg[k].o+=d.objectif; agg[k].r+=d.realisation; });
+        const periods = Object.entries(agg).map(function(x){return{key:x[0],o:x[1].o,r:x[1].r,rate:x[1].o>0?x[1].r/x[1].o*100:0}}).sort(function(a,b){return b.rate-a.rate});
+        
+        let displayList = periods.length>8 ? periods.slice(0,3).concat([{sep:true}]).concat(periods.slice(-3)) : periods;
+        displayList.forEach(function(p){
+            if(p.sep){ tbody.insertAdjacentHTML('beforeend', '<tr><td colspan="4" style="text-align:center;">...</td></tr>'); return; }
+            let icon = p.rate>=100?'<i class="fas fa-arrow-up" style="color:#10B981"></i>':'<i class="fas fa-minus" style="color:#F59E0B"></i>';
+            let badge = p.rate>=100?'good':p.rate>=80?'mid':'bad';
+            tbody.insertAdjacentHTML('beforeend', '<tr><td style="font-weight:600;">'+p.key+'</td><td style="text-align:right;font-weight:700;">'+formatMoney(p.r)+'</td><td style="text-align:center;"><span class="badge-perf '+badge+'">'+p.rate.toFixed(0)+'%</span></td><td style="text-align:center;">'+icon+'</td></tr>');
+        });
+    }
 }
 
-// --- UTILS ---
-function resetObjZoom() {
-    currentObjView = 'MONTH';
-    drillMonth = null;
-    updateObjRealDashboard();
-}
-
-function normalizeTxt(s) {
-    return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-}
+function resetObjZoom() { currentObjView = 'MONTH'; drillMonth = null; updateObjRealDashboard(); }
+function safeSetText(id, val) { const el = document.getElementById(id); if(el) el.textContent = val; }
 </script>

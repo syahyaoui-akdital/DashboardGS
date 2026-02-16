@@ -233,7 +233,6 @@
                         <h4 id="tableMainTitle" style="margin:0; color:#c0392b; text-align:center;">TOP FACTURES</h4>
 
                         <div style="font-size:0.8em; display:flex; gap:10px; align-items:center;">
-                            
                             <div id="sortListContainer" style="display:flex; align-items:center; gap:5px; border-right:1px solid #ddd; padding-right:10px; margin-right:5px;">
                                 <span style="color:#666;">Trier par:</span>
                                 <select id="recouvSortSelect" onchange="updateRecouvSort(this.value)" style="padding:4px 8px; border-radius:15px; border:1px solid #ddd; font-size:0.9em; cursor:pointer; font-weight:600; color:#363795;">
@@ -271,147 +270,163 @@
                     <div id="viewBalanceContainer" style="flex:1; overflow-y:auto; height: 450px; display:none;">
                         <table id="tableBalanceAgee" style="width:100%; border-collapse:collapse; font-size:0.85em;">
                             <thead style="position:sticky; top:0; background:#fff; z-index:5;">
-                                </thead>
+                            </thead>
                             <tbody></tbody>
                         </table>
                     </div>
                 </div>
             </div>
 
-<div id="objRealDataContent" style="display:none;">
-    
-    <style>
-      /* Styles inspirés de la partie RH pour cohérence */
-      .obj-wrapper { display: flex; flex-direction: column; gap: 20px; font-family: 'Segoe UI', sans-serif; }
-      
-      /* KPI CARDS */
-      .obj-kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; }
-      .obj-card {
-        background: white; border-radius: 12px; padding: 15px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #e1e8f0;
-        position: relative; overflow: hidden;
-      }
-      .obj-card::after {
-        content: ""; position: absolute; right: -20px; top: -20px;
-        width: 80px; height: 80px; border-radius: 50%;
-        background: rgba(0,0,0,0.03);
-      }
-      .obj-card.blue { border-left: 4px solid #2E90FA; }
-      .obj-card.green { border-left: 4px solid #10B981; }
-      .obj-card.orange { border-left: 4px solid #F59E0B; }
-      .obj-card.purple { border-left: 4px solid #8B5CF6; }
+            <div id="objRealDataContent" style="display:none;">
+                <style>
+                  .obj-wrapper { display: flex; flex-direction: column; gap: 20px; font-family: 'Segoe UI', sans-serif; }
+                  .obj-kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; }
+                  .obj-card {
+                    background: white; border-radius: 12px; padding: 15px;
+                    box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #e1e8f0;
+                    position: relative; overflow: hidden;
+                  }
+                  .obj-card::after {
+                    content: ""; position: absolute; right: -20px; top: -20px;
+                    width: 80px; height: 80px; border-radius: 50%;
+                    background: rgba(0,0,0,0.03);
+                  }
+                  .obj-card.blue { border-left: 4px solid #2E90FA; }
+                  .obj-card.green { border-left: 4px solid #10B981; }
+                  .obj-card.orange { border-left: 4px solid #F59E0B; }
+                  .obj-card.purple { border-left: 4px solid #8B5CF6; }
 
-      .obj-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
-      .obj-lbl { font-size: 0.75em; font-weight: 800; text-transform: uppercase; color: #64748B; letter-spacing: 0.5px; }
-      .obj-val { font-size: 1.8em; font-weight: 800; color: #0F172A; }
-      .obj-sub { font-size: 0.8em; color: #94A3B8; font-weight: 600; margin-top: 5px; }
-      
-      /* PROGRESS BARS */
-      .prog-track { width: 100%; height: 6px; background: #f1f5f9; border-radius: 10px; margin-top: 10px; overflow: hidden; }
-      .prog-fill { height: 100%; border-radius: 10px; transition: width 0.5s ease; }
+                  .obj-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+                  .obj-lbl { font-size: 0.75em; font-weight: 800; text-transform: uppercase; color: #64748B; letter-spacing: 0.5px; }
+                  .obj-val { font-size: 1.8em; font-weight: 800; color: #0F172A; }
+                  .obj-sub { font-size: 0.8em; color: #94A3B8; font-weight: 600; margin-top: 5px; }
+                  
+                  .prog-track { width: 100%; height: 6px; background: #f1f5f9; border-radius: 10px; margin-top: 10px; overflow: hidden; }
+                  .prog-fill { height: 100%; border-radius: 10px; transition: width 0.5s ease; }
 
-      /* CHART & TABLE SECTION */
-      .obj-split { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; min-height: 400px; }
-      .obj-box { background: white; border-radius: 12px; padding: 20px; border: 1px solid #e1e8f0; box-shadow: 0 2px 10px rgba(0,0,0,0.03); }
-      .obj-title { font-weight: 800; color: #334155; text-transform: uppercase; font-size: 0.85em; margin-bottom: 15px; display:flex; justify-content:space-between; }
-      
-      /* TABLEAU PERFORMANCE */
-      .perf-table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
-      .perf-table th { text-align: left; color: #64748B; padding: 8px; border-bottom: 2px solid #eee; font-weight: 700; text-transform: uppercase; font-size: 0.8em; }
-      .perf-table td { padding: 10px 8px; border-bottom: 1px solid #f1f5f9; color: #333; font-weight: 600; }
-      .perf-table tr:last-child td { border-bottom: none; }
-      .badge-perf { padding: 3px 8px; border-radius: 12px; font-size: 0.85em; }
-      .badge-perf.good { background: #dcfce7; color: #166534; }
-      .badge-perf.bad { background: #fee2e2; color: #991b1b; }
-      .badge-perf.mid { background: #fef3c7; color: #92400e; }
+                  .obj-split { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; min-height: 400px; }
+                  .obj-box { background: white; border-radius: 12px; padding: 20px; border: 1px solid #e1e8f0; box-shadow: 0 2px 10px rgba(0,0,0,0.03); }
+                  .obj-title { font-weight: 800; color: #334155; text-transform: uppercase; font-size: 0.85em; margin-bottom: 15px; display:flex; justify-content:space-between; }
+                  
+                  .perf-table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+                  .perf-table th { text-align: left; color: #64748B; padding: 8px; border-bottom: 2px solid #eee; font-weight: 700; text-transform: uppercase; font-size: 0.8em; }
+                  .perf-table td { padding: 10px 8px; border-bottom: 1px solid #f1f5f9; color: #333; font-weight: 600; }
+                  .perf-table tr:last-child td { border-bottom: none; }
+                  .badge-perf { padding: 3px 8px; border-radius: 12px; font-size: 0.85em; }
+                  .badge-perf.good { background: #dcfce7; color: #166534; }
+                  .badge-perf.bad { background: #fee2e2; color: #991b1b; }
+                  .badge-perf.mid { background: #fef3c7; color: #92400e; }
 
-      .back-btn { cursor:pointer; font-size:0.8em; color:#363795; background:#eef2ff; padding:4px 10px; border-radius:15px; display:none; align-items:center; gap:5px; border:none; font-weight:700; }
-      .back-btn:hover { background:#e0e7ff; }
+                  .back-btn { cursor:pointer; font-size:0.8em; color:#363795; background:#eef2ff; padding:4px 10px; border-radius:15px; display:none; align-items:center; gap:5px; border:none; font-weight:700; }
+                  .back-btn:hover { background:#e0e7ff; }
 
-      @media (max-width: 1200px) { .obj-split { grid-template-columns: 1fr; } .obj-kpi-grid { grid-template-columns: 1fr 1fr; } }
-    </style>
+                  /* Styles boutons tableau */
+                  .toggle-btn { 
+                      background: none; 
+                      border: none; 
+                      padding: 4px 12px; 
+                      border-radius: 6px; 
+                      cursor: pointer; 
+                      font-size: 0.75em; 
+                      color: #64748B; 
+                      font-weight: 600; 
+                      transition: all 0.2s; 
+                  }
+                  .toggle-btn:hover { background: #e2e8f0; }
+                  .toggle-btn.active { 
+                      background: #fff; 
+                      color: #363795; 
+                      box-shadow: 0 1px 2px rgba(0,0,0,0.1); 
+                      font-weight: 700;
+                  }
 
-    <div class="obj-wrapper">
-        
-        <div class="obj-kpi-grid">
-            <div class="obj-card blue">
-                <div class="obj-head"><span class="obj-lbl">Objectif Total</span><i class="fas fa-bullseye" style="color:#BFD4F5"></i></div>
-                <div class="obj-val" id="kpiObjVal">--</div>
-                <div class="obj-sub">Défini pour la période</div>
-            </div>
-            <div class="obj-card green">
-                <div class="obj-head"><span class="obj-lbl">Réalisation</span><i class="fas fa-coins" style="color:#A7F3D0"></i></div>
-                <div class="obj-val" id="kpiRealVal">--</div>
-                <div class="obj-sub" id="kpiRealGap">--</div>
-            </div>
-            <div class="obj-card orange">
-                <div class="obj-head"><span class="obj-lbl">Taux d'Atteinte</span><i class="fas fa-chart-line" style="color:#FDE68A"></i></div>
-                <div class="obj-val" id="kpiRateVal">--%</div>
-                <div class="prog-track"><div class="prog-fill" id="kpiRateBar" style="width:0%; background:#F59E0B;"></div></div>
-            </div>
-            <div class="obj-card purple">
-                <div class="obj-head"><span class="obj-lbl">Projection Fin de Mois</span><i class="fas fa-hourglass-half" style="color:#DDD6FE"></i></div>
-                <div class="obj-val" id="kpiProjVal">--</div>
-                <div class="obj-sub" id="kpiProjSub">Basé sur tendance</div>
-            </div>
-        </div>
+                  @media (max-width: 1200px) { .obj-split { grid-template-columns: 1fr; } .obj-kpi-grid { grid-template-columns: 1fr 1fr; } }
+                </style>
 
-        <div class="obj-split">
-            <div class="obj-box">
-                <div class="obj-title">
-                    <span id="chartObjTitle">Évolution Temporelle</span>
-                    <button id="btnBackToMonth" class="back-btn" onclick="resetObjZoom()">
-                        <i class="fas fa-arrow-left"></i> Retour
-                    </button>
+                <div class="obj-wrapper">
+                    
+                    <div class="obj-kpi-grid">
+                        <div class="obj-card blue">
+                            <div class="obj-head"><span class="obj-lbl">Objectif Total</span><i class="fas fa-bullseye" style="color:#BFD4F5"></i></div>
+                            <div class="obj-val" id="kpiObjVal">--</div>
+                            <div class="obj-sub">Défini pour la période</div>
+                        </div>
+                        <div class="obj-card green">
+                            <div class="obj-head"><span class="obj-lbl">Réalisation</span><i class="fas fa-coins" style="color:#A7F3D0"></i></div>
+                            <div class="obj-val" id="kpiRealVal">--</div>
+                            <div class="obj-sub" id="kpiRealGap">--</div>
+                        </div>
+                        <div class="obj-card orange">
+                            <div class="obj-head"><span class="obj-lbl">Taux d'Atteinte</span><i class="fas fa-chart-line" style="color:#FDE68A"></i></div>
+                            <div class="obj-val" id="kpiRateVal">--%</div>
+                            <div class="prog-track"><div class="prog-fill" id="kpiRateBar" style="width:0%; background:#F59E0B;"></div></div>
+                        </div>
+                        <div class="obj-card purple">
+                            <div class="obj-head"><span class="obj-lbl">Projection Fin de Mois</span><i class="fas fa-hourglass-half" style="color:#DDD6FE"></i></div>
+                            <div class="obj-val" id="kpiProjVal">--</div>
+                            <div class="obj-sub" id="kpiProjSub">Basé sur tendance</div>
+                        </div>
+                    </div>
+
+                    <div class="obj-split">
+                        <div class="obj-box">
+                            <div class="obj-title">
+                                <span id="chartObjTitle">Évolution Temporelle</span>
+                                <button id="btnBackToMonth" class="back-btn" onclick="resetObjZoom()">
+                                    <i class="fas fa-arrow-left"></i> Retour
+                                </button>
+                            </div>
+                            <div style="height: 320px; position:relative;">
+                                <canvas id="chartObjMain"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="obj-box">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                                <div class="obj-title" style="margin:0;">Performance</div>
+                                <div style="background:#f1f5f9; padding:3px; border-radius:8px; display:flex; gap:2px;">
+                                    <button id="btnTblEnt" onclick="setObjTableMode('ENTITY')" class="toggle-btn active">Par Entité</button>
+                                    <button id="btnTblPer" onclick="setObjTableMode('PERIOD')" class="toggle-btn">Comparatif</button>
+                                    <button id="btnTblOrg" onclick="setObjTableMode('ORG')" class="toggle-btn">Par Organisme</button>
+                                </div>
+                            </div>
+                            
+                            <div id="objTableContainer" style="overflow-y:auto; max-height:320px;">
+                                <table class="perf-table" id="tableObjPerf">
+                                    <thead></thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
-                <div style="height: 320px; position:relative;">
-                    <canvas id="chartObjMain"></canvas>
-                </div>
             </div>
-
-            <div class="obj-box">
-                <div class="obj-title">Performance par Entité</div>
-                <div style="overflow-y:auto; max-height:320px;">
-                    <table class="perf-table" id="tableObjPerf">
-                        <thead>
-                            <tr>
-                                <th>Entité</th>
-                                <th style="text-align:right;">Objectif</th>
-                                <th style="text-align:right;">Réalisé</th>
-                                <th style="text-align:center;">%</th>
-                            </tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
+            
+            <div id="recouvDetailModal" style="display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background-color:rgba(0,0,0,0.5); backdrop-filter:blur(2px);">
+                <div style="background-color:#fff; margin:2% auto; border-radius:10px; width:95%; max-width:1400px; height:90vh; display:flex; flex-direction:column; box-shadow:0 10px 25px rgba(0,0,0,0.2);">
+                    <div style="padding:15px 20px; background:#363795; color:white; border-radius:10px 10px 0 0; display:flex; justify-content:space-between; align-items:center;">
+                        <h3 id="recouvModalTitle" style="margin:0;">Détail</h3>
+                        <div style="display:flex; gap:15px; align-items:center;">
+                            <button onclick="exportRecouvExcel()" style="background:transparent; border:none; color:white; font-size:1.5em; cursor:pointer;" title="Exporter Excel"><i class="fas fa-file-excel"></i></button>
+                            <button onclick="printRecouvData()" style="background:transparent; border:none; color:white; font-size:1.5em; cursor:pointer;" title="Imprimer"><i class="fas fa-print"></i></button>
+                            <span onclick="closeRecouvModal()" style="cursor:pointer; font-size:2em; margin-left:10px;">&times;</span>
+                        </div>
+                    </div>
+                    <div id="recouvPrintArea" style="flex:1; overflow-y:auto; padding:0; position:relative;">
+                        <table class="detail-table" id="recouvExportTable" style="width:100%; border-collapse:collapse; font-size:0.85em;">
+                            <tbody id="recouvTableBody"></tbody>
+                        </table>
+                    </div>
+                    <div style="padding:15px; border-top:1px solid #eee; background:#f4f6f9; display:flex; justify-content:space-between; align-items:center; border-radius:0 0 10px 10px;">
+                        <div style="display:flex; gap:20px; align-items:center;">
+                            <div style="font-weight:700; color:#555;">SÉLECTION :</div>
+                            <div style="background:#e67e22; color:white; padding:5px 15px; border-radius:20px; font-weight:bold; font-size:0.95em;"><i class="fas fa-file-invoice"></i> <span id="recouvDetailCount">0</span> Dossiers</div>
+                            <div style="background:#363795; color:white; padding:5px 15px; border-radius:20px; font-weight:bold; font-size:0.95em;"><i class="fas fa-coins"></i> <span id="recouvDetailTotal">0 DH</span></div>
+                        </div>
+                        <button onclick="closeRecouvModal()" style="padding:8px 30px; background:#555; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:600;">Fermer</button>
+                    </div>
                 </div>
-            </div>
-        </div>
-
-    </div>
-</div>
-    
-    <div id="recouvDetailModal" style="display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background-color:rgba(0,0,0,0.5); backdrop-filter:blur(2px);">
-        <div style="background-color:#fff; margin:2% auto; border-radius:10px; width:95%; max-width:1400px; height:90vh; display:flex; flex-direction:column; box-shadow:0 10px 25px rgba(0,0,0,0.2);">
-            <div style="padding:15px 20px; background:#363795; color:white; border-radius:10px 10px 0 0; display:flex; justify-content:space-between; align-items:center;">
-                <h3 id="recouvModalTitle" style="margin:0;">Détail</h3>
-                <div style="display:flex; gap:15px; align-items:center;">
-                    <button onclick="exportRecouvExcel()" style="background:transparent; border:none; color:white; font-size:1.5em; cursor:pointer;" title="Exporter Excel"><i class="fas fa-file-excel"></i></button>
-                    <button onclick="printRecouvData()" style="background:transparent; border:none; color:white; font-size:1.5em; cursor:pointer;" title="Imprimer"><i class="fas fa-print"></i></button>
-                    <span onclick="closeRecouvModal()" style="cursor:pointer; font-size:2em; margin-left:10px;">&times;</span>
-                </div>
-            </div>
-            <div id="recouvPrintArea" style="flex:1; overflow-y:auto; padding:0; position:relative;">
-                <table class="detail-table" id="recouvExportTable" style="width:100%; border-collapse:collapse; font-size:0.85em;">
-                    <tbody id="recouvTableBody"></tbody>
-                </table>
-            </div>
-            <div style="padding:15px; border-top:1px solid #eee; background:#f4f6f9; display:flex; justify-content:space-between; align-items:center; border-radius:0 0 10px 10px;">
-                <div style="display:flex; gap:20px; align-items:center;">
-                    <div style="font-weight:700; color:#555;">SÉLECTION :</div>
-                    <div style="background:#e67e22; color:white; padding:5px 15px; border-radius:20px; font-weight:bold; font-size:0.95em;"><i class="fas fa-file-invoice"></i> <span id="recouvDetailCount">0</span> Dossiers</div>
-                    <div style="background:#363795; color:white; padding:5px 15px; border-radius:20px; font-weight:bold; font-size:0.95em;"><i class="fas fa-coins"></i> <span id="recouvDetailTotal">0 DH</span></div>
-                </div>
-                <button onclick="closeRecouvModal()" style="padding:8px 30px; background:#555; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:600;">Fermer</button>
             </div>
         </div>
     </div>

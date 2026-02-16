@@ -69,6 +69,7 @@ function include(filename) {
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('⚙️ Administration')
     .addItem('🔄 Mettre à jour Flash (BDD)', 'clientNormalizeData')
+    .addItem('📥 Import Détail Organismes', 'importDetailsOrganisme')
     .addToUi();
 }
 
@@ -1568,4 +1569,107 @@ function mapAgeKey_(label) {
   if (k.includes("30") && k.includes("45")) return "30-45";
   if (k.includes("45") && k.includes("55") && !k.includes(">")) return "45-55";
   return ">55";
+}
+
+// =======================================================================
+// 11. MODULE DÉTAIL ORGANISME (REC & EXP)
+// =======================================================================
+
+/**
+ * Force l'importation des détails Organisme
+ * À lancer manuellement ou via le menu
+ */
+function importDetailsOrganisme() {
+  const user = getUserContext();
+  if (user.role !== 'ADMIN') return "⛔ Droit insuffisant";
+
+  const SOURCE_ID = '19dHq5rKIgldsyvxc6nI7hP-lfdCZP7zPRKvFE1ksijU'; 
+  
+  try {
+    const sourceSS = SpreadsheetApp.openById(SOURCE_ID);
+    const localSS = SpreadsheetApp.getActiveSpreadsheet();
+    
+    // --- FONCTION UTILITAIRE POUR IMPORTER UN ONGLET ---
+    function processTab(sourceTabName, targetTabName, cols) {
+      const srcSheet = sourceSS.getSheetByName(sourceTabName);
+      let output = [["Entité", "Date", "Organisme", "Montant"]]; // Header standardisé
+      
+      if (srcSheet) {
+        const data = srcSheet.getDataRange().getValues();
+        // On parcourt à partir de la ligne 1 (index 1) pour sauter le header source
+        for (let i = 1; i < data.length; i++) {
+          const row = data[i];
+          // Récupération via les index de colonnes fournis (0-based)
+          const entite = row[cols.ent];
+          const date = row[cols.date];
+          const org = row[cols.org];
+          const montant = row[cols.mnt];
+
+          // Validation minimale : Entité présente
+          if (entite && String(entite).trim() !== "") {
+             // Nettoyage montant
+             let m = montant;
+             if (typeof m !== 'number') {
+               m = parseFloat(String(m).replace(/,/g, '.').replace(/[^0-9.-]/g, ''));
+             }
+             if (isNaN(m)) m = 0;
+
+             output.push([entite, date, org, m]);
+          }
+        }
+      }
+
+      // Écriture (Création ou Remplacement)
+      let targetSheet = localSS.getSheetByName(targetTabName);
+      if (!targetSheet) targetSheet = localSS.insertSheet(targetTabName);
+      targetSheet.clear();
+      if (output.length > 0) {
+        targetSheet.getRange(1, 1, output.length, output[0].length).setValues(output);
+      }
+      return output.length - 1; // Retourne le nombre de lignes de données
+    }
+
+    // --- 1. TRAITEMENT RECOUVREMENT (BDD REC) ---
+    // Source : C=Entité(2), D=Date(3), E=Organisme(4), F=Montant(5)
+    const countRec = processTab("BDD REC", "DETAIL REC", { ent: 2, date: 3, org: 4, mnt: 5 });
+
+    // --- 2. TRAITEMENT EXPÉDITION (BDD EXP) ---
+    // Source : D=Entité(3), F=Organisme(5), M=Montant(12), S=Date(18)
+    const countExp = processTab("BDD EXP", "DETAIL EXP", { ent: 3, date: 18, org: 5, mnt: 12 });
+
+    return `✅ Succès : Import terminé. Recouvrement: ${countRec} lignes, Expédition: ${countExp} lignes.`;
+
+  } catch (e) {
+    return "❌ Erreur Import : " + e.message;
+  }
+}
+
+/**
+ * Récupère les données locales pour le Dashboard
+ * @param {string} type - "REC" ou "EXP"
+ */
+function getDetailsOrganismeData(type) {
+  const user = getUserContext();
+  if (!user.hasAccess) throw new Error("Accès refusé.");
+
+  const sheetName = (type === "EXP") ? "DETAIL EXP" : "DETAIL REC";
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(sheetName);
+
+  if (!sheet) return [];
+  const rawData = sheet.getDataRange().getValues();
+  if (rawData.length < 2) return [];
+
+  // FILTRAGE SÉCURISÉ
+  if (user.entity !== 'ALL') {
+    const header = rawData[0];
+    const filteredRows = rawData.slice(1).filter(row => {
+      const rowEnt = String(row[0]).trim();
+      if (user.entity === 'HIA CIOA') return rowEnt === 'HIA' || rowEnt === 'CIOA' || rowEnt === 'HIA/CIOA';
+      return rowEnt === user.entity;
+    });
+    return [header, ...filteredRows];
+  }
+
+  return rawData;
 }
