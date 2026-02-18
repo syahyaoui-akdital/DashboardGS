@@ -38,6 +38,109 @@
   window.formatMoney = function(v) { return (v === undefined || v === null) ? "0" : Math.round(v).toLocaleString('fr-FR') + " "; };
   window.formatDecimal = function(value) { if (value === 'N/A' || value === '--' || value == null || isNaN(value) || !isFinite(value)) return '--'; return parseFloat(value).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }); };
 
+// --- A REMPLACER : GESTION DE LA SÉCURITÉ ---
+// --- SÉCURITÉ & VERROUILLAGE ---
+// =======================================================================
+  //  FONCTION DE SÉCURITÉ RENFORCÉE (Ultra-Strict)
+  // =======================================================================
+  window.applyUserPermissions = function(role, entity) {
+      // 1. Contexte
+      role = role || (window.currentUserContext ? window.currentUserContext.role : null);
+      entity = entity || (window.currentUserContext ? window.currentUserContext.entity : null);
+      window.currentUserContext = { role: role, entity: entity };
+
+      console.log("🔒 Sécurité | Rôle:", role, "| Entité:", entity);
+
+      // =========================================================
+      // PARTIE 1 : MASQUAGE DES IMPORTS (Pour NON-ADMIN)
+      // =========================================================
+      const isAdmin = (role === 'ADMIN');
+      
+      if (!isAdmin) {
+          // A. Liste des IDs suspects d'être des boutons d'import
+          const importIds = [
+              'btnUpdate',                // Header
+              'recouvImportZone',         // Recouvrement (Zone Orange)
+              'importZone',               // Nom générique
+              'btnImport',                // Nom générique
+              'fileInput',                // Input fichier générique
+              'btnUpload'                 // Bouton upload
+          ];
+
+          importIds.forEach(id => {
+              const el = document.getElementById(id);
+              if (el) el.style.display = 'none';
+          });
+
+          // B. Masquer TOUS les champs de type "Fichier" (Sécurité absolue)
+          document.querySelectorAll('input[type="file"]').forEach(el => {
+              // On masque l'input et son parent direct (souvent le bouton stylisé)
+              el.style.display = 'none';
+              if(el.parentElement && el.parentElement.tagName === 'LABEL') {
+                  el.parentElement.style.display = 'none';
+              }
+          });
+
+          // C. Masquer les boutons contenant le mot "Import" dans leur action (onclick)
+          document.querySelectorAll('button').forEach(btn => {
+              const onClickText = btn.getAttribute('onclick') || "";
+              const textContent = btn.textContent || "";
+              
+              // Si le bouton lance une fonction "Import" ou contient le texte "Import"
+              if (onClickText.toLowerCase().includes('import') || 
+                  onClickText.toLowerCase().includes('upload') ||
+                  textContent.includes('Import') || 
+                  textContent.includes('Charger le fichier')) {
+                  
+                  btn.style.display = 'none';
+              }
+          });
+
+          // D. Masquer par classe CSS spécifique (si vous l'avez ajoutée)
+          document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+      } 
+      // Si ADMIN, on s'assure que tout est visible (optionnel, dépend de votre CSS de base)
+      else {
+           document.querySelectorAll('.admin-only').forEach(el => el.style.display = '');
+      }
+
+      // =========================================================
+      // PARTIE 2 : VERROUILLAGE FILTRES (Pour VIEWER_ENTITY)
+      // =========================================================
+      if (role === 'VIEWER_ENTITY' && entity) {
+          const filterIds = [
+              'entite',                 // Header Global
+              'localEntite',            // Flash Sidebar
+              'localBudgetEntite',      // Budget (ID corrigé)
+              'recouvFilterEntite',     // Recouvrement
+              'depenseFilterEntite',    // Dépenses (ID corrigé)
+              'honoFilterEntite',       // Honoraires (ID corrigé)
+              'rhEntite',               // RH (ID corrigé)
+              'expedFilterEntite'       // Expédition
+          ];
+
+          filterIds.forEach(id => {
+              const el = document.getElementById(id);
+              if (el) {
+                  el.value = entity; 
+                  // Force l'ajout de l'option si manquante
+                  if (el.value !== entity) {
+                      const opt = document.createElement('option');
+                      opt.value = entity; opt.text = entity; el.add(opt); el.value = entity;
+                  }
+                  // Style Verrouillé
+                  el.disabled = true;
+                  el.style.backgroundColor = "#e5e7eb";
+                  el.style.color = "#6b7280";
+                  el.style.opacity = "0.7";
+                  el.style.fontWeight = "bold";
+                  el.style.cursor = "not-allowed";
+              }
+          });
+      }
+  };
+
+
   // =======================================================================
   //  2. GESTION CONNEXION & SÉCURITÉ (NOUVEAU)
   // =======================================================================
@@ -359,32 +462,49 @@
       });
   }
 
+// --- NAVIGATION ENTRE LES ONGLETS ---
   function switchTab(tabId) {
-      document.querySelectorAll('.nav-tab-btn').forEach(btn => btn.classList.remove('active'));
-      const activeBtn = Array.from(document.querySelectorAll('.nav-tab-btn')).find(b => b.textContent.toLowerCase().includes(tabId.split('-')[0]));
-      if(activeBtn) activeBtn.classList.add('active');
-      document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-      document.getElementById('view-' + tabId).classList.add('active');
-      const sidebar = document.getElementById('sidebar');
-      const globalFilters = document.getElementById('globalFilters');
-      
-      if(tabId === 'flash') { 
-          sidebar.style.display = 'flex'; globalFilters.style.visibility = 'visible';
-          if(window.kpiChartInstance) window.kpiChartInstance.resize(); 
-          if(typeof drawCharts === "function") drawCharts(); 
-      } else if(tabId === 'ca-budget') {
-          sidebar.style.display = 'none'; globalFilters.style.visibility = 'visible';
-          if(window.caChartInstance) window.caChartInstance.resize();
-          if(typeof updateCaBudgetView === "function") updateCaBudgetView();
-      } else if(tabId === 'honoraires') {
-          sidebar.style.display = 'none'; globalFilters.style.visibility = 'visible';
-          if (!window.isHonorairesLoaded && typeof loadHonorairesData === "function") { loadHonorairesData(); window.isHonorairesLoaded = true; }
-      } else { 
-          sidebar.style.display = 'none'; globalFilters.style.visibility = 'visible';
-          if(tabId === 'depenses' && typeof updateExpensesView === "function") updateExpensesView();
-          if(tabId === 'recouvrement' && typeof updateRecouvDashboard === "function") updateRecouvDashboard();
-      }
-  }
+    // 1. Gestion des boutons (Votre code)
+    document.querySelectorAll('.nav-tab-btn').forEach(btn => btn.classList.remove('active'));
+    const activeBtn = Array.from(document.querySelectorAll('.nav-tab-btn')).find(b => b.textContent.toLowerCase().includes(tabId.split('-')[0]));
+    if(activeBtn) activeBtn.classList.add('active');
+
+    // 2. Gestion de l'affichage (Votre code)
+    // Assurez-vous que vos DIVs dans l'HTML ont bien des IDs comme "view-flash", "view-recouvrement", etc.
+    document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+    const target = document.getElementById('view-' + tabId);
+    if (target) target.classList.add('active');
+
+    const sidebar = document.getElementById('sidebar');
+    const globalFilters = document.getElementById('globalFilters');
+    
+    // 3. Logique spécifique par onglet (Votre code)
+    if(tabId === 'flash') { 
+        sidebar.style.display = 'flex'; globalFilters.style.visibility = 'visible';
+        if(window.kpiChartInstance) window.kpiChartInstance.resize(); 
+        if(typeof drawCharts === "function") drawCharts(); 
+    } else if(tabId === 'ca-budget') {
+        sidebar.style.display = 'none'; globalFilters.style.visibility = 'visible';
+        if(window.caChartInstance) window.caChartInstance.resize();
+        if(typeof updateCaBudgetView === "function") updateCaBudgetView();
+    } else if(tabId === 'honoraires') {
+        sidebar.style.display = 'none'; globalFilters.style.visibility = 'visible';
+        if (!window.isHonorairesLoaded && typeof loadHonorairesData === "function") { loadHonorairesData(); window.isHonorairesLoaded = true; }
+    } else { 
+        sidebar.style.display = 'none'; globalFilters.style.visibility = 'visible';
+        if(tabId === 'depenses' && typeof updateExpensesView === "function") updateExpensesView();
+        if(tabId === 'recouvrement' && typeof updateRecouvDashboard === "function") updateRecouvDashboard();
+    }
+
+    // 4. === AJOUT POUR GRISER L'ENTITÉ ===
+    // On force la ré-application des règles de sécurité après un court délai
+    // pour s'assurer que les filtres chargés par les fonctions ci-dessus sont bien verrouillés.
+    setTimeout(() => {
+        if (typeof applyUserPermissions === 'function') {
+            applyUserPermissions(); 
+        }
+    }, 200);
+}
   
   window.onclick = function(event) { if (event.target == document.getElementById("historyModal")) document.getElementById("historyModal").style.display='none'; }
   
@@ -899,48 +1019,30 @@ function syncFilters(src) {
   }
 
 
+// --- GESTION FILTRE ENTITÉ (FLASH) ---
 function populateEntiteFilter(selectedFamille) { 
     const entiteSelect = document.getElementById('entite'); 
+    if(!entiteSelect) return;
+
     const currentSelection = entiteSelect.value; 
     
-    // 1. Récupération des données filtrées par famille
+    // Filtrage des données
     const familyFilteredData = normalizedData.filter(r => r[2].toString() === selectedFamille); 
-    
-    // 2. Création de la liste des entités uniques
     const newEntiteSet = new Set(familyFilteredData.map(r => r[0].toString()).filter(v => v.trim() !== '')); 
     
-    // --- CORRECTION : AJOUT AUTO DE HIA CIOA ---
-    // Si la liste contient HIA et CIOA, on ajoute l'option combinée
-    if(newEntiteSet.has("HIA") && newEntiteSet.has("CIOA")) {
-        newEntiteSet.add("HIA CIOA");
-    }
-    // Si l'utilisateur est restreint à HIA CIOA, on force l'option
-    if(currentUserContext && currentUserContext.entity === "HIA CIOA") {
-        newEntiteSet.add("HIA CIOA");
-    }
-    // -------------------------------------------
+    if(newEntiteSet.has("HIA") && newEntiteSet.has("CIOA")) newEntiteSet.add("HIA CIOA");
 
-    // 3. Construction du menu
+    // Reconstruction du Select
     entiteSelect.innerHTML = '<option value="">TOUT</option>'; 
-    Array.from(newEntiteSet).sort((a, b) => { 
-        let idxA = ENTITY_ORDER.indexOf(a); let idxB = ENTITY_ORDER.indexOf(b); 
-        if (idxA === -1) idxA = 999; if (idxB === -1) idxB = 999; 
-        return idxA - idxB; 
-    }).forEach(item => entiteSelect.add(new Option(item, item))); 
+    Array.from(newEntiteSet).sort().forEach(item => entiteSelect.add(new Option(item, item))); 
     
-    // 4. Restauration de la sélection
-    // Si l'utilisateur est restreint, on force sa valeur
-    if (currentUserContext && currentUserContext.entity !== 'ALL') {
-        entiteSelect.value = currentUserContext.entity;
-    } else {
-        entiteSelect.value = (currentSelection && newEntiteSet.has(currentSelection)) ? currentSelection : ''; 
+    // Restauration valeur
+    entiteSelect.value = (currentSelection && newEntiteSet.has(currentSelection)) ? currentSelection : ''; 
+
+    // IMPORTANT : Ré-application immédiate de la sécurité
+    if (typeof applyUserPermissions === 'function') {
+        applyUserPermissions(); 
     }
-    
-    // 5. Application Sécurité (Verrouillage visuel)
-    if (typeof applySecurityRules === 'function') applySecurityRules();
-    
-    const lEntite = document.getElementById('localEntite'); 
-    if(lEntite) { lEntite.innerHTML = entiteSelect.innerHTML; lEntite.value = entiteSelect.value; } 
 }
 
   function populateSousFamille(selectedFamille) { 

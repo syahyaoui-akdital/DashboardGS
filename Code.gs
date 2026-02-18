@@ -6,73 +6,34 @@
  */
 
 
-// ==========================================
-// SYSTÈME D'AUTHENTIFICATION PERSONNALISÉ
-// ==========================================
-
-// Configuration des utilisateurs (Username : Password)
-const APP_USERS = {
-  'admin': { pass: 'admin123', role: 'ADMIN', entity: 'ALL' },
-  'A.ELBOUAMI': { pass: 'ELBOUAMI2026', role: 'VIEWER_REGION', entity: 'ALL' },
-  'N.AYYOU': { pass: 'AYYOU2026', role: 'VIEWER_ENTITY', entity: 'HIA CIOA' },
-  'H.BENADDOU': { pass: 'BENADDOU2026', role: 'VIEWER_ENTITY', entity: 'CIT' },
-  'ME.BERRADA': { pass: 'BERRADA2026', role: 'VIEWER_ENTITY', entity: 'CID' },
-  'L.BENGAZOUL': { pass: 'BENGAZOUL2026', role: 'VIEWER_ENTITY', entity: 'HPG' },
-  'R.DELFI': { pass: 'DELFI2026', role: 'VIEWER_ENTITY', entity: 'PIL' },
-
-
-
-  // Ajoutez vos autres entités ici...
-};
-
-function verifyCustomLogin(username, password) {
-  const user = APP_USERS[username];
-  
-  if (user && String(user.pass) === String(password)) {
-    return {
-      success: true,
-      role: user.role,
-      entity: user.entity,
-      username: username
-    };
-  } else {
-    return { success: false, message: "Identifiant ou mot de passe incorrect." };
-  }
-}
-
-
 // =======================================================================
-// 0. CONFIGURATION DE LA SÉCURITÉ (RBAC)
+// CONFIGURATION SÉCURITÉ & BASE DE DONNÉES
 // =======================================================================
 
-// LISTE DES UTILISATEURS AUTORISÉS & RÔLES
-const USER_ACCESS = {
-  // 1. ADMINS
-  's.yahyaoui@akdital.ma': { role: 'ADMIN', entity: 'ALL' },
-  'o.duieb@akdital.ma': { role: 'ADMIN', entity: 'ALL' },
+// ⚠️ REMPLACEZ PAR L'ID DE VOTRE NOUVEAU SHEET SÉCURITÉ
+const SECURITY_DB_ID = "1otCm507BxaxcK2rxingHL3TOcjciIopgl6xruG0zg4o"; 
 
-  // 2. RESPONSABLE RÉGIONAL
-  'a.elbouami@akdital.ma': { role: 'VIEWER_REGION', entity: 'ALL' },
-
-  // 3. RESPONSABLES ENTITÉS
-  'h.benaddou@akdital.ma': { role: 'VIEWER_ENTITY', entity: 'CIT' },
-  'me.berrada@akdital.ma': { role: 'VIEWER_ENTITY', entity: 'CID' },
-  'l.bengazoul@akdital.ma': { role: 'VIEWER_ENTITY', entity: 'HPG' },
-  'r.delfi@akdital.ma': { role: 'VIEWER_ENTITY', entity: 'PIL' },
-  
-  // Responsable HIA CIOA (Doit être configuré ici avec 'HIA CIOA')
-  'n.ayyou@akdital.ma': { role: 'VIEWER_ENTITY', entity: 'HIA CIOA' }
-};
-
-// Fonction utilitaire pour récupérer l'email connecté
-function getActiveUserEmail() {
-  return Session.getActiveUser().getEmail();
+function getSecurityDb() {
+  return SpreadsheetApp.openById(SECURITY_DB_ID);
 }
 
-// Récupère le contexte de l'utilisateur
+// 1. RÉCUPÉRER LE CONTEXTE (Remplaçant de votre ancienne fonction)
+// Cette fonction est utilisée par getDashboardData pour filtrer les données
 function getUserContext() {
-  const email = Session.getActiveUser().getEmail();
-  const userConfig = USER_ACCESS[email];
+  const email = Session.getActiveUser().getEmail().toLowerCase();
+  const ss = getSecurityDb();
+  const sheet = ss.getSheetByName("Users");
+  const data = sheet.getDataRange().getValues();
+  
+  // Recherche de l'utilisateur par Email dans le Sheet
+  // Colonne C (index 2) = Email
+  let userConfig = null;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][2]).toLowerCase() === email) {
+      userConfig = { role: data[i][3], entity: data[i][4] };
+      break;
+    }
+  }
 
   if (!userConfig) {
     return { email: email, hasAccess: false, role: 'NONE', entity: 'NONE' };
@@ -86,13 +47,134 @@ function getUserContext() {
   };
 }
 
+// 2. VÉRIFICATION LOGIN AVEC LOGS (Pour l'écran de connexion)
+function verifyCustomLogin(username, password, clientIp) {
+  const ss = getSecurityDb();
+  const userSheet = ss.getSheetByName('Users');
+  const logSheet = ss.getSheetByName('Logs');
+  
+  const activeEmail = Session.getActiveUser().getEmail().toLowerCase();
+  username = String(username).trim().toLowerCase();
+  password = String(password).trim();
+  
+  const data = userSheet.getDataRange().getValues();
+  let userData = null;
+
+  // Recherche utilisateur (Col A = Username)
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]).toLowerCase() === username) {
+      userData = { 
+        pass: data[i][1], 
+        email: String(data[i][2]).toLowerCase(), 
+        role: data[i][3], 
+        entity: data[i][4] 
+      };
+      break;
+    }
+  }
+
+  // Fonction Helper pour écrire dans l'onglet Logs
+  const log = (status, details) => {
+    logSheet.appendRow([new Date(), username, clientIp, "LOGIN", status, details]);
+  };
+
+  // Règle 1 : Cohérence Email Google vs Username (Votre règle)
+  // Ex: s.yahyaoui doit correspondre au compte Google connecté
+  let emailPrefix = activeEmail.split('@')[0];
+  if (activeEmail && username !== emailPrefix) {
+      log("FAIL", "Incohérence Compte Google (" + activeEmail + ")");
+      return { success: false, message: "Sécurité : L'utilisateur '" + username + "' ne correspond pas au compte Google connecté." };
+  }
+
+  // Règle 2 : Utilisateur existe ?
+  if (!userData) {
+    log("FAIL", "Utilisateur inconnu");
+    return { success: false, message: "Identifiant ou mot de passe incorrect." };
+  }
+
+  // Règle 3 : Mot de passe
+  // Note : On compare avec String() pour éviter les erreurs de type chiffre/texte
+  if (String(userData.pass) !== password) {
+    log("FAIL", "Mot de passe incorrect");
+    return { success: false, message: "Identifiant ou mot de passe incorrect." };
+  }
+
+  log("SUCCESS", "OK");
+  return { success: true, role: userData.role, entity: userData.entity, username: username, email: activeEmail };
+}
+
+// 3. NOUVEAU : CHANGER MOT DE PASSE
+function changeUserPassword(username, oldPass, newPass, clientIp) {
+  const ss = getSecurityDb();
+  const userSheet = ss.getSheetByName('Users');
+  const logSheet = ss.getSheetByName('Logs');
+  
+  const data = userSheet.getDataRange().getValues();
+  
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]).toLowerCase() === username.toLowerCase()) {
+      // Vérification ancien mot de passe
+      if (String(data[i][1]) !== String(oldPass)) {
+        logSheet.appendRow([new Date(), username, clientIp, "CHANGE_PASS", "FAIL", "Ancien MDP faux"]);
+        return { success: false, message: "L'ancien mot de passe est incorrect." };
+      }
+      
+      // Mise à jour (Colonne B = Password, index 2 pour getRange)
+      userSheet.getRange(i + 1, 2).setValue(newPass);
+      logSheet.appendRow([new Date(), username, clientIp, "CHANGE_PASS", "SUCCESS", "MDP Modifié"]);
+      return { success: true, message: "Mot de passe modifié avec succès." };
+    }
+  }
+  return { success: false, message: "Utilisateur introuvable." };
+}
+
+// 4. NOUVEAU : MOT DE PASSE OUBLIÉ (Envoi Email)
+function resetUserPassword(email) {
+  const ss = getSecurityDb();
+  const userSheet = ss.getSheetByName('Users');
+  const logSheet = ss.getSheetByName('Logs');
+  
+  const data = userSheet.getDataRange().getValues();
+  let found = false;
+  
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][2]).toLowerCase() === email.trim().toLowerCase()) {
+      // Génération mot de passe temporaire
+      const newPass = Math.random().toString(36).slice(-8).toUpperCase();
+      
+      // Sauvegarde
+      userSheet.getRange(i + 1, 2).setValue(newPass);
+      
+      try {
+        MailApp.sendEmail(email, "AKDITAL Dashboard - Réinitialisation", 
+          "Bonjour,\n\nVotre nouveau mot de passe temporaire est : " + newPass + 
+          "\n\nVeuillez le changer dès votre connexion.\n\nCordialement.");
+          
+        logSheet.appendRow([new Date(), data[i][0], "SYSTEM", "RESET_PASS", "SUCCESS", "Email envoyé à " + email]);
+        found = true;
+      } catch(e) {
+        return { success: false, message: "Erreur technique lors de l'envoi de l'email." };
+      }
+      break;
+    }
+  }
+  
+  // Message générique par sécurité
+  return { success: true, message: "Si cet email existe dans la base, un nouveau mot de passe a été envoyé." };
+}
+
 // =======================================================================
 // 1. CONFIGURATION ET MENU
 // =======================================================================
 
 function doGet() {
-  return HtmlService.createTemplateFromFile('Index')
-      .evaluate()
+  var template = HtmlService.createTemplateFromFile('Index');
+  
+  // Récupère l'email de la personne connectée au compte Google
+  var email = Session.getActiveUser().getEmail();
+  template.userEmail = email; // On passe l'email à la page HTML
+  
+  return template.evaluate()
       .setTitle('DASHBOARD - REGION GRAND SUD')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
       .addMetaTag('viewport', 'width=device-width, initial-scale=1');

@@ -17,7 +17,7 @@
     <?!= include('css_styles'); ?>
     
     <style>
-      /* Styles spécifiques au gestionnaire d'export (non inclus dans css_styles pour éviter les conflits) */
+      /* Styles spécifiques (Export, Login, Modales) */
       .export-group { border: 1px solid #e1e8f0; border-radius: 8px; margin-bottom: 12px; overflow: hidden; background: white; transition: box-shadow 0.2s; }
       .export-group:hover { box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
       .export-group-header { background: #f8faff; padding: 12px 15px; display: flex; align-items: center; border-bottom: 1px solid #eee; user-select: none; }
@@ -31,37 +31,85 @@
       .export-item:hover { background: #fbfbfb; }
       .export-item:last-child { border-bottom: none; }
       .export-checkbox { transform: scale(1.1); margin-right: 10px; cursor: pointer; accent-color: #363795; }
-      .toggle-icon { transition: transform 0.2s; color: #888; margin-right: 10px; cursor: pointer; }
-      .toggle-icon.rotated { transform: rotate(90deg); }
+      
+      /* Login Overlay Styles */
+      #loginOverlay { font-family: 'Segoe UI', sans-serif; }
+      .login-input { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; outline: none; transition: border-color 0.3s; }
+      .login-input:focus { border-color: #3b82f6; }
+      .login-label { display: block; font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 5px; text-align: left; }
     </style>
   </head>
   <body>
-    <div id="loginOverlay" style="position:fixed; top:0; left:0; width:100%; height:100%; background:#f8fafc; z-index:99999; display:flex; justify-content:center; align-items:center;">
-    <div style="background:white; padding:40px; border-radius:12px; box-shadow:0 10px 25px rgba(0,0,0,0.1); width:100%; max-width:400px; text-align:center;">
-        <h2 style="margin-bottom:20px; color:#1e293b; font-family:sans-serif;">Connexion Dashboard</h2>
-        
-        <div style="margin-bottom:15px; text-align:left;">
-            <label style="display:block; font-size:12px; font-weight:bold; color:#64748b; margin-bottom:5px;">Utilisateur</label>
-            <input type="text" id="loginUser" class="form-control" placeholder="Ex: hia" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
-        </div>
-        
-        <div style="margin-bottom:25px; text-align:left;">
-            <label style="display:block; font-size:12px; font-weight:bold; color:#64748b; margin-bottom:5px;">Mot de passe</label>
-            <input type="password" id="loginPass" class="form-control" placeholder="••••••" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
-        </div>
 
-        <button onclick="attemptLogin()" id="btnLogin" style="width:100%; background:#363795; color:white; border:none; padding:12px; border-radius:6px; font-weight:bold; cursor:pointer; transition:background 0.2s;">
-            SE CONNECTER
-        </button>
-        
-        <p id="loginError" style="color:#ef4444; font-size:12px; margin-top:15px; display:none;"></p>
+    <div id="loginOverlay" style="position:fixed; top:0; left:0; width:100%; height:100%; background:#f8fafc; z-index:99999; display:flex; justify-content:center; align-items:center;">
+        <div style="background:white; padding:40px; border-radius:12px; box-shadow:0 10px 40px rgba(0,0,0,0.1); width:100%; max-width:380px; text-align:center;">
+            <h2 style="margin-bottom:20px; color:#1e293b; margin-top:0;">AKDITAL Dashboard</h2>
+            
+            <div style="background:#e0f2fe; border:1px solid #bae6fd; padding:12px; border-radius:6px; margin-bottom:20px; text-align:left;">
+                <div style="font-size:10px; font-weight:bold; color:#0284c7; text-transform:uppercase; letter-spacing:0.5px;">Compte Google actif</div>
+                <div style="font-size:13px; font-weight:600; color:#0c4a6e; word-break:break-all; margin-top:3px;">
+                    <?= userEmail ?> 
+                </div>
+                <input type="hidden" id="detectedEmail" value="<?= userEmail ?>">
+            </div>
+            
+            <div style="margin-bottom:15px;">
+                <label class="login-label">Nom d'utilisateur</label>
+                <input type="text" id="loginUser" class="login-input" placeholder="Ex: s.yahyaoui">
+                <div style="font-size:10px; color:#94a3b8; margin-top:4px; text-align:left;">Identique au début de l'email ci-dessus.</div>
+            </div>
+            
+            <div style="margin-bottom:20px;">
+                <label class="login-label">Mot de passe</label>
+                <input type="password" id="loginPass" class="login-input" placeholder="••••••">
+            </div>
+    
+            <button onclick="attemptLogin()" id="btnLogin" style="width:100%; background:#363795; color:white; border:none; padding:12px; border-radius:6px; font-weight:bold; cursor:pointer; transition:background 0.2s; font-size:14px;">
+                SE CONNECTER
+            </button>
+            
+            <p id="loginError" style="color:#ef4444; font-size:12px; margin-top:15px; display:none; line-height:1.4; background:#fee2e2; padding:8px; border-radius:4px; border:1px solid #fecaca;"></p>
+
+            <p style="margin-top:15px; font-size:12px;">
+                <a href="#" onclick="document.getElementById('forgotOverlay').style.display='flex'; return false;" style="color:#64748b; text-decoration:none;">Mot de passe oublié ?</a>
+            </p>
+        </div>
     </div>
-</div>
+
+    <div id="forgotOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:999999; justify-content:center; align-items:center; backdrop-filter:blur(2px);">
+        <div style="background:white; padding:30px; border-radius:10px; width:350px; text-align:center; box-shadow:0 10px 25px rgba(0,0,0,0.2);">
+            <h3 style="margin-top:0; color:#333;">Récupération</h3>
+            <p style="font-size:12px; color:#666; margin-bottom:15px;">Un nouveau mot de passe sera envoyé à votre adresse email professionnelle.</p>
+            <input type="email" id="resetEmail" class="login-input" placeholder="Votre email..." style="margin-bottom:15px;">
+            <div style="display:flex; gap:10px;">
+                <button onclick="document.getElementById('forgotOverlay').style.display='none'" style="flex:1; background:#f1f5f9; border:1px solid #cbd5e1; color:#333; padding:10px; border-radius:5px; cursor:pointer;">Annuler</button>
+                <button onclick="doResetPass()" style="flex:1; background:#363795; color:white; border:none; padding:10px; border-radius:5px; cursor:pointer; font-weight:bold;">Envoyer</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="changePassModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; justify-content:center; align-items:center; backdrop-filter:blur(2px);">
+        <div style="background:white; padding:30px; border-radius:10px; width:350px; box-shadow:0 10px 25px rgba(0,0,0,0.2);">
+            <h3 style="margin-top:0; color:#333; text-align:center;">Changer Mot de passe</h3>
+            
+            <label class="login-label">Ancien mot de passe</label>
+            <input type="password" id="cpOld" class="login-input" style="margin-bottom:15px;">
+            
+            <label class="login-label">Nouveau mot de passe</label>
+            <input type="password" id="cpNew" class="login-input" style="margin-bottom:20px;">
+            
+            <div style="display:flex; gap:10px;">
+                <button onclick="document.getElementById('changePassModal').style.display='none'" style="flex:1; background:#f1f5f9; border:1px solid #cbd5e1; color:#333; padding:10px; border-radius:5px; cursor:pointer;">Annuler</button>
+                <button onclick="doChangePass()" style="flex:1; background:#10b981; color:white; border:none; padding:10px; border-radius:5px; cursor:pointer; font-weight:bold;">Valider</button>
+            </div>
+            <p id="cpError" style="color:#ef4444; font-size:11px; margin-top:10px; display:none; text-align:center;"></p>
+        </div>
+    </div>
     
     <div id="loadingOverlay">
         <div class="loader"></div>
         <h3 id="loadingText" style="margin-top: 15px;">Chargement...</h3>
-        <p id="loadingSubText" style="color: #ccc; font-size: 0.9em;">Traitement en cours</p>
+        <p id="loadingSubText" style="color: #ccc; font-size: 0.9em;">Connexion sécurisée en cours</p>
     </div>
 
     <div id="exportModal" style="display:none; position:fixed; z-index:3000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); backdrop-filter:blur(3px); align-items:center; justify-content:center;">
@@ -73,56 +121,17 @@
                 </div>
                 <span onclick="document.getElementById('exportModal').style.display='none'" style="cursor:pointer; font-size:1.5em; opacity:0.8; transition:0.2s;">&times;</span>
             </div>
-
-            <div style="padding:10px 20px; background:#fff3cd; color:#856404; font-size:0.85em; border-bottom:1px solid #ffeeba; display:flex; align-items:center; gap:10px;">
-                <i class="fas fa-info-circle"></i> Utilisez les flèches ⬆️⬇️ pour changer l'ordre des parties dans le PDF.
-            </div>
-
-            <div id="exportCheckboxesArea" style="flex:1; overflow-y:auto; padding:20px; background:#f4f6f9;">
-                </div>
-
+            <div id="exportCheckboxesArea" style="flex:1; overflow-y:auto; padding:20px; background:#f4f6f9;"></div>
             <div style="padding:20px; border-top:1px solid #eee; background:white; display:flex; justify-content:space-between; align-items:center;">
                 <div style="font-size:0.9em; color:#333; font-weight:500;">
-                    <label style="cursor:pointer; display:flex; align-items:center; gap:8px; margin-bottom:5px;">
-                        <input type="checkbox" id="chkCover" checked class="export-checkbox"> Page de Garde & Sommaire
-                    </label>
                     <label style="cursor:pointer; display:flex; align-items:center; gap:8px;">
-                        <input type="checkbox" id="chkSeparators" checked class="export-checkbox"> Pages de Séparation
+                        <input type="checkbox" id="chkCover" checked class="export-checkbox"> Page de Garde
                     </label>
                 </div>
                 <div style="display:flex; gap:10px;">
-                    <button onclick="processDynamicExport('pdf')" style="background:#e74c3c; color:white; border:none; padding:12px 30px; border-radius:30px; cursor:pointer; font-weight:700; display:flex; align-items:center; gap:8px; box-shadow:0 4px 10px rgba(231, 76, 60, 0.3); transition:transform 0.2s;">
-                        <i class="fas fa-file-pdf"></i> PDF
-                    </button>
-                    <button onclick="processDynamicExport('ppt')" style="background:#e67e22; color:white; border:none; padding:12px 30px; border-radius:30px; cursor:pointer; font-weight:700; display:flex; align-items:center; gap:8px; box-shadow:0 4px 10px rgba(230, 126, 34, 0.3); transition:transform 0.2s;">
-                        <i class="fas fa-file-powerpoint"></i> PPT
-                    </button>
+                    <button onclick="processDynamicExport('pdf')" style="background:#e74c3c; color:white; border:none; padding:12px 30px; border-radius:30px; cursor:pointer; font-weight:700;"><i class="fas fa-file-pdf"></i> PDF</button>
+                    <button onclick="processDynamicExport('ppt')" style="background:#e67e22; color:white; border:none; padding:12px 30px; border-radius:30px; cursor:pointer; font-weight:700;"><i class="fas fa-file-powerpoint"></i> PPT</button>
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <div id="loginPage">
-        <div class="login-card">
-            <div class="login-logo">
-                <div class="logo-circle">
-                    <i class="fas fa-hospital-user"></i>
-                </div>
-                <div class="logo-text">
-                    <h1>Dashboard : Rapport d'activité</h1>
-                    <p>Région Grand-Sud</p>
-                </div>
-            </div>
-
-            <h2 class="login-title">Connectez-vous à votre compte</h2>
-            
-            <div class="login-body">
-                <div class="google-btn" onclick="attemptLogin()">
-                    <img src="https://user-images.githubusercontent.com/194400/70987158-4069c900-20b7-11ea-892e-8a2e1166b6b7.png" alt="G">
-                    <span>Se connecter avec Google</span>
-                </div>
-
-                <div id="loginError" style="color: red; text-align: center; margin-top: 20px; font-size: 0.9em; display: none;"></div>
             </div>
         </div>
     </div>
@@ -132,9 +141,7 @@
             <span class="close-modal" onclick="document.getElementById('historyModal').style.display='none'">&times;</span>
             <h3 id="modalTitle">Évolution</h3>
             <div id="modalSubtitle"></div>
-            <div style="height: 350px;">
-                <canvas id="historyChart"></canvas>
-            </div>
+            <div style="height: 350px;"><canvas id="historyChart"></canvas></div>
         </div>
     </div>
 
@@ -167,14 +174,14 @@
               </div>
           </div>
           <div class="header-right">
+              <button class="action-btn" onclick="openChangePassModal()" title="Changer mot de passe"><i class="fas fa-key"></i></button>
               <button class="action-btn" onclick="toggleDarkMode()" title="Mode Sombre">🌙</button>
-              <button id="btnUpdate" class="action-btn" onclick="updateData()" title="Actualiser les données">
+              <button id="btnUpdate" class="action-btn" onclick="updateData()" title="Actualiser">
                   <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
               </button>
               <button class="action-btn" onclick="openGlobalExportModal()" title="Générer Rapport">
                   <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
               </button>
-              <span style="font-size:0.8em; margin-left:5px; opacity:0.8; white-space:nowrap;" id="updateStatus">Prêt</span>
           </div>
         </header>
         
@@ -205,8 +212,9 @@
             <?!= include('part_rh'); ?> 
           </div>
         </div> 
-    
-    </div> <?!= include('js_global'); ?>
+    </div> 
+
+    <?!= include('js_global'); ?>
     <?!= include('js_flash'); ?>
     <?!= include('js_budget'); ?>
     <?!= include('js_recouvrement_core'); ?>
@@ -217,90 +225,250 @@
     <?!= include('js_depenses'); ?>
     <?!= include('js_honoraires'); ?>
     <?!= include('js_rh'); ?>
-  </body>
-</html>
-<script>
-// --- GESTION LOGIN ---
 
-// Empêche le défilement tant que pas connecté
-document.body.style.overflow = 'hidden';
+    <script>
+    // --- GESTION LOGIN SECURISE ---
+    
+    document.body.style.overflow = 'hidden';
+    var clientIP = "Unknown";
 
-function attemptLogin() {
-    const u = document.getElementById('loginUser').value.trim();
-    const p = document.getElementById('loginPass').value.trim();
-    const btn = document.getElementById('btnLogin');
-    const err = document.getElementById('loginError');
+// --- GESTION LOGIN SECURISE + IP LOGS ---
+    
+    document.body.style.overflow = 'hidden';
+    var clientIP = "Unknown";
 
-    if(!u || !p) {
-        err.textContent = "Veuillez remplir tous les champs.";
-        err.style.display = 'block';
-        return;
-    }
+    // 1. INITIALISATION AU CHARGEMENT (Modifié)
+    window.onload = function() {
+        // A. Récupération IP (Service tiers)
+        fetch('https://api.ipify.org?format=json')
+            .then(res => res.json())
+            .then(data => { clientIP = data.ip; })
+            .catch(e => console.log('IP non détectée'));
 
-    // UI Loading
-    btn.disabled = true;
-    btn.textContent = "Vérification...";
-    err.style.display = 'none';
+        // B. REMPLISSAGE AUTO DU USERNAME ET VERROUILLAGE
+        const detectedEmailEl = document.getElementById('detectedEmail');
+        const loginUserEl = document.getElementById('loginUser');
 
-    google.script.run
-        .withSuccessHandler(function(res) {
-            if (res.success) {
-                // 1. Stocker le contexte utilisateur
-                window.currentUserContext = {
-                    role: res.role,
-                    entity: res.entity,
-                    email: res.username // On utilise le username comme email pour l'affichage
-                };
+        if (detectedEmailEl && loginUserEl) {
+            const email = detectedEmailEl.value.trim().toLowerCase();
+            
+            // Si un email est bien détecté (ex: s.yahyaoui@akdital.ma)
+            if (email && email.includes('@')) {
+                // On extrait le préfixe (s.yahyaoui)
+                const prefix = email.split('@')[0];
+                
+                // On remplit le champ
+                loginUserEl.value = prefix;
+                
+                // On le verrouille visuellement (Grisé)
+                loginUserEl.disabled = true;
+                loginUserEl.style.backgroundColor = "#e5e7eb"; // Gris clair
+                loginUserEl.style.color = "#6b7280";           // Texte gris foncé
+                loginUserEl.style.cursor = "not-allowed";      // Curseur interdit
+                loginUserEl.style.borderColor = "#cbd5e1";
+                loginUserEl.title = "Identifiant verrouillé selon votre email connecté";
+                
+                // On met le focus directement sur le mot de passe pour gagner du temps
+                setTimeout(() => document.getElementById('loginPass').focus(), 100);
+            }
+        }
+    };
+    
+    // 2. TENTATIVE DE CONNEXION (Légèrement adaptée pour lire le champ désactivé)
+    function attemptLogin() {
+        // Note : Même si le champ est désactivé, .value renvoie bien le contenu
+        const u = document.getElementById('loginUser').value.trim().toLowerCase();
+        const p = document.getElementById('loginPass').value.trim();
+        const detectedEmail = document.getElementById('detectedEmail').value.trim().toLowerCase();
+        
+        const btn = document.getElementById('btnLogin');
+        const err = document.getElementById('loginError');
+    
+        if(!u || !p) {
+            err.textContent = "Veuillez saisir votre mot de passe."; // Message adapté car user est rempli
+            err.style.display = 'block';
+            return;
+        }
 
-                // 2. Appliquer les droits visuels (Masquer menus ADMIN si nécessaire)
-                applyUserPermissions(res.role, res.entity);
-
-                // 3. Masquer l'écran de connexion
-                document.getElementById('loginOverlay').style.display = 'none';
-                document.body.style.overflow = 'auto';
-
-                // 4. Lancer le chargement des données (Si ce n'est pas déjà fait au onload)
-                // if(typeof initDashboard === 'function') initDashboard(); 
-
-            } else {
-                err.textContent = res.message;
+        // Vérif Cohérence (Double sécurité)
+        if (detectedEmail) {
+            const prefix = detectedEmail.split('@')[0];
+            if (u !== prefix) {
+                err.innerHTML = `<b>Erreur :</b> L'utilisateur <b>${u}</b> ne correspond pas au compte Google <b>${prefix}</b>.`;
+                err.style.display = 'block';
+                return;
+            }
+        }
+    
+        btn.disabled = true;
+        btn.textContent = "Vérification...";
+        err.style.display = 'none';
+    
+        google.script.run
+            .withSuccessHandler(function(res) {
+                if (res.success) {
+                    window.currentUserContext = { role: res.role, entity: res.entity, username: res.username };
+                    if(typeof applyUserPermissions === 'function') applyUserPermissions(res.role, res.entity);
+    
+                    const overlay = document.getElementById('loginOverlay');
+                    overlay.style.transition = 'opacity 0.5s';
+                    overlay.style.opacity = '0';
+                    setTimeout(() => { 
+                        overlay.style.display = 'none'; 
+                        document.body.style.overflow = 'auto';
+                        document.getElementById('appContainer').style.display = 'flex';
+                        if(typeof loadData === 'function') loadData();
+                        window.dispatchEvent(new Event('resize'));
+                    }, 500);
+                } else {
+                    err.textContent = res.message;
+                    err.style.display = 'block';
+                    btn.disabled = false;
+                    btn.textContent = "SE CONNECTER";
+                    document.getElementById('loginPass').value = ''; // Reset pass
+                    document.getElementById('loginPass').focus();
+                }
+            })
+            .withFailureHandler(function(e) {
+                err.textContent = "Erreur serveur : " + e.message;
                 err.style.display = 'block';
                 btn.disabled = false;
                 btn.textContent = "SE CONNECTER";
-            }
-        })
-        .withFailureHandler(function(e) {
-            err.textContent = "Erreur de connexion serveur.";
-            err.style.display = 'block';
-            btn.disabled = false;
-            btn.textContent = "SE CONNECTER";
-        })
-        .verifyCustomLogin(u, p);
-}
-
-// Fonction pour restreindre l'interface selon le rôle
-function applyUserPermissions(role, entity) {
-    console.log("Connexion réussie : " + role + " - " + entity);
+            })
+            .verifyCustomLogin(u, p, clientIP); 
+    }
     
-    // Exemple : Pré-remplir le filtre Entité et le verrouiller si VIEWER_ENTITY
-    const entiteFilter = document.getElementById('recouvFilterEntite');
-    if (entiteFilter && role === 'VIEWER_ENTITY') {
-        entiteFilter.value = entity;
-        entiteFilter.disabled = true; // Empêche de changer d'entité
+    // 1. TENTATIVE DE CONNEXION
+    function attemptLogin() {
+        const u = document.getElementById('loginUser').value.trim().toLowerCase();
+        const p = document.getElementById('loginPass').value.trim();
+        const detectedEmail = document.getElementById('detectedEmail').value.trim().toLowerCase();
         
-        // Simuler le changement pour rafraichir les graphiques
-        if(typeof updateRecouvDashboard === 'function') updateRecouvDashboard();
+        const btn = document.getElementById('btnLogin');
+        const err = document.getElementById('loginError');
+    
+        if(!u || !p) {
+            err.textContent = "Veuillez remplir l'utilisateur et le mot de passe.";
+            err.style.display = 'block';
+            return;
+        }
+
+        // Validation Client : Username == Email Prefix
+        if (detectedEmail) {
+            const prefix = detectedEmail.split('@')[0];
+            if (u !== prefix) {
+                err.innerHTML = `<b>Erreur de sécurité :</b><br>L'utilisateur saisi (<b>${u}</b>) ne correspond pas au compte Google connecté (<b>${prefix}</b>).`;
+                err.style.display = 'block';
+                return;
+            }
+        }
+    
+        btn.disabled = true;
+        btn.textContent = "Vérification...";
+        err.style.display = 'none';
+    
+        google.script.run
+            .withSuccessHandler(function(res) {
+                if (res.success) {
+                    window.currentUserContext = {
+                        role: res.role,
+                        entity: res.entity,
+                        username: res.username,
+                        email: res.email
+                    };
+    
+                    if(typeof applyUserPermissions === 'function') {
+                        applyUserPermissions(res.role, res.entity);
+                    }
+    
+                    const overlay = document.getElementById('loginOverlay');
+                    overlay.style.transition = 'opacity 0.5s';
+                    overlay.style.opacity = '0';
+                    
+                    setTimeout(() => { 
+                        overlay.style.display = 'none'; 
+                        document.body.style.overflow = 'auto';
+                        
+                        // Lancement du Dashboard
+                        const app = document.getElementById('appContainer');
+                        if(app) {
+                            app.style.display = 'flex';
+                            if(typeof loadData === 'function') loadData(); 
+                            window.dispatchEvent(new Event('resize'));
+                        }
+                    }, 500);
+    
+                } else {
+                    err.textContent = res.message;
+                    err.style.display = 'block';
+                    btn.disabled = false;
+                    btn.textContent = "SE CONNECTER";
+                }
+            })
+            .withFailureHandler(function(e) {
+                err.textContent = "Erreur de connexion serveur : " + e.message;
+                err.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = "SE CONNECTER";
+            })
+            .verifyCustomLogin(u, p, clientIP); // Envoi IP pour logs
+    }
+
+    // 2. MOT DE PASSE OUBLIÉ
+    function doResetPass() {
+        const email = document.getElementById('resetEmail').value;
+        if(!email) return alert("Veuillez saisir votre email.");
+        
+        const btn = document.querySelector('#forgotOverlay button:nth-child(2)'); // Bouton Envoyer
+        const txt = btn.innerText;
+        btn.innerText = "Envoi...";
+        btn.disabled = true;
+
+        google.script.run
+            .withSuccessHandler(function(res) {
+                alert(res.message);
+                document.getElementById('forgotOverlay').style.display = 'none';
+                btn.innerText = txt;
+                btn.disabled = false;
+            })
+            .resetUserPassword(email);
+    }
+
+    // 3. CHANGER MOT DE PASSE
+    function openChangePassModal() {
+        document.getElementById('changePassModal').style.display = 'flex';
+        document.getElementById('cpOld').value = "";
+        document.getElementById('cpNew').value = "";
+        document.getElementById('cpError').style.display = 'none';
+    }
+
+    function doChangePass() {
+        const oldP = document.getElementById('cpOld').value;
+        const newP = document.getElementById('cpNew').value;
+        const err = document.getElementById('cpError');
+        
+        if(!oldP || !newP) {
+            err.textContent = "Tous les champs sont requis.";
+            err.style.display = 'block';
+            return;
+        }
+
+        google.script.run
+            .withSuccessHandler(function(res) {
+                if(res.success) {
+                    alert("Mot de passe modifié avec succès !");
+                    document.getElementById('changePassModal').style.display = 'none';
+                } else {
+                    err.textContent = res.message;
+                    err.style.display = 'block';
+                }
+            })
+            .changeUserPassword(window.currentUserContext.username, oldP, newP, clientIP);
     }
     
-    // Masquer le bouton import si pas ADMIN
-    const btnImport = document.querySelector('button[onclick="triggerObjRealImport()"]');
-    if (btnImport && role !== 'ADMIN') {
-        btnImport.style.display = 'none';
-    }
-}
-
-// Permettre la validation avec la touche Entrée
-document.getElementById('loginPass').addEventListener('keypress', function (e) {
-    if (e.key === 'Enter') attemptLogin();
-});
-</script>
+    document.getElementById('loginPass').addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') attemptLogin();
+    });
+    </script>
+  </body>
+</html>
