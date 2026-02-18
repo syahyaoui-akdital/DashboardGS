@@ -229,8 +229,9 @@ window.switchFamily = function(mainFam, subFam, btn) {
     if(objRealDiv) objRealDiv.style.display = (subFam === 'Objectif vs Réalisation') ? 'block' : 'none';
     if(recouvFilterRow) recouvFilterRow.style.display = 'flex';
 
-    // ROUTAGE VERS LES FICHIERS SPECIFIQUES
+    // ROUTAGE VERS LES FICHIERS SPECIFIQUES & NETTOYAGE FILTRES
     if (subFam === 'Objectif vs Réalisation') {
+        toggleFilters('OBJECTIF'); // Nouveau mode pour nettoyer les filtres inutiles
         if(typeof updateObjRealDashboard === 'function') updateObjRealDashboard();
     } else if (subFam === 'Suivi des retours') {
         currentData = (typeof enrichSuiviRetoursData === 'function') ? enrichSuiviRetoursData() : [];
@@ -248,7 +249,7 @@ window.switchFamily = function(mainFam, subFam, btn) {
         toggleFilters('EXPEDITION');
         updateRecouvDashboard();
     }
-}
+};
 
 // --- FILTRES COMMUNS ---
 function initRecouvFilters() { 
@@ -324,6 +325,57 @@ function initRecouvFilters() {
         if (curVal && orgs.includes(curVal)) selOrg.value = curVal;
     }
 }
+
+function initCascadingFilters() {
+    const trimSelect = document.getElementById('recouvFilterTrim');
+    const moisSelect = document.getElementById('recouvFilterMois');
+    const anneeSelect = document.getElementById('recouvFilterAnnee');
+
+    // 1. Année par défaut (Année en cours)
+    if (anneeSelect && !anneeSelect.value) {
+        anneeSelect.value = new Date().getFullYear();
+    }
+
+    // 2. Cascade Trimestre -> Mois
+    if (trimSelect && moisSelect) {
+        // Sauvegarder les options originales des mois
+        if (!moisSelect.dataset.options) {
+            moisSelect.dataset.options = moisSelect.innerHTML;
+        }
+
+        trimSelect.addEventListener('change', function() {
+            const selectedTrim = this.value;
+            const allOptions = moisSelect.dataset.options; // Récupère le HTML original
+            
+            // Reconstruire le select Mois
+            moisSelect.innerHTML = allOptions;
+
+            if (selectedTrim) {
+                let allowedMonths = [];
+                if (selectedTrim === 'T1') allowedMonths = ['JAN', 'FEV', 'MAR'];
+                if (selectedTrim === 'T2') allowedMonths = ['AVR', 'MAI', 'JUIN']; // ou JUN selon vos codes
+                if (selectedTrim === 'T3') allowedMonths = ['JUIL', 'AOU', 'SEP'];
+                if (selectedTrim === 'T4') allowedMonths = ['OCT', 'NOV', 'DEC'];
+
+                // Filtrer les options
+                Array.from(moisSelect.options).forEach(opt => {
+                    if (opt.value && !allowedMonths.includes(opt.value)) {
+                        opt.remove(); // Supprime les mois non pertinents
+                    }
+                });
+            }
+            // Si le mois sélectionné n'est plus valide, on reset
+            if (moisSelect.value && !Array.from(moisSelect.options).some(o => o.value === moisSelect.value)) {
+                moisSelect.value = "";
+            }
+        });
+    }
+}
+
+// Appeler cette fonction au chargement ou après la création des filtres
+document.addEventListener('DOMContentLoaded', initCascadingFilters);
+// Sécurité : l'appeler aussi si le DOM est déjà chargé
+if (document.readyState === 'complete') initCascadingFilters();
 
 window.updateRecouvFilters = function(source) {
     updateRecouvDashboard();
@@ -448,8 +500,19 @@ function safeSetHTML(id, h) { const e=document.getElementById(id); if(e) e.inner
 
 // Toggle Filters UI
 function toggleFilters(mode) {
-    // Cache tout d'abord
-    const ids = ['filterStatutContainer', 'filterApprocheContainer', 'filterPatientContainer', 'rowAlertsRecouv', 'rowAlertsExped', 'blockClassifNature', 'blockClassifOrg', 'filterMotifContainer', 'filterEtatContainer', 'filterOrganismeContainer'];
+    // Cache tout d'abord (Liste exhaustive des conteneurs de filtres spécifiques)
+    const ids = [
+        'filterStatutContainer', 
+        'filterApprocheContainer', 
+        'filterPatientContainer', 
+        'rowAlertsRecouv', 
+        'rowAlertsExped', 
+        'blockClassifNature', 
+        'blockClassifOrg', 
+        'filterMotifContainer', 
+        'filterEtatContainer', 
+        'filterOrganismeContainer'
+    ];
     ids.forEach(id => { const el = document.getElementById(id); if(el) el.style.display = 'none'; });
 
     // Affiche selon le mode
@@ -461,6 +524,7 @@ function toggleFilters(mode) {
     } else if (mode === 'SUIVI_RETOURS') {
         ['filterMotifContainer', 'filterEtatContainer', 'filterOrganismeContainer'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display='flex'; });
     }
+    // Pour 'OBJECTIF', on ne réactive rien de spécifique, on garde juste Entité/Année/Trim/Mois qui sont toujours visibles.
 }
 
 // =========================================================

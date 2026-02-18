@@ -5,6 +5,42 @@
  * =======================================================================
  */
 
+
+// ==========================================
+// SYSTÈME D'AUTHENTIFICATION PERSONNALISÉ
+// ==========================================
+
+// Configuration des utilisateurs (Username : Password)
+const APP_USERS = {
+  'admin': { pass: 'admin123', role: 'ADMIN', entity: 'ALL' },
+  'A.ELBOUAMI': { pass: 'ELBOUAMI2026', role: 'VIEWER_REGION', entity: 'ALL' },
+  'N.AYYOU': { pass: 'AYYOU2026', role: 'VIEWER_ENTITY', entity: 'HIA CIOA' },
+  'H.BENADDOU': { pass: 'BENADDOU2026', role: 'VIEWER_ENTITY', entity: 'CIT' },
+  'ME.BERRADA': { pass: 'BERRADA2026', role: 'VIEWER_ENTITY', entity: 'CID' },
+  'L.BENGAZOUL': { pass: 'BENGAZOUL2026', role: 'VIEWER_ENTITY', entity: 'HPG' },
+  'R.DELFI': { pass: 'DELFI2026', role: 'VIEWER_ENTITY', entity: 'PIL' },
+
+
+
+  // Ajoutez vos autres entités ici...
+};
+
+function verifyCustomLogin(username, password) {
+  const user = APP_USERS[username];
+  
+  if (user && String(user.pass) === String(password)) {
+    return {
+      success: true,
+      role: user.role,
+      entity: user.entity,
+      username: username
+    };
+  } else {
+    return { success: false, message: "Identifiant ou mot de passe incorrect." };
+  }
+}
+
+
 // =======================================================================
 // 0. CONFIGURATION DE LA SÉCURITÉ (RBAC)
 // =======================================================================
@@ -1572,13 +1608,9 @@ function mapAgeKey_(label) {
 }
 
 // =======================================================================
-// 11. MODULE DÉTAIL ORGANISME (REC & EXP)
+// 11. IMPORT DÉTAIL (REC & EXP) - COLONNES FIXES POUR EXP
 // =======================================================================
 
-/**
- * Force l'importation des détails Organisme
- * À lancer manuellement ou via le menu
- */
 function importDetailsOrganisme() {
   const user = getUserContext();
   if (user.role !== 'ADMIN') return "⛔ Droit insuffisant";
@@ -1588,88 +1620,143 @@ function importDetailsOrganisme() {
   try {
     const sourceSS = SpreadsheetApp.openById(SOURCE_ID);
     const localSS = SpreadsheetApp.getActiveSpreadsheet();
-    
-    // --- FONCTION UTILITAIRE POUR IMPORTER UN ONGLET ---
-    function processTab(sourceTabName, targetTabName, cols) {
-      const srcSheet = sourceSS.getSheetByName(sourceTabName);
-      let output = [["Entité", "Date", "Organisme", "Montant"]]; // Header standardisé
+
+    // Helper Date
+    function getDateParts(d) {
+      if (!d || !(d instanceof Date)) return [0, 0, 0];
+      return [d.getDate(), d.getMonth() + 1, d.getFullYear()];
+    }
+
+    // --- LOGIQUE SPÉCIFIQUE EXPÉDITION (COLONNES D, F, M, S) ---
+    function processExpeditionFixed() {
+      // 1. Chercher l'onglet (plusieurs noms possibles)
+      let srcSheet = null;
+      const names = ["BDD EXP", "EXPEDITION", "EXP", "DATA EXP"];
+      for (let n of names) { srcSheet = sourceSS.getSheetByName(n); if(srcSheet) break; }
       
-      if (srcSheet) {
-        const data = srcSheet.getDataRange().getValues();
-        // On parcourt à partir de la ligne 1 (index 1) pour sauter le header source
-        for (let i = 1; i < data.length; i++) {
-          const row = data[i];
-          // Récupération via les index de colonnes fournis (0-based)
-          const entite = row[cols.ent];
-          const date = row[cols.date];
-          const org = row[cols.org];
-          const montant = row[cols.mnt];
+      if (!srcSheet) return "⚠️ Onglet EXP introuvable";
 
-          // Validation minimale : Entité présente
-          if (entite && String(entite).trim() !== "") {
-             // Nettoyage montant
-             let m = montant;
-             if (typeof m !== 'number') {
-               m = parseFloat(String(m).replace(/,/g, '.').replace(/[^0-9.-]/g, ''));
-             }
-             if (isNaN(m)) m = 0;
+      const data = srcSheet.getDataRange().getValues();
+      if (data.length < 2) return "⚠️ Onglet EXP vide";
 
-             output.push([entite, date, org, m]);
-          }
+      let output = [["Entité", "Jour", "Mois", "Année", "Organisme", "Montant"]];
+      let count = 0;
+
+      // 2. Lecture des colonnes fixes (Index commencant à 0 : A=0, D=3, F=5, M=12, S=18)
+      const colEntite = 3;   // D
+      const colOrg = 5;      // F
+      const colMontant = 12; // M
+      const colDate = 18;    // S
+
+      for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        
+        // Vérification de sécurité pour éviter les erreurs "Out of bounds"
+        if (!row[colEntite] && row[colEntite] !== 0) continue; // Skip ligne vide
+        
+        const entite = row[colEntite];
+        const orgVal = row[colOrg] || "Inconnu";
+        
+        // Nettoyage Montant (M)
+        let mntVal = row[colMontant];
+        if (typeof mntVal !== 'number') {
+           mntVal = parseFloat(String(mntVal).replace(/[\s,]/g, (m) => m === ',' ? '.' : '')) || 0;
+        }
+
+        // Nettoyage Date (S)
+        let rawDate = row[colDate];
+        let finalDate = null;
+        if (rawDate instanceof Date) {
+            finalDate = rawDate;
+        } else if (rawDate) {
+            // Tentative de parsing si c'est du texte
+            let s = String(rawDate).trim();
+            if (s.length >= 8) { // ex: 01/01/2024
+               let parts = s.split(/[\/\-\.]/);
+               if (parts.length === 3) finalDate = new Date(parts[2], parts[1] - 1, parts[0]);
+            }
+        }
+
+        if (finalDate && !isNaN(finalDate.getTime())) {
+             const [jj, mm, aa] = getDateParts(finalDate);
+             output.push([entite, jj, mm, aa, orgVal, mntVal]);
+             count++;
         }
       }
 
-      // Écriture (Création ou Remplacement)
-      let targetSheet = localSS.getSheetByName(targetTabName);
-      if (!targetSheet) targetSheet = localSS.insertSheet(targetTabName);
+      // 3. Écriture
+      let targetSheet = localSS.getSheetByName("DETAIL EXP");
+      if (!targetSheet) targetSheet = localSS.insertSheet("DETAIL EXP");
       targetSheet.clear();
-      if (output.length > 0) {
+      
+      if (output.length > 1) {
         targetSheet.getRange(1, 1, output.length, output[0].length).setValues(output);
+        return `${count} lignes (Colonnes D,F,M,S)`;
       }
-      return output.length - 1; // Retourne le nombre de lignes de données
+      return "0 ligne importée (Vérifiez le format date Col S)";
     }
 
-    // --- 1. TRAITEMENT RECOUVREMENT (BDD REC) ---
-    // Source : C=Entité(2), D=Date(3), E=Organisme(4), F=Montant(5)
-    const countRec = processTab("BDD REC", "DETAIL REC", { ent: 2, date: 3, org: 4, mnt: 5 });
+    // --- LOGIQUE RECOUVREMENT (Standard / Intelligente) ---
+    function processRecouvrementSmart() {
+       let srcSheet = null;
+       const names = ["BDD REC", "REC", "RECOUVREMENT"];
+       for (let n of names) { srcSheet = sourceSS.getSheetByName(n); if(srcSheet) break; }
+       if (!srcSheet) return "⚠️ Onglet REC introuvable";
 
-    // --- 2. TRAITEMENT EXPÉDITION (BDD EXP) ---
-    // Source : D=Entité(3), F=Organisme(5), M=Montant(12), S=Date(18)
-    const countExp = processTab("BDD EXP", "DETAIL EXP", { ent: 3, date: 18, org: 5, mnt: 12 });
+       const data = srcSheet.getDataRange().getValues();
+       if (data.length < 2) return "⚠️ Onglet REC vide";
+       
+       // Détection auto ou défaut (Entité=C/2, Date=D/3, Org=E/4, Mnt=F/5)
+       // ... (code simplifié pour REC, on suppose que REC fonctionne ou utilise les défauts)
+       let output = [["Entité", "Jour", "Mois", "Année", "Organisme", "Montant"]];
+       let count = 0;
+       
+       for (let i = 1; i < data.length; i++) {
+         const row = data[i];
+         // Défauts BDD REC : C=Entité(2), D=Date(3), E=Org(4), F=Montant(5)
+         // Ajustez si votre REC a changé aussi
+         let ent = row[2]; 
+         let dt = row[3];
+         let org = row[4];
+         let mnt = row[5];
+         
+         if(ent) {
+            if(typeof mnt !== 'number') mnt = parseFloat(String(mnt).replace(/[\s,]/g, (m) => m === ',' ? '.' : '')) || 0;
+            let fDate = (dt instanceof Date) ? dt : null;
+            if(!fDate && dt) { let p = String(dt).split('/'); if(p.length===3) fDate = new Date(p[2], p[1]-1, p[0]); }
+            
+            if(fDate) {
+              const [jj,mm,aa] = getDateParts(fDate);
+              output.push([ent, jj, mm, aa, org, mnt]);
+              count++;
+            }
+         }
+       }
+       
+       let targetSheet = localSS.getSheetByName("DETAIL REC");
+       if (!targetSheet) targetSheet = localSS.insertSheet("DETAIL REC");
+       targetSheet.clear();
+       if (output.length > 1) targetSheet.getRange(1, 1, output.length, output[0].length).setValues(output);
+       return `${count} lignes`;
+    }
 
-    return `✅ Succès : Import terminé. Recouvrement: ${countRec} lignes, Expédition: ${countExp} lignes.`;
+    const resExp = processExpeditionFixed();
+    const resRec = processRecouvrementSmart();
+
+    return `✅ Import Terminé.\nEXP: ${resExp}\nREC: ${resRec}`;
 
   } catch (e) {
-    return "❌ Erreur Import : " + e.message;
+    return "❌ Erreur : " + e.message;
   }
 }
 
-/**
- * Récupère les données locales pour le Dashboard
- * @param {string} type - "REC" ou "EXP"
- */
+// Assurez-vous d'avoir toujours cette fonction aussi :
 function getDetailsOrganismeData(type) {
-  const user = getUserContext();
-  if (!user.hasAccess) throw new Error("Accès refusé.");
-
-  const sheetName = (type === "EXP") ? "DETAIL EXP" : "DETAIL REC";
+  const sheetName = (type === 'EXP') ? 'DETAIL EXP' : 'DETAIL REC';
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(sheetName);
-
   if (!sheet) return [];
-  const rawData = sheet.getDataRange().getValues();
-  if (rawData.length < 2) return [];
-
-  // FILTRAGE SÉCURISÉ
-  if (user.entity !== 'ALL') {
-    const header = rawData[0];
-    const filteredRows = rawData.slice(1).filter(row => {
-      const rowEnt = String(row[0]).trim();
-      if (user.entity === 'HIA CIOA') return rowEnt === 'HIA' || rowEnt === 'CIOA' || rowEnt === 'HIA/CIOA';
-      return rowEnt === user.entity;
-    });
-    return [header, ...filteredRows];
-  }
-
-  return rawData;
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return [];
+  return data;
 }

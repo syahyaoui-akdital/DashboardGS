@@ -36,6 +36,27 @@
     </style>
   </head>
   <body>
+    <div id="loginOverlay" style="position:fixed; top:0; left:0; width:100%; height:100%; background:#f8fafc; z-index:99999; display:flex; justify-content:center; align-items:center;">
+    <div style="background:white; padding:40px; border-radius:12px; box-shadow:0 10px 25px rgba(0,0,0,0.1); width:100%; max-width:400px; text-align:center;">
+        <h2 style="margin-bottom:20px; color:#1e293b; font-family:sans-serif;">Connexion Dashboard</h2>
+        
+        <div style="margin-bottom:15px; text-align:left;">
+            <label style="display:block; font-size:12px; font-weight:bold; color:#64748b; margin-bottom:5px;">Utilisateur</label>
+            <input type="text" id="loginUser" class="form-control" placeholder="Ex: hia" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+        </div>
+        
+        <div style="margin-bottom:25px; text-align:left;">
+            <label style="display:block; font-size:12px; font-weight:bold; color:#64748b; margin-bottom:5px;">Mot de passe</label>
+            <input type="password" id="loginPass" class="form-control" placeholder="••••••" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+        </div>
+
+        <button onclick="attemptLogin()" id="btnLogin" style="width:100%; background:#363795; color:white; border:none; padding:12px; border-radius:6px; font-weight:bold; cursor:pointer; transition:background 0.2s;">
+            SE CONNECTER
+        </button>
+        
+        <p id="loginError" style="color:#ef4444; font-size:12px; margin-top:15px; display:none;"></p>
+    </div>
+</div>
     
     <div id="loadingOverlay">
         <div class="loader"></div>
@@ -198,3 +219,88 @@
     <?!= include('js_rh'); ?>
   </body>
 </html>
+<script>
+// --- GESTION LOGIN ---
+
+// Empêche le défilement tant que pas connecté
+document.body.style.overflow = 'hidden';
+
+function attemptLogin() {
+    const u = document.getElementById('loginUser').value.trim();
+    const p = document.getElementById('loginPass').value.trim();
+    const btn = document.getElementById('btnLogin');
+    const err = document.getElementById('loginError');
+
+    if(!u || !p) {
+        err.textContent = "Veuillez remplir tous les champs.";
+        err.style.display = 'block';
+        return;
+    }
+
+    // UI Loading
+    btn.disabled = true;
+    btn.textContent = "Vérification...";
+    err.style.display = 'none';
+
+    google.script.run
+        .withSuccessHandler(function(res) {
+            if (res.success) {
+                // 1. Stocker le contexte utilisateur
+                window.currentUserContext = {
+                    role: res.role,
+                    entity: res.entity,
+                    email: res.username // On utilise le username comme email pour l'affichage
+                };
+
+                // 2. Appliquer les droits visuels (Masquer menus ADMIN si nécessaire)
+                applyUserPermissions(res.role, res.entity);
+
+                // 3. Masquer l'écran de connexion
+                document.getElementById('loginOverlay').style.display = 'none';
+                document.body.style.overflow = 'auto';
+
+                // 4. Lancer le chargement des données (Si ce n'est pas déjà fait au onload)
+                // if(typeof initDashboard === 'function') initDashboard(); 
+
+            } else {
+                err.textContent = res.message;
+                err.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = "SE CONNECTER";
+            }
+        })
+        .withFailureHandler(function(e) {
+            err.textContent = "Erreur de connexion serveur.";
+            err.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = "SE CONNECTER";
+        })
+        .verifyCustomLogin(u, p);
+}
+
+// Fonction pour restreindre l'interface selon le rôle
+function applyUserPermissions(role, entity) {
+    console.log("Connexion réussie : " + role + " - " + entity);
+    
+    // Exemple : Pré-remplir le filtre Entité et le verrouiller si VIEWER_ENTITY
+    const entiteFilter = document.getElementById('recouvFilterEntite');
+    if (entiteFilter && role === 'VIEWER_ENTITY') {
+        entiteFilter.value = entity;
+        entiteFilter.disabled = true; // Empêche de changer d'entité
+        
+        // Simuler le changement pour rafraichir les graphiques
+        if(typeof updateRecouvDashboard === 'function') updateRecouvDashboard();
+    }
+    
+    // Masquer le bouton import si pas ADMIN
+    const btnImport = document.querySelector('button[onclick="triggerObjRealImport()"]');
+    if (btnImport && role !== 'ADMIN') {
+        btnImport.style.display = 'none';
+    }
+}
+
+// Permettre la validation avec la touche Entrée
+document.getElementById('loginPass').addEventListener('keypress', function (e) {
+    if (e.key === 'Enter') attemptLogin();
+});
+</script>

@@ -1,45 +1,236 @@
 <script>
 /**
- * MODULE : RECOUVREMENT - OBJECTIFS VS RÉALISATIONS
- * Fix : Import correct, gestion état chargement (évite boucle infinie), Graphique Hybride
+ * MODULE : RECOUVREMENT - FINAL V10
+ * Fix: Clic Trimestre -> Détail Organisme
  */
 
-// Variables globales (var pour compatibilité)
 var objChartInstance = objChartInstance || null;
-var currentObjView = currentObjView || 'MONTH'; 
-var drillMonth = drillMonth || null;        
-var objTableMode = objTableMode || 'ENTITY'; // 'ENTITY', 'PERIOD', 'ORG'
-var detailOrgData = null; // null = pas encore chargé
-var isOrgDataLoading = false; // Verrou pour éviter double appel
+var orgModalChartInstance = null;
 
-// --- 1. IMPORTATION ---
-window.triggerObjRealImport = function() {
-    if(!confirm("Lancer l'importation complète (Objectifs + Détails Organismes) ?")) return;
-    const btn = document.querySelector('button[onclick="triggerObjRealImport()"]');
-    const txt = btn.innerHTML;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ...';
-    btn.disabled = true;
-    
-    google.script.run
-        .withSuccessHandler(function(res1) {
-            // Une fois l'import terminé, on recharge la page ou les données
-            alert(res1);
-            btn.innerHTML = txt;
-            btn.disabled = false;
-            // On force le rechargement des données locales
-            if(typeof loadRecouvData === 'function') loadRecouvData();
-            // On reset le cache organisme pour forcer un re-fetch si on clique dessus
-            detailOrgData = null;
-        })
-        .withFailureHandler(function(err) { 
-            alert("Erreur: "+err.message); 
-            btn.innerHTML = txt; 
-            btn.disabled = false; 
-        })
-        .importDetailsOrganisme(); // On appelle la nouvelle fonction qui gère tout
+// État de l'application
+var state = {
+    viewMode: 'MONTH', // 'MONTH', 'QUARTER'
+    drillMode: 'DAY',  // 'DAY', 'WEEK'
+    drillScope: null,  // Mois sélectionné
+    selectedDay: null,
+    tableMode: 'ENTITY', // 'ENTITY', 'PERIOD', 'ORG'
+    orgFilterContext: 'GLOBAL'
 };
 
-// --- 2. TRAITEMENT LISSAGE ---
+var detailOrgData = null; 
+var isOrgDataLoading = false;
+var loadedFamily = null;
+
+// --- 0. UI & STYLES ---
+function injectStylesAndModal() {
+    const styleId = 'obj-advanced-styles';
+    if (!document.getElementById(styleId)) {
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.innerHTML = `
+            .chart-header-container { display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9; margin-bottom: 10px; }
+            .chart-title-group { display: flex; flex-direction: column; }
+            .chart-main-title { font-size: 16px; font-weight: 700; color: #1e293b; }
+            .chart-sub-info { font-size: 12px; font-weight: 600; color: #ef4444; margin-top: 2px; }
+            .obj-toolbar-group { display: flex; align-items: center; gap: 8px; }
+            .obj-btn-group { display: inline-flex; background: white; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; }
+            .obj-btn { border: none; background: white; padding: 4px 10px; font-size: 10px; font-weight: 700; color: #64748b; cursor: pointer; border-right: 1px solid #e2e8f0; transition: all 0.2s; text-transform: uppercase; }
+            .obj-btn:last-child { border-right: none; }
+            .obj-btn:hover { background: #f1f5f9; color: #334155; }
+            .obj-btn.active { background: #363795; color: white; }
+            .btn-graph-back { background-color: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 4px 12px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; display: none; align-items: center; gap: 5px; transition: all 0.2s; }
+            .btn-graph-back:hover { background-color: #e2e8f0; border-color: #94a3b8; }
+            
+            .custom-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; display: none; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
+            .custom-modal { background: white; width: 90%; max-width: 1100px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); overflow: hidden; display: flex; flex-direction: column; max-height: 90vh; }
+            .custom-modal-header { padding: 15px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; }
+            .custom-modal-title { font-size: 18px; font-weight: bold; color: #1e293b; }
+            .custom-modal-close { background: none; border: none; font-size: 24px; cursor: pointer; color: #64748b; }
+            .custom-modal-body { padding: 20px; flex: 1; overflow-y:auto; display:flex; flex-direction:column; gap:20px; }
+            .modal-kpi-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; width: 60%; margin: 0 auto; }
+            .modal-kpi-card { background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; text-align: center; }
+            .modal-kpi-val { font-size: 1.6em; font-weight: 800; color: #363795; }
+            .modal-kpi-lbl { font-size: 0.8em; font-weight: 600; color: #64748b; text-transform: uppercase; margin-top: 5px; }
+            .clickable-row { cursor: pointer; transition: background 0.1s; }
+            .clickable-row:hover { background-color: #f1f5f9; }
+        `;
+        document.head.appendChild(style);
+    }
+
+    if (!document.getElementById('orgDetailModal')) {
+        const modal = document.createElement('div');
+        modal.id = 'orgDetailModal';
+        modal.className = 'custom-modal-overlay';
+        modal.innerHTML = `
+            <div class="custom-modal">
+                <div class="custom-modal-header">
+                    <span class="custom-modal-title" id="orgModalTitle">Détail Organisme</span>
+                    <button class="custom-modal-close" onclick="closeOrgModal()">&times;</button>
+                </div>
+                <div class="custom-modal-body">
+                    <div class="modal-kpi-row">
+                        <div class="modal-kpi-card">
+                            <div class="modal-kpi-val" id="modalKpiTotal">--</div>
+                            <div class="modal-kpi-lbl">Total Réalisé</div>
+                        </div>
+                        <div class="modal-kpi-card">
+                            <div class="modal-kpi-val" id="modalKpiMoy">--</div>
+                            <div class="modal-kpi-lbl">Moyenne (Période)</div>
+                        </div>
+                    </div>
+                    <div style="flex:1; min-height:350px; position:relative;">
+                        <canvas id="orgModalChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+}
+
+// --- 0.1 GESTION FILTRES & TOOLBAR ---
+function setupCustomFilters() {
+    const filtersToHide = ['recouvFilterP1', 'recouvFilterP2', 'recouvFilterFamille', 'filterOrganismeContainer']; 
+    filtersToHide.forEach(id => { const el = document.getElementById(id); if (el) { if(id.includes('Container')) el.style.display = 'none'; else if (el.parentNode && el.parentNode.classList.contains('col')) el.parentNode.style.display = 'none'; else el.style.display = 'none'; } });
+    
+    const filtersToShow = ['recouvFilterEntite', 'recouvFilterSubEntity', 'recouvFilterAnnee', 'recouvFilterTrim', 'recouvFilterMois'];
+    filtersToShow.forEach(id => { const el = document.getElementById(id); if (el) { el.style.display = 'block'; if (el.parentNode && el.parentNode.classList.contains('col')) el.parentNode.style.display = 'block'; } });
+
+    if(typeof initCascadingFilters === 'function') initCascadingFilters();
+    if(typeof populateDynamicYearFilter === 'function') populateDynamicYearFilter();
+
+    injectCompactToolbar();
+}
+
+function populateDynamicYearFilter() {
+    // Vérification de sécurité
+    if (typeof objRealData === 'undefined' || !objRealData || objRealData.length === 0) return;
+    
+    const yearSelect = document.getElementById('recouvFilterAnnee');
+    if (!yearSelect) return;
+
+    // 1. Extraire les années uniques des données
+    const uniqueYears = [...new Set(objRealData.map(d => d.annee))]
+                        .filter(y => y !== "" && y !== null && y !== undefined) // Enlever les vides
+                        .map(y => parseInt(y)) // S'assurer que ce sont des nombres
+                        .sort((a, b) => b - a); // Trier du plus grand au plus petit (Descendant)
+    
+    // Si la liste est vide ou identique à ce qu'on a déjà (optionnel), on arrête
+    if (uniqueYears.length === 0) return;
+
+    // 2. Sauvegarder la sélection actuelle pour ne pas la perdre
+    const currentSelection = yearSelect.value;
+
+    // 3. Vider et reconstruire la liste
+    yearSelect.innerHTML = '<option value="">TOUT</option>';
+    
+    uniqueYears.forEach(year => {
+        const option = document.createElement('option');
+        option.value = year;
+        option.textContent = year;
+        yearSelect.appendChild(option);
+    });
+
+    // 4. Logique de sélection par défaut
+    if (currentSelection && uniqueYears.includes(parseInt(currentSelection))) {
+        // Garder la sélection de l'utilisateur si elle existe toujours
+        yearSelect.value = currentSelection;
+    } else {
+        // Sinon, essayer de sélectionner l'année civile actuelle
+        const currentSystemYear = new Date().getFullYear();
+        if (uniqueYears.includes(currentSystemYear)) {
+            yearSelect.value = currentSystemYear;
+        } else {
+            // Sinon, sélectionner l'année la plus récente disponible (la première de la liste triée)
+            yearSelect.value = uniqueYears[0];
+        }
+    }
+}
+
+function injectCompactToolbar() {
+    const titleEl = document.getElementById('chartObjTitle');
+    if (!titleEl || document.getElementById('objToolbarRight')) return;
+
+    const flexContainer = document.createElement('div');
+    flexContainer.className = 'chart-header-container';
+
+    const titleGroup = document.createElement('div');
+    titleGroup.className = 'chart-title-group';
+    titleEl.className = 'chart-main-title';
+    titleGroup.appendChild(titleEl);
+    
+    const subInfo = document.createElement('div');
+    subInfo.id = 'chartSubInfo';
+    subInfo.className = 'chart-sub-info';
+    subInfo.innerText = ''; 
+    titleGroup.appendChild(subInfo);
+
+    const toolbar = document.createElement('div');
+    toolbar.id = 'objToolbarRight';
+    toolbar.className = 'obj-toolbar-group';
+    toolbar.innerHTML = `
+        <button id="btnGraphBack" class="btn-graph-back" onclick="resetObjZoom()"><i class="fas fa-arrow-left"></i> Retour</button>
+        <div class="obj-btn-group">
+            <button type="button" class="obj-btn active" onclick="changeViewMode('MONTH')" id="btnViewMonth" title="Vue Mois">Mois</button>
+            <button type="button" class="obj-btn" onclick="changeViewMode('QUARTER')" id="btnViewQuarter" title="Vue Trimestre">Trim</button>
+        </div>
+        <div id="drillButtonsGroup" style="display:none; align-items:center;">
+            <div style="width:1px; height:20px; background:#e2e8f0; margin:0 8px;"></div>
+            <div class="obj-btn-group">
+                <button type="button" class="obj-btn active" onclick="changeDrillMode('DAY')" id="btnDrillDay" title="Détail Jour">J</button>
+                <button type="button" class="obj-btn" onclick="changeDrillMode('WEEK')" id="btnDrillWeek" title="Détail Semaine">S</button>
+            </div>
+        </div>
+    `;
+
+    flexContainer.appendChild(titleGroup);
+    flexContainer.appendChild(toolbar);
+    
+    const chartCanvas = document.getElementById('chartObjMain');
+    if(chartCanvas && chartCanvas.parentNode) {
+        chartCanvas.parentNode.insertBefore(flexContainer, chartCanvas);
+    }
+}
+
+// --- LOGIQUE METIER ---
+
+function changeViewMode(mode) {
+    state.viewMode = mode;
+    state.drillScope = null; 
+    state.selectedDay = null;
+    
+    document.getElementById('btnViewMonth').classList.toggle('active', mode==='MONTH');
+    document.getElementById('btnViewQuarter').classList.toggle('active', mode==='QUARTER');
+    
+    if(mode === 'MONTH') {
+        const trimFilter = document.getElementById('recouvFilterTrim');
+        if(trimFilter) { trimFilter.value = ""; trimFilter.dispatchEvent(new Event('change')); }
+    } else {
+        const moisFilter = document.getElementById('recouvFilterMois');
+        if(moisFilter) moisFilter.value = "";
+    }
+    updateObjRealDashboard();
+}
+
+function changeDrillMode(mode) {
+    state.drillMode = mode;
+    document.getElementById('btnDrillDay').classList.toggle('active', mode==='DAY');
+    document.getElementById('btnDrillWeek').classList.toggle('active', mode==='WEEK');
+    if(state.drillScope) updateObjRealDashboard();
+}
+
+window.triggerObjRealImport = function() {
+    if(!confirm("Lancer l'importation complète ?")) return;
+    const btn = document.querySelector('button[onclick="triggerObjRealImport()"]');
+    if(btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ...'; btn.disabled = true; }
+    google.script.run.withSuccessHandler(function(res1) {
+        alert(res1);
+        if(btn) { btn.innerHTML = 'Import Objectifs'; btn.disabled = false; }
+        if(typeof loadRecouvData === 'function') loadRecouvData();
+        detailOrgData = null; 
+    }).withFailureHandler(function(err) { alert("Erreur: "+err.message); if(btn) btn.disabled = false; }).importDetailsOrganisme();
+};
+
 function distributeMonthlyGoals(data) {
     const groups = {};
     data.forEach(function(d) {
@@ -68,7 +259,9 @@ function distributeMonthlyGoals(data) {
             const dailyObj = workingDaysCount > 0 ? (monthlyObj / workingDaysCount) : 0;
             for (let j = 1; j <= daysInMonth; j++) {
                 const d = new Date(year, monthIndex, j).getDay();
-                let calcObj = (d === 0 || d === 6) ? 0 : dailyObj;
+                let isWeekend = (d === 0 || d === 6);
+                if (isWeekend && (!daysMap[j] || daysMap[j].realisation === 0)) continue; 
+                let calcObj = isWeekend ? 0 : dailyObj;
                 if (daysMap[j]) {
                     const newItem = Object.assign({}, daysMap[j]);
                     newItem.objectif = calcObj;
@@ -84,341 +277,558 @@ function distributeMonthlyGoals(data) {
     return processedData;
 }
 
-// --- 3. CHARGEMENT DONNÉES ORGANISME ---
 window.loadDetailOrgData = function() {
-    if (isOrgDataLoading) return; // Déjà en cours
+    if (isOrgDataLoading) return;
     isOrgDataLoading = true;
-
-    // Détermine le type selon la famille active dans l'interface
-    let type = (typeof currentFamily !== 'undefined' && currentFamily.includes('Expédition')) ? 'EXP' : 'REC';
     
-    // Affichage loading temporaire dans le tableau
-    const tbody = document.querySelector('#tableObjPerf tbody');
-    if(tbody) tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:20px;"><i class="fas fa-spinner fa-spin"></i> Chargement des détails...</td></tr>';
+    let type = 'REC';
+    if (typeof currentFamily !== 'undefined' && currentFamily.toUpperCase().includes('EXP')) type = 'EXP';
+    loadedFamily = (typeof currentFamily !== 'undefined') ? currentFamily : "Recouvrement";
 
-    google.script.run
-        .withSuccessHandler(function(data) {
-            detailOrgData = [];
-            if(data && data.length > 1) {
-                for(let i=1; i<data.length; i++){
-                    let d = data[i];
-                    let dateObj = new Date(d[1]);
+    const tbody = document.querySelector('#tableObjPerf tbody');
+    if(tbody) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px; color:#363795;"><i class="fas fa-spinner fa-spin"></i> Chargement (' + type + ')...</td></tr>';
+
+    google.script.run.withSuccessHandler(function(data) {
+        detailOrgData = [];
+        if(data && Array.isArray(data) && data.length > 1) {
+            for(let i=1; i<data.length; i++){
+                let d = data[i];
+                let dateObj = null;
+                if (d[1] instanceof Date) dateObj = d[1]; 
+                else {
+                    let j = parseInt(d[1]); let m = parseInt(d[2]); let a = parseInt(d[3]);
+                    if(!isNaN(j) && !isNaN(m) && !isNaN(a)) dateObj = new Date(a, m-1, j);
+                }
+                if (dateObj && !isNaN(dateObj.getTime())) {
                     detailOrgData.push({
-                        entite: d[0],
-                        date: dateObj,
-                        mois: REC_MONTHS[dateObj.getMonth()],
-                        annee: dateObj.getFullYear(),
-                        organisme: d[2],
-                        montant: Number(d[3]||0)
+                        entite: d[0], date: dateObj, mois: REC_MONTHS[dateObj.getMonth()],
+                        annee: dateObj.getFullYear(), jour: dateObj.getDate(),
+                        organisme: String(d[4] || "").toUpperCase().trim(), montant: Number(d[5]||0)
                     });
                 }
             }
-            isOrgDataLoading = false;
-            // Si on est toujours sur l'onglet ORG, on met à jour l'affichage
-            if(objTableMode === 'ORG') updateObjRealDashboard();
-        })
-        .withFailureHandler(function(err) {
-            console.error(err);
-            isOrgDataLoading = false;
-            detailOrgData = []; // Vide pour éviter boucle
-            if(objTableMode === 'ORG') updateObjRealDashboard();
-        })
-        .getDetailsOrganismeData(type);
+        }
+        isOrgDataLoading = false;
+        updateObjRealDashboard();
+    }).withFailureHandler(function(err) { isOrgDataLoading = false; }).getDetailsOrganismeData(type);
 };
 
-// --- 4. MISE À JOUR DASHBOARD ---
+// --- UPDATE DASHBOARD (CORRIGÉ POUR BOUTON RETOUR) ---
 window.updateObjRealDashboard = function() {
-    // Gestion du chargement différé pour le mode ORGANISME
-    if(objTableMode === 'ORG') {
-        if (detailOrgData === null) {
-            loadDetailOrgData();
-            return; // On attend le callback
-        }
+    injectStylesAndModal();
+    setupCustomFilters();
+
+    // Check changement famille
+    let targetFamily = (typeof currentFamily !== 'undefined') ? currentFamily : "Recouvrement";
+    if (loadedFamily && loadedFamily !== targetFamily) {
+        detailOrgData = null;
+        loadedFamily = targetFamily;
     }
 
-    const fEnt = document.getElementById('recouvFilterEntite') ? document.getElementById('recouvFilterEntite').value : "";
-    const fAn = document.getElementById('recouvFilterAnnee') ? document.getElementById('recouvFilterAnnee').value : ""; 
-    const fMois = document.getElementById('recouvFilterMois') ? document.getElementById('recouvFilterMois').value : "";
+    if(state.tableMode === 'ORG' && detailOrgData === null) { loadDetailOrgData(); return; }
+
+    const fEnt = document.getElementById('recouvFilterEntite')?.value || "";
+    const fSub = document.getElementById('recouvFilterSubEntity')?.value || "";
+    const fAn = document.getElementById('recouvFilterAnnee')?.value || ""; 
+    const fMois = document.getElementById('recouvFilterMois')?.value || "";
+    const fTrim = document.getElementById('recouvFilterTrim')?.value || "";
+
+    const drillGroup = document.getElementById('drillButtonsGroup');
+    const backBtn = document.getElementById('btnGraphBack');
     
-    let targetFamily = (typeof currentFamily !== 'undefined') ? currentFamily : "Recouvrement";
+    // --- MODIFICATION ICI : Condition élargie pour le bouton Retour ---
+    // Affiche le bouton si on a un Mois (drillScope/fMois) OU un Trimestre (fTrim) actif
+    const isDrilled = (state.drillScope || fMois || fTrim) ? true : false;
+
+    // Les boutons J/S ne s'affichent que si on est sur un MOIS précis
+    if(drillGroup) drillGroup.style.display = (state.drillScope || fMois) ? 'flex' : 'none';
     
-    // --- FILTRAGE PRINCIPAL (OBJ VS REAL) ---
+    // Le bouton Retour s'affiche pour n'importe quel niveau de zoom (Mois ou Trimestre)
+    if(backBtn) backBtn.style.display = isDrilled ? 'flex' : 'none';
+
     if (!objRealData) return;
+    
     let filtered = objRealData.filter(function(d) {
         if (!d.famille.toUpperCase().includes(targetFamily.toUpperCase())) return false;
-        if (fEnt && fEnt !== "HIA CIOA" && d.entite !== fEnt) return false;
-        if (fEnt === "HIA CIOA" && d.entite !== "HIA" && d.entite !== "CIOA") return false;
+        if (fEnt) {
+            if (fEnt === "HIA CIOA") {
+                if (d.entite !== "HIA" && d.entite !== "CIOA") return false;
+                if (fSub && d.entite !== fSub) return false;
+            } else {
+                if (d.entite !== fEnt) return false;
+            }
+        }
         if (fAn && String(d.annee) !== String(fAn)) return false;
         return true;
     });
 
     filtered = distributeMonthlyGoals(filtered);
 
-    // Vue Temporelle
-    const btnBack = document.getElementById('btnBackToMonth');
-    if (fMois) {
-        currentObjView = 'DAY'; drillMonth = fMois;
-        if(btnBack) btnBack.style.display = 'none';
-    } else if (currentObjView === 'DAY' && drillMonth) {
-        if(btnBack) btnBack.style.display = 'flex';
-    } else {
-        currentObjView = 'MONTH';
-        if(btnBack) btnBack.style.display = 'none';
+    // Filtres Temporels
+    let monthsInQuarter = [];
+    if(fTrim) {
+        if(fTrim === 'T1') monthsInQuarter = ['JAN','FEV','MAR'];
+        if(fTrim === 'T2') monthsInQuarter = ['AVR','MAI','JUN']; // 'JUIN' selon vos données
+        if(fTrim === 'T3') monthsInQuarter = ['JUIL','AOU','SEP'];
+        if(fTrim === 'T4') monthsInQuarter = ['OCT','NOV','DEC'];
+        
+        filtered = filtered.filter(d => monthsInQuarter.includes(d.mois));
+        
+        // Note: On ne force pas la vue QUARTER ici pour permettre l'affichage des 3 mois
+        state.drillScope = null;
+    } else if (fMois) {
+        state.drillScope = fMois;
     }
 
-    if (currentObjView === 'DAY' && drillMonth) {
-        filtered = filtered.filter(function(d) { return d.mois === drillMonth; });
+    if (state.drillScope) {
+        filtered = filtered.filter(function(d) { return d.mois === state.drillScope; });
     }
 
-    // Calcul KPIs (toujours basé sur Obj vs Real)
     calculateObjKPIs(filtered);
 
-    // --- RENDU SELON MODE ---
-    if (objTableMode === 'ORG') {
-        // Filtrage spécifique pour les données Organisme
-        let orgFiltered = (detailOrgData || []).filter(function(d) {
-            if (fEnt && fEnt !== "HIA CIOA" && d.entite !== fEnt) return false;
-            if (fEnt === "HIA CIOA" && d.entite !== "HIA" && d.entite !== "CIOA") return false;
+    // Filtrage Données Détail
+    let orgFiltered = [];
+    if (state.tableMode === 'ORG' || state.tableMode === 'PERIOD') {
+        orgFiltered = (detailOrgData || []).filter(function(d) {
+            if (fEnt) {
+                if (fEnt === "HIA CIOA") {
+                    if (d.entite !== "HIA" && d.entite !== "CIOA") return false;
+                    if (fSub && d.entite !== fSub) return false;
+                } else {
+                    if (d.entite !== fEnt) return false;
+                }
+            }
             if (fAn && String(d.annee) !== String(fAn)) return false;
-            if (drillMonth && d.mois !== drillMonth) return false; // Filtre mois si actif
+            
+            if (state.drillScope) {
+                if (d.mois !== state.drillScope) return false;
+                if (state.orgFilterContext === 'DAY' && state.selectedDay) {
+                     if (state.drillMode === 'WEEK') {
+                        let w = Math.ceil(d.jour / 7);
+                        if (w > 4) w = 4;
+                        if (w !== state.selectedDay) return false;
+                    } else {
+                        if (d.jour !== state.selectedDay) return false;
+                    }
+                }
+            } else if (fTrim) {
+                 if (!monthsInQuarter.includes(d.mois)) return false;
+            }
             return true;
         });
-        
-        renderOrgChart(orgFiltered);
-        renderObjTable(orgFiltered); 
-    } else {
-        renderObjChart(filtered); 
-        renderObjTable(filtered); 
     }
+
+    renderObjChart(filtered); 
+    
+    if (state.tableMode === 'ORG') renderObjTable(orgFiltered);
+    else if (state.tableMode === 'PERIOD') renderObjTable(filtered);
+    else renderObjTable(filtered);
 };
 
-// --- 5. KPIs ---
-function calculateObjKPIs(data) {
-    const totObj = data.reduce(function(s,d) { return s + (d.objectif||0); }, 0);
-    const totReal = data.reduce(function(s,d) { return s + (d.realisation||0); }, 0);
-    const rate = totObj > 0 ? (totReal / totObj * 100) : 0;
-    
-    safeSetText('kpiObjVal', formatMoney(totObj));
-    safeSetText('kpiRealVal', formatMoney(totReal));
-    safeSetText('kpiRateVal', rate.toFixed(1) + "%");
-    
-    const bar = document.getElementById('kpiRateBar');
-    if(bar) { bar.style.width = Math.min(rate, 100) + "%"; bar.style.backgroundColor = rate>=100?"#10B981":rate>=80?"#F59E0B":"#EF4444"; }
-    
-    let projection = totReal;
-    const today = new Date();
-    const fAn = document.getElementById('recouvFilterAnnee') ? document.getElementById('recouvFilterAnnee').value : "";
-    if (String(fAn) === String(today.getFullYear())) {
-        const dayOfYear = (Date.now() - new Date(today.getFullYear(), 0, 0)) / 86400000;
-        if(dayOfYear>0) projection = (totReal/dayOfYear)*365;
-    }
-    safeSetText('kpiProjVal', formatMoney(projection));
-}
-
-// --- 6. GRAPHIQUE STANDARD (OBJ vs REAL) ---
+// --- GRAPHIQUE (AXE Y MASQUÉ) ---
 function renderObjChart(data) {
     const ctx = document.getElementById('chartObjMain');
     if(!ctx) return;
     if (objChartInstance) objChartInstance.destroy();
 
     const titleEl = document.getElementById('chartObjTitle');
+    const subInfoEl = document.getElementById('chartSubInfo');
+    if(subInfoEl) subInfoEl.innerText = "";
+    
     let labels=[], dObj=[], dReal=[];
     const agg={};
-    const fmtCompact = function(v) { return v>=1000000?(v/1000000).toFixed(1).replace('.',',')+'M':v>=1000?(v/1000).toFixed(0)+'K':Math.round(v); };
+    const fmtCompact = (v) => v>=1000000?(v/1000000).toFixed(1).replace('.',',')+'MDH':v>=1000?(v/1000).toFixed(0)+'KDH':Math.round(v);
 
-    if (currentObjView === 'MONTH') {
-        if(titleEl) titleEl.textContent = "Évolution Mensuelle";
-        REC_MONTHS.forEach(function(m){ agg[m]={o:0,r:0}; });
-        data.forEach(function(d){ if(agg[d.mois]){ agg[d.mois].o+=d.objectif; agg[d.mois].r+=d.realisation; } });
-        labels=REC_MONTHS;
-        dObj=labels.map(function(l){return agg[l].o;});
-        dReal=labels.map(function(l){return agg[l].r;});
-        const dRate=dObj.map(function(o,i){return o>0?(dReal[i]/o*100):0;});
+    if (!state.drillScope) {
+        // VUE GLOBALE
+        const fTrim = document.getElementById('recouvFilterTrim')?.value;
+        let labelList = [];
+
+        if (fTrim) {
+            if (fTrim === 'T1') labelList = ['JAN','FEV','MAR'];
+            else if (fTrim === 'T2') labelList = ['AVR','MAI','JUN'];
+            else if (fTrim === 'T3') labelList = ['JUIL','AOU','SEP'];
+            else if (fTrim === 'T4') labelList = ['OCT','NOV','DEC'];
+            if(titleEl) titleEl.innerText = "Détail Trimestre " + fTrim;
+        } 
+        else if (state.viewMode === 'QUARTER') {
+            labelList = ["T1", "T2", "T3", "T4"];
+            const qMap = { "JAN":"T1", "FEV":"T1", "MAR":"T1", "AVR":"T2", "MAI":"T2", "JUN":"T2", "JUIN":"T2", "JUIL":"T3", "AOU":"T3", "SEP":"T3", "OCT":"T4", "NOV":"T4", "DEC":"T4" };
+            data.forEach(function(d){ 
+                const q = qMap[d.mois]; 
+                if(q) { if(!agg[q]) agg[q]={o:0,r:0}; agg[q].o += d.objectif; agg[q].r += d.realisation; }
+            });
+            if(titleEl) titleEl.innerText = "Vue Trimestrielle";
+        } 
+        else {
+            labelList = REC_MONTHS;
+            if(titleEl) titleEl.innerText = "Évolution Mensuelle";
+        }
+        
+        if (state.viewMode !== 'QUARTER' || fTrim) {
+            labelList.forEach(m => agg[m]={o:0,r:0});
+            data.forEach(d => { if(agg[d.mois]){ agg[d.mois].o+=d.objectif; agg[d.mois].r+=d.realisation; } });
+        }
+        
+        labels = labelList;
+        dObj=labels.map(l=>agg[l] ? agg[l].o : 0); 
+        dReal=labels.map(l=>agg[l] ? agg[l].r : 0);
+        const dRate=dObj.map((o,i) => o>0?(dReal[i]/o*100):0);
 
         objChartInstance = new Chart(ctx, {
             type: 'bar',
             data: {
                 labels: labels,
                 datasets: [
-                    { label:'Objectif', data:dObj, backgroundColor:'#CBD5E1', borderRadius:4, order:2, datalabels:{display:true, anchor:'end', align:'top', offset:-4, color:'#64748B', font:{size:9, weight:'bold'}, formatter:function(v){return v>0?fmtCompact(v):""}} },
-                    { label:'Réalisé', data:dReal, backgroundColor:'#0EA5E9', borderRadius:4, order:1, datalabels:{display:true, anchor:'end', align:'top', offset:-4, color:'#0F172A', font:{size:9, weight:'bold'}, formatter:function(v){return v>0?fmtCompact(v):""}} },
-                    { label:'Taux (%)', data:dRate, type:'line', yAxisID:'y1', borderColor:'#F59E0B', backgroundColor:'#F59E0B', borderWidth:2, pointRadius:3, order:0, datalabels:{display:true, align:'top', color:'#F59E0B', backgroundColor:'rgba(255,255,255,0.8)', borderRadius:3, font:{size:10, weight:'bold'}, formatter:function(v){return v>0?Math.round(v)+'%':''}} }
+                    { label:'Objectif', data:dObj, backgroundColor:'#CBD5E1', borderRadius:6, order:2, datalabels: { display:false } }, 
+                    { label:'Réalisé', data:dReal, backgroundColor:'#0EA5E9', borderRadius:6, order:1, datalabels: { display:true, anchor:'end', align:'top', offset:-4, color:'#0F172A', font:{weight:'bold', size:10}, formatter: fmtCompact } },
+                    { label:'Taux (%)', data:dRate, type:'line', yAxisID:'y1', borderColor:'#F59E0B', backgroundColor:'#F59E0B', borderWidth:2, pointRadius:4, order:0, datalabels: { display:true, align:'top', offset:6, color:'#d97706', font:{size:10, weight:'bold'}, formatter: v => Math.round(v)+'%' } }
                 ]
             },
             options: {
-                responsive:true, maintainAspectRatio:false, layout:{padding:{top:20}},
-                plugins:{ legend:{position:'top', align:'end', labels:{usePointStyle:true, boxWidth:8}}, datalabels:{display:false} },
-                scales:{
-                    y:{grid:{display:false}, ticks:{callback:fmtCompact, font:{size:10}}, border:{display:false}},
-                    y1:{position:'right', beginAtZero:true, grid:{display:false}, ticks:{callback:function(v){return v+'%'}, color:'#F59E0B'}, border:{display:false}},
-                    x:{grid:{display:false}, border:{display:false}}
+                responsive:true, maintainAspectRatio:false, layout:{padding:{top:30}},
+                plugins:{ legend:{position:'bottom'}, datalabels:{display:true} },
+                scales:{ 
+                    // MODIFICATION ICI : display: false pour masquer l'axe Y
+                    y:{ display: false, grid:{display:false}, ticks:{callback:fmtCompact}, border:{display:false}}, 
+                    y1:{position:'right', beginAtZero:true, grid:{display:false}, ticks:{display:false}, border:{display:false}}, 
+                    x:{grid:{display:false}, border:{display:false}} 
                 },
-                onClick: function(e, els){ if(els.length>0 && currentObjView==='MONTH'){ drillMonth=REC_MONTHS[els[0].index]; currentObjView='DAY'; updateObjRealDashboard(); } }
+                onClick: function(e, els){ 
+                    if(els.length > 0) { 
+                        const idx = els[0].index;
+                        const clickedLabel = labels[idx];
+                        
+                        if (state.viewMode === 'QUARTER' && !fTrim) {
+                            const trimSelect = document.getElementById('recouvFilterTrim');
+                            if(trimSelect) {
+                                trimSelect.value = clickedLabel;
+                                const monthSelect = document.getElementById('recouvFilterMois');
+                                if(monthSelect) monthSelect.value = "";
+                                setObjTableMode('ORG');
+                                updateObjRealDashboard();
+                            }
+                        }
+                        else {
+                            const monthSelect = document.getElementById('recouvFilterMois');
+                            if(monthSelect) {
+                                monthSelect.value = clickedLabel;
+                                if(document.getElementById('recouvFilterTrim')) document.getElementById('recouvFilterTrim').value = "";
+                                state.drillScope = clickedLabel;
+                                updateObjRealDashboard();
+                            }
+                        }
+                    } 
+                }
             }
         });
 
     } else {
-        if(titleEl) titleEl.textContent = "Détail Quotidien : " + drillMonth;
-        for(let i=1; i<=31; i++) agg[i]={o:0,r:0};
-        data.forEach(function(d){ if(agg[d.jour]){ agg[d.jour].o+=d.objectif; agg[d.jour].r+=d.realisation; } });
-        // Masquer jours sans objectif (WE)
-        labels=Object.keys(agg).filter(function(k){ return agg[k].o > 0; });
-        dObj=labels.map(function(l){return agg[l].o;});
-        dReal=labels.map(function(l){return agg[l].r;});
+        // VUE DÉTAIL
+        let subTitleText = (state.drillMode === 'WEEK') ? " (Hebdo)" : " (Journalier)";
+        if(titleEl) titleEl.innerText = "Détail : " + state.drillScope + subTitleText;
+        
+        const totalObj = data.reduce((s,d)=>s+d.objectif, 0);
+        let avgObj = 0;
+
+        if (state.drillMode === 'WEEK') {
+            [1,2,3,4].forEach(w => agg['S'+w]={o:0,r:0});
+            data.forEach(d => {
+                let w = Math.ceil(d.jour / 7);
+                if (w > 4) w = 4;
+                let k = 'S'+w;
+                if(agg[k]) { agg[k].o+=d.objectif; agg[k].r+=d.realisation; }
+            });
+            labels = ['S1','S2','S3','S4'];
+            avgObj = totalObj / 4;
+            if(subInfoEl) subInfoEl.innerText = "Obj. Hebdo Moyen : " + formatMoney(avgObj);
+        } else {
+            const daysPresent = [...new Set(data.map(d => d.jour))].sort((a,b)=>a-b);
+            daysPresent.forEach(d => agg[d]={o:0,r:0});
+            data.forEach(d => { if(agg[d.jour]){ agg[d.jour].o+=d.objectif; agg[d.jour].r+=d.realisation; } });
+            labels = daysPresent;
+            if(daysPresent.length > 0) avgObj = totalObj / daysPresent.length;
+            if(subInfoEl) subInfoEl.innerText = "Obj. Quotidien Moyen : " + formatMoney(avgObj);
+        }
+        
+        dObj=labels.map(l=>agg[l].o); dReal=labels.map(l=>agg[l].r);
+        let bgColors = dReal.map(x => '#0EA5E9');
+        if (state.selectedDay) {
+            labels.forEach((l, i) => {
+                let val = (state.drillMode==='WEEK') ? parseInt(l.replace('S','')) : l;
+                if(val === state.selectedDay) bgColors[i] = '#F59E0B';
+            });
+        }
 
         objChartInstance = new Chart(ctx, {
             type: 'bar',
             data: {
                 labels: labels,
                 datasets: [
-                    { label:'Objectif', data:dObj, type:'line', borderColor:'#F59E0B', borderWidth:2, pointRadius:0, borderDash:[5,5], tension:0, order:0, datalabels:{display:false} },
-                    { label:'Réalisé', data:dReal, backgroundColor:'#0EA5E9', borderRadius:4, order:1, datalabels:{display:true, anchor:'end', align:'top', offset:-4, color:'#0F172A', font:{size:10, weight:'bold'}, formatter:function(v){return v>0?fmtCompact(v):""}} }
+                    { label:'Objectif', data:dObj, type:'line', borderColor:'#F59E0B', borderWidth:2, pointRadius:0, borderDash:[5,5], order:1, datalabels:{display:false} },
+                    { label:'Réalisé', data:dReal, backgroundColor: bgColors, borderRadius:4, order:2, datalabels: { display:true, anchor:'end', align:'top', rotation:0, color:'#334155', font:{size:10, weight:'bold'}, formatter: fmtCompact } }
                 ]
             },
             options: {
-                responsive:true, maintainAspectRatio:false, layout:{padding:{top:20}},
-                plugins:{ legend:{position:'top', align:'end'}, datalabels:{display:false} },
-                scales:{ y:{grid:{display:false}, ticks:{callback:fmtCompact}, border:{display:false}}, x:{grid:{display:false}, border:{display:false}} }
+                responsive:true, maintainAspectRatio:false, layout:{padding:{top:25}},
+                plugins:{ legend:{position:'bottom'}, datalabels:{display:true} },
+                scales:{ 
+                    // MODIFICATION ICI : display: false pour masquer l'axe Y
+                    y:{ display: false, grid:{display:false}, ticks:{callback:fmtCompact}, border:{display:false}}, 
+                    x:{grid:{display:false}, border:{display:false}, ticks:{font:{weight:'600'}}} 
+                },
+                onClick: function(e, els){ 
+                    if(els.length > 0) { 
+                        const idx = els[0].index;
+                        const label = labels[idx];
+                        let val = (state.drillMode==='WEEK') ? parseInt(label.replace('S','')) : label;
+                        state.selectedDay = val;
+                        state.tableMode = 'ORG';
+                        state.orgFilterContext = 'DAY';
+                        updateObjRealDashboard();
+                    } 
+                }
             }
         });
     }
 }
 
-// --- 7. GRAPHIQUE PAR ORGANISME (BARRES HORIZONTALES) ---
-function renderOrgChart(data) {
-    const ctx = document.getElementById('chartObjMain');
-    if(!ctx) return;
-    if (objChartInstance) objChartInstance.destroy();
-
-    const titleEl = document.getElementById('chartObjTitle');
-    if(titleEl) titleEl.textContent = "Répartition par Organisme (Top 10)";
-
-    // Si pas de données, on affiche un message vide (graphique vide)
-    if (!data || data.length === 0) {
-        objChartInstance = new Chart(ctx, { type: 'bar', data: {labels:[], datasets:[]}, options: {plugins:{title:{display:true, text:"Aucune donnée disponible"}}} });
-        return;
-    }
-
-    const agg = {};
-    data.forEach(function(d) {
-        let org = d.organisme || "Inconnu";
-        agg[org] = (agg[org] || 0) + d.montant;
-    });
-
-    // Top 10
-    const sorted = Object.entries(agg).sort(function(a,b){return b[1]-a[1]}).slice(0, 10);
-    const labels = sorted.map(function(x){return x[0]});
-    const values = sorted.map(function(x){return x[1]});
-
-    const fmtCompact = function(v) { return v>=1000000?(v/1000000).toFixed(1).replace('.',',')+'M':v>=1000?(v/1000).toFixed(0)+'K':Math.round(v); };
-
-    objChartInstance = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Réalisé',
-                data: values,
-                backgroundColor: '#8B5CF6',
-                borderRadius: 4,
-                barPercentage: 0.6,
-                datalabels: { display:true, anchor:'end', align:'right', offset:4, color:'#4B5563', font:{weight:'bold', size:10}, formatter: fmtCompact }
-            }]
-        },
-        options: {
-            indexAxis: 'y',
-            responsive: true, maintainAspectRatio: false,
-            layout: { padding: { right: 40 } },
-            plugins: { legend: {display:false}, datalabels: {display:true} },
-            scales: {
-                x: { grid:{display:false}, border:{display:false}, ticks:{display:false} },
-                y: { grid:{display:false}, border:{display:false}, ticks:{font:{size:10, weight:'600'}, color:'#374151'} }
-            }
-        }
-    });
-}
-
-// --- 8. TABLEAU ET MODES ---
-window.setObjTableMode = function(mode) {
-    objTableMode = mode;
-    // Mise à jour visuelle des boutons
-    const btns = ['btnTblEnt', 'btnTblPer', 'btnTblOrg'];
-    btns.forEach(function(bId) {
-        const el = document.getElementById(bId);
-        if(el) {
-            // Mapping simple: btnTblEnt->ENTITY, btnTblPer->PERIOD, btnTblOrg->ORG
-            let targetMode = bId === 'btnTblEnt' ? 'ENTITY' : (bId === 'btnTblPer' ? 'PERIOD' : 'ORG');
-            if (targetMode === mode) el.classList.add('active');
-            else el.classList.remove('active');
-        }
-    });
-    
-    // Si on bascule sur ORG et qu'on a changé de famille entre temps, on force le reload
-    if (mode === 'ORG') {
-        detailOrgData = null; 
-    }
-    
-    updateObjRealDashboard();
-};
-
+// --- TABLEAU ---
 function renderObjTable(data) {
     const tbody = document.querySelector('#tableObjPerf tbody');
     const thead = document.querySelector('#tableObjPerf thead');
     if(!tbody || !thead) return;
-
     tbody.innerHTML = '';
 
-    if (objTableMode === 'ORG') {
-        // --- MODE ORGANISME ---
-        thead.innerHTML = '<tr><th style="text-align:left;">Organisme</th><th style="text-align:right;">Réalisé</th><th style="text-align:center;">% Total</th></tr>';
+    window.handleRowClick = function(orgName) { openOrgModal(orgName); };
+
+    if (state.tableMode === 'ORG') {
+        thead.innerHTML = `<tr><th style="text-align:left;">Organisme</th><th style="text-align:right;">Réalisé</th><th style="text-align:center;">% Total</th></tr>`;
+        if (!data || data.length === 0) { tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">Aucune donnée</td></tr>'; return; }
         
-        if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#888;">Aucune donnée</td></tr>';
-            return;
-        }
-
-        const total = data.reduce(function(s,d){return s+d.montant},0);
+        const total = data.reduce((s,d)=>s+d.montant,0);
         const agg = {};
-        data.forEach(function(d){ let o=d.organisme||"Inconnu"; agg[o]=(agg[o]||0)+d.montant; });
-        const sorted = Object.entries(agg).sort(function(a,b){return b[1]-a[1]});
+        data.forEach(d => { let o=d.organisme; agg[o]=(agg[o]||0)+d.montant; });
+        const sorted = Object.entries(agg).sort((a,b)=>b[1]-a[1]); 
 
-        sorted.forEach(function(item) {
-            const org = item[0];
-            const val = item[1];
-            const pct = total>0 ? (val/total*100) : 0;
-            tbody.insertAdjacentHTML('beforeend', '<tr><td style="font-weight:600; color:#334155;">'+org+'</td><td style="text-align:right; font-weight:700;">'+formatMoney(val)+'</td><td style="text-align:center;">'+pct.toFixed(1)+'%</td></tr>');
+        sorted.forEach(item => {
+            const pct = total>0 ? (item[1]/total*100) : 0;
+            tbody.insertAdjacentHTML('beforeend', `
+                <tr class="clickable-row" onclick="handleRowClick('${item[0].replace(/'/g, "\\'")}')">
+                    <td style="font-weight:600; color:#334155;">${item[0]} <i class="fas fa-chart-line" style="float:right; opacity:0.3; font-size:10px;"></i></td>
+                    <td style="text-align:right; font-weight:700;">${formatMoney(item[1])}</td>
+                    <td style="text-align:center;">${pct.toFixed(1)}%</td>
+                </tr>`);
         });
 
-    } else if (objTableMode === 'ENTITY') {
-        // --- MODE ENTITÉ ---
-        thead.innerHTML = '<tr><th style="text-align:left;">Entité</th><th style="text-align:right;">Objectif</th><th style="text-align:right;">Réalisé</th><th style="text-align:center;">%</th></tr>';
+    } else if (state.tableMode === 'PERIOD') {
+        thead.innerHTML = '<tr><th style="text-align:left;">Période</th><th style="text-align:right;">Objectif</th><th style="text-align:right;">Réalisé</th><th style="text-align:center;">% Obj.</th><th style="text-align:center;">Var.</th></tr>';
         const agg = {};
-        data.forEach(function(d){ if(!agg[d.entite]) agg[d.entite]={o:0,r:0}; agg[d.entite].o+=d.objectif; agg[d.entite].r+=d.realisation; });
-        const sorted = Object.entries(agg).sort(function(a,b){return (b[1].r/b[1].o||0)-(a[1].r/a[1].o||0)});
-        
-        sorted.forEach(function(item) {
-            const ent=item[0], val=item[1];
-            const rate = val.o>0 ? (val.r/val.o*100) : 0;
-            let badge = rate>=100?'good':rate>=80?'mid':'bad';
-            tbody.insertAdjacentHTML('beforeend', '<tr><td style="font-weight:600;">'+ent+'</td><td style="text-align:right;color:#94a3b8;">'+formatMoney(val.o)+'</td><td style="text-align:right;font-weight:700;">'+formatMoney(val.r)+'</td><td style="text-align:center;"><span class="badge-perf '+badge+'">'+rate.toFixed(0)+'%</span></td></tr>');
+        data.forEach(d => { 
+            let k, sortKey;
+            if (!state.drillScope) { 
+                 k = d.mois; sortKey = REC_MONTHS.indexOf(d.mois);
+            } else { 
+                if (state.drillMode === 'WEEK') {
+                    let w = Math.ceil(d.jour / 7); if(w>4) w=4;
+                    k = 'Semaine ' + w; sortKey = w;
+                } else {
+                    k = 'J ' + d.jour; sortKey = d.jour;
+                }
+            }
+            if(!agg[k]) agg[k] = {o:0, r:0, sortKey:sortKey}; 
+            agg[k].o += d.objectif; 
+            agg[k].r += d.realisation;
+        });
+
+        let periods = Object.entries(agg).map(x => ({ key: x[0], o: x[1].o, r: x[1].r, sortKey: x[1].sortKey })).sort((a,b) => a.sortKey - b.sortKey);
+
+        periods.forEach((p, index) => {
+            const rate = p.o > 0 ? (p.r / p.o * 100) : 0;
+            let badge = rate >= 100 ? 'good' : rate >= 80 ? 'mid' : 'bad';
+            let varHtml = '-';
+            if (index > 0) {
+                let prev = periods[index - 1];
+                if (prev.r > 0) {
+                    let diff = ((p.r - prev.r) / prev.r) * 100;
+                    let color = diff >= 0 ? '#10B981' : '#EF4444';
+                    let icon = diff >= 0 ? 'fa-caret-up' : 'fa-caret-down';
+                    varHtml = `<span style="color:${color}; font-weight:bold; font-size:0.9em;"><i class="fas ${icon}"></i> ${Math.abs(diff).toFixed(1)}%</span>`;
+                }
+            }
+            tbody.insertAdjacentHTML('beforeend', `<tr><td style="font-weight:600;">${p.key}</td><td style="text-align:right; color:#64748b;">${formatMoney(p.o)}</td><td style="text-align:right; font-weight:700;">${formatMoney(p.r)}</td><td style="text-align:center;"><span class="badge-perf ${badge}">${rate.toFixed(0)}%</span></td><td style="text-align:center;">${varHtml}</td></tr>`);
         });
     } else {
-        // --- MODE COMPARATIF ---
-        thead.innerHTML = '<tr><th style="text-align:left;">Période</th><th style="text-align:right;">Réalisé</th><th style="text-align:center;">% Obj.</th><th style="text-align:center;"></th></tr>';
-        const agg={};
-        data.forEach(function(d){ let k=(currentObjView==='MONTH')?d.mois:('Jour '+d.jour); if(!agg[k])agg[k]={o:0,r:0}; agg[k].o+=d.objectif; agg[k].r+=d.realisation; });
-        const periods = Object.entries(agg).map(function(x){return{key:x[0],o:x[1].o,r:x[1].r,rate:x[1].o>0?x[1].r/x[1].o*100:0}}).sort(function(a,b){return b.rate-a.rate});
-        
-        let displayList = periods.length>8 ? periods.slice(0,3).concat([{sep:true}]).concat(periods.slice(-3)) : periods;
-        displayList.forEach(function(p){
-            if(p.sep){ tbody.insertAdjacentHTML('beforeend', '<tr><td colspan="4" style="text-align:center;">...</td></tr>'); return; }
-            let icon = p.rate>=100?'<i class="fas fa-arrow-up" style="color:#10B981"></i>':'<i class="fas fa-minus" style="color:#F59E0B"></i>';
-            let badge = p.rate>=100?'good':p.rate>=80?'mid':'bad';
-            tbody.insertAdjacentHTML('beforeend', '<tr><td style="font-weight:600;">'+p.key+'</td><td style="text-align:right;font-weight:700;">'+formatMoney(p.r)+'</td><td style="text-align:center;"><span class="badge-perf '+badge+'">'+p.rate.toFixed(0)+'%</span></td><td style="text-align:center;">'+icon+'</td></tr>');
+        thead.innerHTML = '<tr><th style="text-align:left;">Entité</th><th style="text-align:right;">Objectif</th><th style="text-align:right;">Réalisé</th><th style="text-align:center;">%</th></tr>';
+        const agg = {};
+        data.forEach(d => { if(!agg[d.entite]) agg[d.entite]={o:0,r:0}; agg[d.entite].o+=d.objectif; agg[d.entite].r+=d.realisation; });
+        const sorted = Object.entries(agg).sort((a,b) => (b[1].r/b[1].o||0)-(a[1].r/a[1].o||0));
+        sorted.forEach(item => {
+            const val=item[1]; const rate = val.o>0 ? (val.r/val.o*100) : 0;
+            let badge = rate>=100?'good':rate>=80?'mid':'bad';
+            tbody.insertAdjacentHTML('beforeend', `<tr><td style="font-weight:600;">${item[0]}</td><td style="text-align:right;color:#94a3b8;">${formatMoney(val.o)}</td><td style="text-align:right;font-weight:700;">${formatMoney(val.r)}</td><td style="text-align:center;"><span class="badge-perf ${badge}">${rate.toFixed(0)}%</span></td></tr>`);
         });
     }
 }
 
-function resetObjZoom() { currentObjView = 'MONTH'; drillMonth = null; updateObjRealDashboard(); }
+// --- MODALE EVOLUTION ---
+function openOrgModal(orgName) {
+    const modal = document.getElementById('orgDetailModal');
+    if(!modal) return;
+    document.getElementById('orgModalTitle').innerText = orgName;
+    modal.style.display = 'flex';
+
+    if(!detailOrgData) { loadDetailOrgData(); return; }
+    
+    const fTrim = document.getElementById('recouvFilterTrim')?.value;
+    
+    let chartData = detailOrgData.filter(d => {
+        if (d.organisme !== orgName) return false;
+        if (fTrim) {
+             let months = fTrim === 'T1' ? ['JAN','FEV','MAR'] : fTrim === 'T2' ? ['AVR','MAI','JUN'] : fTrim === 'T3' ? ['JUIL','AOU','SEP'] : ['OCT','NOV','DEC'];
+             if (!months.includes(d.mois)) return false;
+        } else if (state.drillScope) {
+             if (d.mois !== state.drillScope) return false;
+        }
+        return true;
+    });
+
+    const fEnt = document.getElementById('recouvFilterEntite')?.value;
+    if(fEnt && fEnt !== 'HIA CIOA') chartData = chartData.filter(d => d.entite === fEnt);
+
+    renderOrgEvolutionChart(chartData);
+}
+
+function closeOrgModal() {
+    const modal = document.getElementById('orgDetailModal');
+    if(modal) modal.style.display = 'none';
+}
+
+function renderOrgEvolutionChart(data) {
+    const ctx = document.getElementById('orgModalChart');
+    if(orgModalChartInstance) orgModalChartInstance.destroy();
+
+    const years = [...new Set(data.map(d => d.annee))].sort();
+    let labels = [];
+    let isDaily = !!state.drillScope;
+
+    if (isDaily) {
+        labels = Array.from({length: 31}, (_, i) => i + 1);
+    } else {
+        const fTrim = document.getElementById('recouvFilterTrim')?.value;
+        if (fTrim) {
+             labels = fTrim === 'T1' ? ['JAN','FEV','MAR'] : fTrim === 'T2' ? ['AVR','MAI','JUN'] : fTrim === 'T3' ? ['JUIL','AOU','SEP'] : ['OCT','NOV','DEC'];
+        } else {
+             labels = REC_MONTHS;
+        }
+    }
+
+    const datasets = years.map((year, index) => {
+        const yearData = data.filter(d => d.annee === year);
+        const points = labels.map(label => {
+            if (isDaily) {
+                const dayData = yearData.filter(d => d.jour === label);
+                return dayData.reduce((sum, d) => sum + d.montant, 0);
+            } else {
+                const monthData = yearData.filter(d => d.mois === label);
+                return monthData.reduce((sum, d) => sum + d.montant, 0);
+            }
+        });
+
+        const colors = ['#cbd5e1', '#3b82f6', '#8b5cf6'];
+        const color = colors[index % colors.length];
+
+        return {
+            label: year.toString(),
+            data: points,
+            borderColor: color,
+            backgroundColor: color,
+            borderWidth: 2,
+            tension: 0.3,
+            pointRadius: 3,
+            fill: false,
+            datalabels: {
+                display: true,
+                align: 'top',
+                color: '#64748b',
+                font: { weight: 'bold', size: 10 },
+                formatter: function(val) { return fmtLarge(val); }
+            }
+        };
+    });
+
+    const total = data.reduce((s,d)=>s+d.montant,0);
+    const avg = total / (labels.length * years.length || 1);
+
+    const fmtLarge = (v) => { 
+        if(v >= 1000000) return (v/1000000).toFixed(2) + ' MDH'; 
+        if(v >= 1000) return (v/1000).toFixed(1) + ' KDH'; 
+        return v.toLocaleString('fr-FR'); 
+    };
+
+    document.getElementById('modalKpiTotal').textContent = fmtLarge(total);
+    document.getElementById('modalKpiMoy').textContent = fmtLarge(avg);
+
+    orgModalChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: { labels: labels, datasets: datasets },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { 
+                legend: { position: 'top' },
+                tooltip: { callbacks: { label: function(ctx) { return ctx.dataset.label + ': ' + fmtLarge(ctx.raw); } } }
+            },
+            scales: { 
+                y: { beginAtZero: true, grid: { display: false }, ticks: { callback: function(val) { return fmtLarge(val); } } }, 
+                x: { grid: { display: false } }
+            }
+        }
+    });
+}
+
+// --- UTILITAIRES ---
+window.setObjTableMode = function(mode) {
+    state.tableMode = mode;
+    ['btnTblEnt', 'btnTblPer', 'btnTblOrg'].forEach(bId => {
+        const el = document.getElementById(bId);
+        if(el) {
+            let target = bId==='btnTblEnt'?'ENTITY':(bId==='btnTblPer'?'PERIOD':'ORG');
+            el.classList.toggle('active', target===mode);
+        }
+    });
+    updateObjRealDashboard();
+};
+
+function resetObjZoom() { 
+    state.drillScope = null; state.selectedDay = null; state.orgFilterContext = 'GLOBAL';
+    if(document.getElementById('recouvFilterMois')) document.getElementById('recouvFilterMois').value = "";
+    if(document.getElementById('recouvFilterTrim')) document.getElementById('recouvFilterTrim').value = "";
+    updateObjRealDashboard(); 
+}
+
+function calculateObjKPIs(data) {
+    const totObj = data.reduce((s,d) => s + (d.objectif||0), 0);
+    const totReal = data.reduce((s,d) => s + (d.realisation||0), 0);
+    const rate = totObj > 0 ? (totReal / totObj * 100) : 0;
+    
+    safeSetText('kpiObjVal', formatMoney(totObj));
+    safeSetText('kpiRealVal', formatMoney(totReal));
+    safeSetText('kpiRateVal', rate.toFixed(1) + "%");
+    const bar = document.getElementById('kpiRateBar');
+    if(bar) { bar.style.width = Math.min(rate, 100) + "%"; bar.style.backgroundColor = rate>=100?"#10B981":rate>=80?"#F59E0B":"#EF4444"; }
+    
+    const ecart = totReal - totObj;
+    const ecartEl = document.getElementById('kpiProjVal'); 
+    const cards = document.querySelectorAll('.obj-card.purple .obj-lbl');
+    if(cards.length > 0) cards[0].textContent = "Écart Réalisation";
+    const sub = document.getElementById('kpiProjSub');
+    if(sub) sub.textContent = "Réalisation - Objectif";
+
+    if(ecartEl) {
+        ecartEl.textContent = (ecart >= 0 ? "+" : "") + formatMoney(ecart);
+        ecartEl.style.color = ecart >= 0 ? '#10B981' : '#EF4444'; 
+    }
+}
+
 function safeSetText(id, val) { const el = document.getElementById(id); if(el) el.textContent = val; }
 </script>
