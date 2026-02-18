@@ -43,7 +43,7 @@
 
     <div id="loginOverlay" style="position:fixed; top:0; left:0; width:100%; height:100%; background:#f8fafc; z-index:99999; display:flex; justify-content:center; align-items:center;">
         <div style="background:white; padding:40px; border-radius:12px; box-shadow:0 10px 40px rgba(0,0,0,0.1); width:100%; max-width:380px; text-align:center;">
-            <h2 style="margin-bottom:20px; color:#1e293b; margin-top:0;">AKDITAL Dashboard</h2>
+            <h2 style="margin-bottom:20px; color:#1e293b; margin-top:0;">Dashboard Région Grand-Sud</h2>
             
             <div style="background:#e0f2fe; border:1px solid #bae6fd; padding:12px; border-radius:6px; margin-bottom:20px; text-align:left;">
                 <div style="font-size:10px; font-weight:bold; color:#0284c7; text-transform:uppercase; letter-spacing:0.5px;">Compte Google actif</div>
@@ -121,16 +121,30 @@
                 </div>
                 <span onclick="document.getElementById('exportModal').style.display='none'" style="cursor:pointer; font-size:1.5em; opacity:0.8; transition:0.2s;">&times;</span>
             </div>
-            <div id="exportCheckboxesArea" style="flex:1; overflow-y:auto; padding:20px; background:#f4f6f9;"></div>
+
+            <div style="padding:10px 20px; background:#fff3cd; color:#856404; font-size:0.85em; border-bottom:1px solid #ffeeba; display:flex; align-items:center; gap:10px;">
+                <i class="fas fa-info-circle"></i> Utilisez les flèches ⬆️⬇️ pour changer l'ordre des parties dans le PDF.
+            </div>
+
+            <div id="exportCheckboxesArea" style="flex:1; overflow-y:auto; padding:20px; background:#f4f6f9;">
+                </div>
+
             <div style="padding:20px; border-top:1px solid #eee; background:white; display:flex; justify-content:space-between; align-items:center;">
                 <div style="font-size:0.9em; color:#333; font-weight:500;">
+                    <label style="cursor:pointer; display:flex; align-items:center; gap:8px; margin-bottom:5px;">
+                        <input type="checkbox" id="chkCover" checked class="export-checkbox"> Page de Garde & Sommaire
+                    </label>
                     <label style="cursor:pointer; display:flex; align-items:center; gap:8px;">
-                        <input type="checkbox" id="chkCover" checked class="export-checkbox"> Page de Garde
+                        <input type="checkbox" id="chkSeparators" checked class="export-checkbox"> Pages de Séparation
                     </label>
                 </div>
                 <div style="display:flex; gap:10px;">
-                    <button onclick="processDynamicExport('pdf')" style="background:#e74c3c; color:white; border:none; padding:12px 30px; border-radius:30px; cursor:pointer; font-weight:700;"><i class="fas fa-file-pdf"></i> PDF</button>
-                    <button onclick="processDynamicExport('ppt')" style="background:#e67e22; color:white; border:none; padding:12px 30px; border-radius:30px; cursor:pointer; font-weight:700;"><i class="fas fa-file-powerpoint"></i> PPT</button>
+                    <button onclick="processDynamicExport('pdf')" style="background:#e74c3c; color:white; border:none; padding:12px 30px; border-radius:30px; cursor:pointer; font-weight:700; display:flex; align-items:center; gap:8px; box-shadow:0 4px 10px rgba(231, 76, 60, 0.3); transition:transform 0.2s;">
+                        <i class="fas fa-file-pdf"></i> PDF
+                    </button>
+                    <button onclick="processDynamicExport('ppt')" style="background:#e67e22; color:white; border:none; padding:12px 30px; border-radius:30px; cursor:pointer; font-weight:700; display:flex; align-items:center; gap:8px; box-shadow:0 4px 10px rgba(230, 126, 34, 0.3); transition:transform 0.2s;">
+                        <i class="fas fa-file-powerpoint"></i> PPT
+                    </button>
                 </div>
             </div>
         </div>
@@ -154,7 +168,7 @@
           </div>
           <div class="header-center">
               <div class="nav-tabs">
-                  <button class="nav-tab-btn active" onclick="switchTab('flash')">Flash</button>
+                  <button class="nav-tab-btn" onclick="switchTab('flash')">Flash</button>
                   <button class="nav-tab-btn" onclick="switchTab('ca-budget')">CA vs Budget</button>
                   <button class="nav-tab-btn" onclick="switchTab('recouvrement')">Recouvrement & Expédition</button>
                   <button class="nav-tab-btn" onclick="switchTab('depenses')">Dépenses</button>
@@ -174,7 +188,7 @@
               </div>
           </div>
           <div class="header-right">
-              <button class="action-btn" onclick="openChangePassModal()" title="Changer mot de passe"><i class="fas fa-key"></i></button>
+              <button class="action-btn" onclick="openChangePassModal()" title="Changer mot de passe"><i class="fas fa-key" style="color: white;"></i></button>
               <button class="action-btn" onclick="toggleDarkMode()" title="Mode Sombre">🌙</button>
               <button id="btnUpdate" class="action-btn" onclick="updateData()" title="Actualiser">
                   <svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>

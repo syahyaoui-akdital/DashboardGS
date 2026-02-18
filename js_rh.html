@@ -119,7 +119,7 @@ function loadRhData_(init) {
 
   const setBtn = (t)=>{ if(btn) btn.innerText = t; };
 
-  // --- Helpers pour le formatage des mois (inchangés) ---
+  // --- Helpers internes pour les dates ---
   const monthNameFR_ = (mm) => {
     const map = { "01":"JAN","02":"FEV","03":"MAR","04":"AVR","05":"MAI","06":"JUN","07":"JUI","08":"AOU","09":"SEP","10":"OCT","11":"NOV","12":"DEC" };
     return map[String(mm||"").padStart(2,"0")] || String(mm||"");
@@ -129,30 +129,19 @@ function loadRhData_(init) {
     const s = String(ym||"");
     const m = Number(s.split("-")[1] || 0);
     if(!m) return 0;
-    if(m<=3) return 1;
-    if(m<=6) return 2;
-    if(m<=9) return 3;
-    return 4;
+    if(m<=3) return 1; if(m<=6) return 2; if(m<=9) return 3; return 4;
   };
 
   const formatMoisLabel_ = (ym, withYear) => {
-    const s = String(ym||"");
-    const parts = s.split("-");
-    const y = parts[0] || "";
-    const m = parts[1] || "";
+    const s = String(ym||""); const parts = s.split("-");
+    const y = parts[0] || ""; const m = parts[1] || "";
     return withYear ? `${monthNameFR_(m)} ${y}` : monthNameFR_(m);
   };
 
   const buildMonthsOptions_ = (allMonths, trimestre, year) => {
     let months = (allMonths || []).slice().filter(Boolean);
-    if(year){
-      const y = String(year).trim();
-      if(y) months = months.filter(ym => String(ym).startsWith(y + "-"));
-    }
-    if(trimestre){
-      const q = Number(String(trimestre).replace("T","")) || 0;
-      if(q){ months = months.filter(ym => quarterOf_(ym) === q); }
-    }
+    if(year){ const y = String(year).trim(); if(y) months = months.filter(ym => String(ym).startsWith(y + "-")); }
+    if(trimestre){ const q = Number(String(trimestre).replace("T","")) || 0; if(q){ months = months.filter(ym => quarterOf_(ym) === q); } }
     months.sort();
     const years = new Set(months.map(m=>String(m).split("-")[0]).filter(Boolean));
     const withYear = (!year) && (years.size > 1);
@@ -166,17 +155,15 @@ function loadRhData_(init) {
   };
 
   const applyEntiteCascade_ = () => {
+    // Si Viewer Entity, le verrouillage est géré plus bas, on gère juste l'affichage sous-entité
     const v = entEl ? (entEl.value || "ALL") : "ALL";
     if(v === "HIA CIOA"){
       if(subWrap) subWrap.style.display = "";
       if(subEl){
         const prev = subEl.value || "ALL";
         const opts = [ { value:"ALL", label:"GLOBAL (HIA+CIOA)" }, { value:"HIA", label:"HIA" }, { value:"CIOA", label:"CIOA" } ];
-        const needRebuild = (subEl.options.length !== opts.length) || Array.from(subEl.options).some((o,i)=>o.value !== opts[i].value);
-        if(needRebuild) fillSel_("rhSousEntite", opts, true);
+        if(subEl.options.length !== opts.length) fillSel_("rhSousEntite", opts, true);
         subEl.disabled = false;
-        const still = Array.from(subEl.options).some(o => o.value === prev);
-        subEl.value = still ? prev : "ALL";
       }
     } else {
       if(subWrap) subWrap.style.display = "none";
@@ -184,7 +171,21 @@ function loadRhData_(init) {
     }
   };
 
+  // --- SÉCURITÉ : Calcul de l'entité voulue ---
   const computeEntWanted_ = () => {
+    // 1. SÉCURITÉ PRIORITAIRE
+    if (window.currentUserContext && window.currentUserContext.role === 'VIEWER_ENTITY' && window.currentUserContext.entity) {
+        const ent = window.currentUserContext.entity;
+        // Cas spécifique HIA CIOA
+        if (ent === "HIA CIOA") {
+            const s = (subEl && !subEl.disabled) ? (subEl.value || "ALL") : "ALL";
+            if(s && s !== "ALL") return s;
+            return "HIA/CIOA";
+        }
+        return ent;
+    }
+
+    // 2. Comportement standard
     const v = entEl ? (entEl.value || "ALL") : "ALL";
     if(v === "HIA CIOA"){
       const s = (subEl && !subEl.disabled) ? (subEl.value || "ALL") : "ALL";
@@ -210,7 +211,7 @@ function loadRhData_(init) {
   };
 
   const runLoad_ = (initCall, baseFilters) => {
-    const entWanted = computeEntWanted_();
+    const entWanted = computeEntWanted_(); // Utilise la logique sécurisée
     const mois = computeSelectedMois_(baseFilters.mois || []);
 
     RH_STATE.entite = entWanted || "ALL";
@@ -219,7 +220,7 @@ function loadRhData_(init) {
     RH_STATE.trimestre = triEl ? (triEl.value || "") : "";
 
     setBtn("...");
-
+    
     google.script.run
       .withSuccessHandler(res => {
         setBtn("appliquer");
@@ -234,22 +235,26 @@ function loadRhData_(init) {
   };
 
   // =========================
-  // INIT (Avec Sync Global)
+  // INIT (CORRIGÉ ET SÉCURISÉ)
   // =========================
   if(init){
     setBtn("...");
+
+    // 1. Détermination de l'entité initiale pour la 1ère requête
+    let initEntite = "ALL";
+    if (window.currentUserContext && window.currentUserContext.role === 'VIEWER_ENTITY') {
+        initEntite = window.currentUserContext.entity;
+    }
 
     google.script.run
       .withSuccessHandler(res => {
         setBtn("appliquer");
 
-        // --- Récupération des filtres globaux ---
         const gEnt = document.getElementById('entite') ? document.getElementById('entite').value : "";
         const gAn = document.getElementById('annee') ? document.getElementById('annee').value : "";
         const gTrim = document.getElementById('trimestre') ? document.getElementById('trimestre').value : "";
-        // Note : le mois global est "JAN", "FEV"... Le mois RH attend "2025-01". On gère ça plus bas.
 
-        // --- Entités ---
+        // --- Population Filtre Entité ---
         const entites = (res.filters && res.filters.entites) ? res.filters.entites.slice() : ["ALL"];
         const base = entites.filter(x => String(x).toUpperCase().trim() !== "ALL").sort();
         const options = [{ value:"ALL", label:"TOUT" }];
@@ -271,15 +276,19 @@ function loadRhData_(init) {
 
         if(entEl) {
             fillSel_("rhEntite", options, true);
-            // Sync Initial Entité
-            if (gEnt && Array.from(entEl.options).some(o => o.value === gEnt)) {
+            
+            // 2. VERROUILLAGE FORCE DU MENU DEROULANT
+            if (window.currentUserContext && window.currentUserContext.role === 'VIEWER_ENTITY') {
+                entEl.value = window.currentUserContext.entity;
+                entEl.disabled = true; 
+            } else if (gEnt && Array.from(entEl.options).some(o => o.value === gEnt)) {
                 entEl.value = gEnt;
             }
         }
 
         // --- Trimestre ---
         if(triEl){
-          triEl.value = gTrim || ""; // Sync Initial Trimestre
+          triEl.value = gTrim || "";
           triEl.onchange = () => {
             computeSelectedMois_((res.filters && res.filters.mois) ? res.filters.mois : []);
             RH_STATE.trimestre = triEl.value || "";
@@ -299,7 +308,6 @@ function loadRhData_(init) {
 
         if(anneeEl){
           fillSel_("rhAnnee", yearOpts, true);
-          // Sync Initial Année (priorité au global, sinon default backend)
           anneeEl.value = gAn || defYear || "";
         }
         RH_STATE.annee = (anneeEl && anneeEl.value) ? anneeEl.value : "";
@@ -308,9 +316,7 @@ function loadRhData_(init) {
         if(moisEl){
           const yearSel = RH_STATE.annee || defYear || "";
           const monthOpts = buildMonthsOptions_(allMonths, gTrim, yearSel);
-          
           let defM = "";
-          // Tentative de sync mois global (Ex: global="JAN", RH attend "2025-01")
           const gMoisShort = document.getElementById('mois') ? document.getElementById('mois').value : "";
           if (gMoisShort && yearSel) {
              const mapShort = { "JAN":"01","FEV":"02","MAR":"03","AVR":"04","MAI":"05","JUIN":"06","JUIL":"07","AOU":"08","SEP":"09","OCT":"10","NOV":"11","DEC":"12" };
@@ -320,7 +326,6 @@ function loadRhData_(init) {
                  if (monthOpts.some(o => o.value === constructed)) defM = constructed;
              }
           }
-
           if(!defM) {
               const backendDef = (res.filters && res.filters.defaultMois) ? String(res.filters.defaultMois) : "";
               if(backendDef && yearSel && backendDef.startsWith(String(yearSel) + "-")) defM = backendDef;
@@ -332,7 +337,7 @@ function loadRhData_(init) {
         }
         RH_STATE.mois = (moisEl && moisEl.value) ? moisEl.value : "";
 
-        // Application instantanée
+        // Hooks & Refresh
         let _rhT = null;
         const refreshNow_ = () => runLoad_(false, (res.filters||{}));
         const refresh_ = () => { if(_rhT) clearTimeout(_rhT); _rhT = setTimeout(refreshNow_, 120); };
@@ -359,8 +364,7 @@ function loadRhData_(init) {
         hookChange_(anneeEl);
         hookChange_(moisEl);
 
-        // Chargement initial
-        runLoad_(true, (res.filters||{}));
+        runLoad_(true, (res.filters||{})); // Premier affichage
 
         const c = document.getElementById("rhModalClose");
         if (c) c.onclick = closeRhModal_;
@@ -371,13 +375,14 @@ function loadRhData_(init) {
         setBtn("appliquer");
         console.error("apiRH init error:", err);
       })
-      .apiRH({ entite:"ALL", annee:"", mois:"" });
+      .apiRH({ entite: initEntite, annee:"", mois:"" }); // Envoi entité sécurisée
 
     return;
   }
 
   if(btn) btn.onclick = () => {
-    google.script.run.withSuccessHandler(res => { runLoad_(false, (res.filters||{})); }).withFailureHandler(err => console.error(err)).apiRH({ entite:"ALL", annee:"", mois:"" });
+    // Bouton appliquer manuel
+    runLoad_(false, {});
   };
 }
 
