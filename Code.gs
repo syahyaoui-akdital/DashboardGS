@@ -1046,10 +1046,15 @@ function saveNonSoldesData(cleanData) {
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("NON_SOLDE_FOCUS");
+  
+  // NOUVELLES COLONNES DEMANDÉES
   const headers = [
-    "Entité", "Num. Dossier", "Patient", "Service", "Date Sortie", 
-    "Etat", "Organisme", "Part Organisme", "Part Patient", "Paiement", "Reste à Payer"
+    "Entité", "Num. Dossier", "ID Séjour", "Patient", "Service", 
+    "J_Sortie", "M_Sortie", "A_Sortie", "Organisme", "N° facture", 
+    "Total patient", "Total Paiement", "Reste", 
+    "Chèques Impayés", "Chèques Caution", "État Dossier", "Note Dossier"
   ];
+
   if (!sheet) {
     sheet = ss.insertSheet("NON_SOLDE_FOCUS");
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight("bold");

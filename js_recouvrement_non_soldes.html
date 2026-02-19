@@ -1,0 +1,180 @@
+<script>
+/**
+ * MODULE RECOUVREMENT - DOSSIERS NON SOLDÉS
+ */
+
+window.renderNonSoldesView = function(dataSet) {
+    currentFilteredDataGlobal = dataSet;
+
+    // 1. CALCUL DES KPIs
+    let totalReste = 0;
+    let countDossiers = dataSet.length;
+    let countChequeImpaye = 0;
+    let countChequeCaution = 0;
+    
+    dataSet.forEach(d => {
+        totalReste += d.reste || 0;
+        if (d.chqImpaye && String(d.chqImpaye).trim() !== "") {
+            countChequeImpaye++;
+        }
+        if (d.chqCaution && String(d.chqCaution).trim() !== "") {
+            countChequeCaution++;
+        }
+    });
+
+    // Mise à jour de l'UI globale
+    safeSetText('kpiRecouvMontant', formatMoney(totalReste) + ' DH');
+    safeSetText('kpiRecouvCount', countDossiers);
+    
+    // Modification des cartes d'alertes pour afficher les infos Chèques
+    document.querySelector('#rowAlertsRecouv .stat-title').textContent = "CHÈQUES IMPAYÉS";
+    safeSetText('kpiEchueMontant', countChequeImpaye);
+    safeSetText('kpiEchueCount', "Dossiers avec impayé");
+    
+    document.querySelectorAll('#rowAlertsRecouv .stat-title')[1].textContent = "CHÈQUES CAUTION";
+    safeSetText('kpiNonEchueMontant', countChequeCaution); 
+    safeSetText('kpiNonEchueCount', "Dossiers avec caution");
+
+    // 2. CLASSIFICATION PAR SERVICE
+    renderClassificationService(dataSet);
+
+    // 3. CLASSIFICATION PAR ETAT DOSSIER
+    renderClassificationEtat(dataSet);
+
+    // 4. GRAPHIQUE D'EVOLUTION (Utilise le montant du 'reste' qui a été mappé sur 'montant')
+    if (typeof drawRecouvCharts === 'function') {
+        drawRecouvCharts(dataSet);
+    }
+
+    // 5. LISTE DES DOSSIERS
+    if (recouvTableMode === 'LIST') {
+        renderNonSoldesListTable(dataSet);
+    } else {
+        renderBalanceTable(dataSet);
+    }
+};
+
+window.renderClassificationService = function(dataSet) {
+    const tbody = document.querySelector('#tableRecouvOrg tbody'); 
+    if(!tbody) return; 
+    tbody.innerHTML = '';
+    
+    // Modification des titres pour coller à l'analyse "Service"
+    document.querySelector('#blockClassifOrg h4').textContent = "Analyse par Service";
+    document.querySelector('#recouvPieBlock h4').textContent = "Répartition par Service";
+
+    const counts = {}; const amounts = {};
+    dataSet.forEach(d => {
+        let srv = d.service || "Non défini";
+        counts[srv] = (counts[srv]||0)+1;
+        amounts[srv] = (amounts[srv]||0)+(d.reste||0);
+    });
+    
+    const total = dataSet.reduce((s,d)=>s+(d.reste||0),0);
+    let sorted = Object.entries(amounts).sort((a,b) => b[1] - a[1]);
+    
+    sorted.forEach(i => { 
+        const p = total > 0 ? (i[1]/total*100).toFixed(0) : 0; 
+        tbody.insertAdjacentHTML('beforeend', `
+            <tr onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>d.service==='${i[0].replace(/'/g, "\\'")}'), 'Détail Service ${i[0].replace(/'/g, "\\'")}')" style="cursor:pointer;">
+                <td style="text-align:left;">${i[0]}</td>
+                <td style="text-align:center;">${counts[i[0]]}</td>
+                <td style="text-align:right; font-weight:bold;">${formatMoney(i[1])}</td>
+                <td style="text-align:right;">${p}%</td>
+            </tr>`); 
+    });
+
+    // Mise à jour du Pie Chart
+    const canvasPie = document.getElementById('chartRecouvPie');
+    if (canvasPie && typeof Chart !== 'undefined') {
+        const ctxPie = canvasPie.getContext('2d');
+        if (window.recouvChartPieInstance) window.recouvChartPieInstance.destroy();
+        let pL=[], pD=[], other=0; 
+        sorted.forEach((i,x) => { if(x<7) { pL.push(i[0]); pD.push(i[1]); } else other+=i[1]; }); 
+        if(other>0) { pL.push("Autres"); pD.push(other); }
+        window.recouvChartPieInstance = new Chart(ctxPie, { 
+            type: 'doughnut', 
+            data: { labels: pL, datasets: [{ data: pD, backgroundColor: window.REC_COLORS }] }, 
+            options: { responsive: true, maintainAspectRatio: false, cutout: '55%', plugins: { legend: { position:'right' } } } 
+        });
+    }
+};
+
+window.renderClassificationEtat = function(dataSet) {
+    const tbody = document.querySelector('#tableRecouvNature tbody'); 
+    if(!tbody) return; 
+    tbody.innerHTML = '';
+    
+    document.querySelector('#blockClassifNature h4').textContent = "Analyse par État de Dossier";
+    document.querySelector('#blockClassifNature').nextElementSibling.querySelector('h4').textContent = "Répartition par État";
+
+    const counts = {}; const amounts = {};
+    dataSet.forEach(d => {
+        let etat = d.etatDossier || "Non défini";
+        counts[etat] = (counts[etat]||0)+1;
+        amounts[etat] = (amounts[etat]||0)+(d.reste||0);
+    });
+    
+    const total = dataSet.reduce((s,d)=>s+(d.reste||0),0);
+    let sorted = Object.entries(amounts).sort((a,b) => b[1] - a[1]);
+    
+    sorted.forEach(i => { 
+        const p = total > 0 ? (i[1]/total*100).toFixed(0) : 0; 
+        tbody.insertAdjacentHTML('beforeend', `
+            <tr onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>d.etatDossier==='${i[0].replace(/'/g, "\\'")}'), 'Détail État ${i[0].replace(/'/g, "\\'")}')" style="cursor:pointer;">
+                <td style="text-align:left;">${i[0]}</td>
+                <td style="text-align:center;">${counts[i[0]]}</td>
+                <td style="text-align:right; font-weight:bold;">${formatMoney(i[1])}</td>
+                <td style="text-align:right;">${p}%</td>
+            </tr>`); 
+    });
+
+    drawNatureChart(amounts);
+};
+
+window.renderNonSoldesListTable = function(dataSet) {
+    const tbody = document.querySelector('#tableTopFactures tbody');
+    const thead = document.querySelector('#tableTopFactures thead tr');
+    if(!tbody || !thead) return;
+
+    thead.innerHTML = `
+        <th style="text-align:left;">Entité</th>
+        <th style="text-align:left;">Dossier / Patient</th>
+        <th style="text-align:left;">Service</th>
+        <th style="text-align:center;">Date Sortie</th>
+        <th style="text-align:left;">Organisme</th>
+        <th style="text-align:right;">Total Patient</th>
+        <th style="text-align:right;">Total Payé</th>
+        <th style="text-align:right; color:#c0392b;">Reste</th>
+        <th style="text-align:center;">État Dossier</th>
+    `;
+
+    tbody.innerHTML = '';
+    
+    let sortedData = [...dataSet];
+    if (recouvSortMode === 'MONTANT') {
+        sortedData.sort((a,b) => (b.reste||0) - (a.reste||0));
+    }
+
+    const limit = (recouvTopN === 1000) ? sortedData.length : recouvTopN;
+    
+    sortedData.slice(0, limit).forEach(d => {
+        let alertIcon = d.chqImpaye ? ' <i class="fas fa-exclamation-triangle" style="color:#c0392b;" title="Chèque Impayé"></i>' : '';
+        let cautionIcon = d.chqCaution ? ' <i class="fas fa-lock" style="color:#f39c12;" title="Chèque Caution"></i>' : '';
+        
+        tbody.insertAdjacentHTML('beforeend', `
+            <tr style="border-bottom:1px solid #eee;">
+                <td style="text-align:left;">${d.entite}</td>
+                <td style="text-align:left;"><b>${d.dossier}</b>${alertIcon}${cautionIcon}<br>${d.patient}</td>
+                <td style="text-align:left; font-size:0.9em;">${d.service}</td>
+                <td style="text-align:center;">${d.dateRefDisplay}</td>
+                <td style="text-align:left;">${d.organisme}</td>
+                <td style="text-align:right;">${formatMoney(d.totPatient)}</td>
+                <td style="text-align:right; color:#27ae60;">${formatMoney(d.totPaiement)}</td>
+                <td style="text-align:right; font-weight:bold; color:#c0392b;">${formatMoney(d.reste)}</td>
+                <td style="text-align:center; font-size:0.85em;">${d.etatDossier || '-'}</td>
+            </tr>
+        `);
+    });
+};
+</script>

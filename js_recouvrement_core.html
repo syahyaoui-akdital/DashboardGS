@@ -5,6 +5,7 @@
 
 // --- VARIABLES GLOBALES ---
 let recouvData = []; 
+let nonSoldesData = [];
 let expeditionData = [];
 let suiviRetoursData = []; 
 let objRealData = []; 
@@ -66,6 +67,14 @@ function loadRecouvData() {
                 }
             }
         }).getRecouvFocusData();
+
+        google.script.run.withSuccessHandler(response => {
+    if (response && response.data) {
+        nonSoldesData = processBackendData(response.data, 'NON_SOLDES');
+        // Si on est sur l'onglet Non Soldés, on rafraîchit
+        if (currentSubFamily === 'Dossiers non soldés') updateRecouvDashboard();
+    }
+        }).getNonSoldesData();
 
         // 3. Expédition
         google.script.run.withSuccessHandler(response => {
@@ -147,6 +156,32 @@ function processBackendData(rawData, type) {
             organisme = String(r[16] || "Autre").trim();
             try { montant = parseFloat(String(r[18]).replace(/[^0-9.-]/g, '')) || 0; } catch(e){}
             dateRef = parseDate(r[9], r[10], r[11]); 
+        // Modifiez le if/else if (type === ...) dans processBackendData pour inclure NON_SOLDES
+else if (type === 'NON_SOLDES') {
+    // Index selon la structure générée dans Code.gs (saveNonSoldesData)
+    dossier = r[1]; patient = r[3];
+    let service = r[4];
+    dateRef = parseDate(r[5], r[6], r[7]);
+    organisme = String(r[8] || "Autre").trim();
+    facture = r[9];
+    let totPatient = r[10] || 0;
+    let totPaiement = r[11] || 0;
+    let reste = r[12] || 0;
+    let chqImpaye = r[13];
+    let chqCaution = r[14];
+    let etatDossier = r[15];
+    let noteDossier = r[16];
+
+    return {
+        entite: entite, dossier: dossier, patient: patient, service: service,
+        dateRefObj: dateRef, dateRefDisplay: (dateRef && !isNaN(dateRef.getTime())) ? formatDateFR(dateRef) : '-',
+        anneeRef: dateRef ? dateRef.getFullYear().toString() : "", 
+        moisRef: dateRef ? REC_MONTHS[dateRef.getMonth()] : "",
+        organisme: organisme, facture: facture,
+        totPatient: totPatient, totPaiement: totPaiement, reste: reste, montant: reste, // 'montant' sert pour les graphs génériques
+        chqImpaye: chqImpaye, chqCaution: chqCaution, etatDossier: etatDossier, noteDossier: noteDossier, type: type
+    };
+}    
         } else if (type === 'EXPEDITION') { 
             dossier = r[1]; patient = r[2]; motif = r[3];
             dateRef = parseDate(r[4], r[5], r[6]); 
@@ -233,6 +268,11 @@ window.switchFamily = function(mainFam, subFam, btn) {
     if (subFam === 'Objectif vs Réalisation') {
         toggleFilters('OBJECTIF'); // Nouveau mode pour nettoyer les filtres inutiles
         if(typeof updateObjRealDashboard === 'function') updateObjRealDashboard();
+    } else if (subFam === 'Dossiers non soldés') {
+        currentData = nonSoldesData;
+        safeSetText('recouvLastUpdate', "Actualisé via l'import");
+        toggleFilters('NON_SOLDES');
+        updateRecouvDashboard();
     } else if (subFam === 'Suivi des retours') {
         currentData = (typeof enrichSuiviRetoursData === 'function') ? enrichSuiviRetoursData() : [];
         safeSetText('recouvLastUpdate', "Temps réel (Sheets)");
@@ -518,6 +558,10 @@ function toggleFilters(mode) {
     // Affiche selon le mode
     if (mode === 'RECOUVREMENT') { 
         ['filterStatutContainer', 'rowAlertsRecouv', 'blockClassifOrg', 'filterOrganismeContainer'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display='flex'; }); 
+    } else if (mode === 'NON_SOLDES') {
+    ['rowAlertsRecouv', 'blockClassifNature', 'blockClassifOrg', 'filterOrganismeContainer'].forEach(id => { 
+        const el = document.getElementById(id); 
+        if(el) el.style.display='flex';     
     } else if (mode === 'EXPEDITION') {
         ['filterApprocheContainer', 'filterPatientContainer', 'rowAlertsExped', 'blockClassifNature', 'blockClassifOrg', 'filterOrganismeContainer'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display='flex'; });
         const e2 = document.getElementById('rowAlertsExped'); if(e2) e2.style.display='grid';
@@ -705,6 +749,8 @@ function processRecouvFile(file) {
         
         if (n.includes("NON_ENVOYES") || n.includes("NON ENVOYES") || n.includes("NON-ENVOYES")) {
             targetMode = 'EXPEDITION';
+        } else if (n.includes("NON_SOLDES") || n.includes("NON SOLDES") || n.includes("NON-SOLDES")) {
+    targetMode = 'NON_SOLDES'; //
         } else if (n.includes("NON_REGLEES") || n.includes("NON REGLEES") || n.includes("NON-REGLEES") || n.includes("NON RÉGLÉES")) {
             targetMode = 'RECOUVREMENT';
         } else {
@@ -732,6 +778,19 @@ function processRecouvFile(file) {
                         return;
                     } else {
                         console.warn("Échec parsing Expédition pour " + file.name);
+                    }
+                    } else if (targetMode === 'NON_SOLDES') {
+                    // ---- NOUVELLE LOGIQUE POUR LES DOSSIERS NON SOLDÉS ----
+                    cleanData = parseNonSoldesImportData(rawJson, detectedEntity);
+                    if (cleanData.length > 0) {
+                        google.script.run.withSuccessHandler((res) => {
+                             alert(res); // Affiche le message de succès venant du serveur
+                             loadRecouvData(); // Rafraîchit les données du tableau de bord
+                             resolve(true);
+                        }).saveNonSoldesData(cleanData);
+                        return;
+                    } else {
+                        console.warn("Échec parsing Non Soldés pour " + file.name);
                     }
                 } else {
                     // RECOUVREMENT
@@ -1172,6 +1231,9 @@ window.handleVariableCardClick = function() {
     if(currentFamily === 'Recouvrement' && currentSubFamily === 'Dossiers non réglés') {
         return; // Le clic est géré par le bouton "Activer/Désactiver" interne
     } 
+    else if (currentSubFamily === 'Dossiers non soldés') {
+    if(typeof renderNonSoldesView === 'function') renderNonSoldesView(filtered);
+    }
     // 2. Vue EXPEDITION
     else if (currentFamily === 'Expédition') {
         openRecouvDetailCustom(currentFilteredDataGlobal.filter(d => d.isAlertPEC || d.nature === "Suivi PEC vide"), 'Dossiers PEC Non Traité');
@@ -1721,5 +1783,81 @@ window.updateRecouvTopN = function(val) {
     // On relance le tableau de bord pour rafraîchir les tableaux avec la nouvelle limite
     updateRecouvDashboard();
 };
+
+// =========================================================
+// PARSING IMPORT : DOSSIERS NON SOLDÉS
+// =========================================================
+function parseNonSoldesImportData(rows, entityName) {
+    let result = [];
+    let startRowIndex = 0;
+    
+    // 1. Recherche de la ligne d'en-tête
+    for(let i=0; i<Math.min(rows.length, 20); i++) {
+        const rowStr = rows[i].join(' ').toUpperCase();
+        if(rowStr.includes('PATIENT') && rowStr.includes('SERVICE')) {
+            startRowIndex = i + 1;
+            break;
+        }
+    }
+
+    const parseMnt = (val) => {
+        if(typeof val === 'number') return val;
+        if(!val) return 0;
+        return parseFloat(String(val).replace(/[^0-9.,-]/g, '').replace(',', '.')) || 0;
+    };
+
+    const parseRobustDate = (val) => {
+        if(!val) return ["", "", ""];
+        let jsDate = null;
+        if (typeof val === 'number') { jsDate = new Date(Math.round((val - 25569) * 86400 * 1000)); } 
+        else if (val instanceof Date) { jsDate = val; } 
+        else {
+            let s = String(val).trim();
+            let parts = s.split(/[\/\-\.]/);
+            if(parts.length >= 3) {
+                let y = parts[2].length === 4 ? parts[2] : (parts[0].length === 4 ? parts[0] : null);
+                let m = parts[2].length === 4 ? parts[1] : parts[1];
+                let d = parts[2].length === 4 ? parts[0] : parts[2];
+                jsDate = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+            }
+        }
+        if (jsDate && !isNaN(jsDate.getTime())) return [jsDate.getDate(), REC_MONTHS[jsDate.getMonth()], jsDate.getFullYear()];
+        return ["", "", ""];
+    };
+
+    // 2. Extraction en utilisant les index (A=0, B=1, etc.)
+    for(let i=startRowIndex; i<rows.length; i++) {
+        const row = rows[i];
+        if(!row || row.length === 0) continue;
+
+        const dossier = row[1] || ""; // Colonne B
+        const idSejour = row[2] || ""; // Colonne C
+        const patient = row[3] || ""; // Colonne D
+        
+        if(!dossier && !patient) continue; // Sauter les lignes vides
+
+        const service = row[4] || ""; // Colonne E
+        const [jSor, mSor, aSor] = parseRobustDate(row[6]); // Colonne G
+        const organisme = row[7] || "Autre"; // Colonne H
+        const facture = row[9] || ""; // Colonne J
+        
+        const totPatient = parseMnt(row[11]); // Colonne L
+        const totPaiement = parseMnt(row[12]); // Colonne M
+        const reste = parseMnt(row[13]); // Colonne N (Reste assumé)
+        
+        const chqImpaye = String(row[16] || ""); // Colonne Q
+        const chqCaution = String(row[17] || ""); // Colonne R
+        const etatDossier = String(row[19] || ""); // Colonne T
+        const noteDossier = String(row[21] || ""); // Colonne V
+
+        result.push([
+            entityName, dossier, idSejour, patient, service,
+            jSor, mSor, aSor, organisme, facture,
+            totPatient, totPaiement, reste,
+            chqImpaye, chqCaution, etatDossier, noteDossier
+        ]);
+    }
+    return result;
+}
 
 </script>

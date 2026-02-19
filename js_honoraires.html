@@ -94,7 +94,7 @@ function processHonorairesData(rawData) {
         let specNorm = normalizeSpecialty(specRaw);
 
         // Exclusion stricte (sauf pour PIL)
-        if (EXCLUDED_SPECS_IMPORT.includes(specRaw) && safe(r[0]) !== 'PIL') return null;
+        if (EXCLUDED_SPECS_IMPORT.includes(specRaw) && safe(r[0]) !== '') return null;
 
         return {
             entite: safe(r[0]),
