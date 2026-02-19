@@ -56,6 +56,7 @@ function getUserContext() {
   };
 }
 
+// 2. VÉRIFICATION LOGIN AVEC LOGS (Pour l'écran de connexion)
 function verifyCustomLogin(username, password, clientIp) {
   const ss = getSecurityDb();
   const userSheet = ss.getSheetByName('Users');
@@ -118,7 +119,6 @@ function verifyCustomLogin(username, password, clientIp) {
     photo: userData.photo
   };
 }
-
 
 // 3. NOUVEAU : CHANGER MOT DE PASSE
 function changeUserPassword(username, oldPass, newPass, clientIp) {

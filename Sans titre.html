@@ -1,22 +1,14 @@
 <script>
-  // =======================================================================
-  //  1. CONFIGURATION & VARIABLES GLOBALES
-  // =======================================================================
   Chart.register(ChartDataLabels);
   Chart.defaults.color = '#333';
   
-  // Variables de données
   window.rawData = {}; 
   window.normalizedData = []; 
   window.extraContactData = {}; 
   window.extraCAData = {}; 
   window.extraCapacityData = {}; 
-  
-  // --- NOUVEAU : CONTEXTE SÉCURITÉ ---
   let currentUserContext = null; 
-  // -----------------------------------
 
-  // Instances Graphiques
   window.kpiChartInstance = null; 
   window.laboChartInstance = null; 
   window.historyChartInstance = null;
@@ -28,139 +20,79 @@
   window.monthToQuarterMap = { "JAN":"T1", "FEV":"T1", "MAR":"T1", "AVR":"T2", "MAI":"T2", "JUIN":"T2", "JUIL":"T3", "AOU":"T3", "SEP":"T3", "OCT":"T4", "NOV":"T4", "DEC":"T4" };
   window.ENTITY_ORDER = ["HIA CIOA", "CIT", "CID", "PIL", "HPG", "ALHIKMA"];
   const FAMILIES_ORDER = ["Hospitalisation", "Bloc", "Salle de cathé et rythmologie", "Radiothérapie", "Chimiothérapie", "Médecine nucléaire", "Dialyse", "Hôpital du jour", "Radiologie", "Laboratoire", "Consultation", "Urgence", "Centre de rééducation", "Curiethérapie et CHIP"];
-  const DEFAULT_FAMILY = "Hospitalisation";
-  const TOTAL_REGION_LABEL = "Région Grand-Sud";
-
-  // --- UTILITAIRES GLOBAUX ---
+  
   window.isFilterValueValid = function(v) { return v !== null && v !== undefined && String(v).trim() !== '' && String(v).trim() !== '-'; };
   window.formatValue = function(v) { if (v === 'N/A' || v === '--' || v == null || isNaN(v)) return '--'; return Math.round(parseFloat(v)).toLocaleString('fr-FR'); };
   window.formatMoney = function(v) { return (v === undefined || v === null) ? "0" : Math.round(v).toLocaleString('fr-FR') + " "; };
   window.formatDecimal = function(value) { if (value === 'N/A' || value === '--' || value == null || isNaN(value) || !isFinite(value)) return '--'; return parseFloat(value).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }); };
 
-  // =======================================================================
-  //  2. GESTION CONNEXION & SÉCURITÉ (NOUVEAU)
-  // =======================================================================
+  window.applyUserPermissions = function(role, entity) {
+      role = role || (window.currentUserContext ? window.currentUserContext.role : null);
+      entity = entity || (window.currentUserContext ? window.currentUserContext.entity : null);
+      window.currentUserContext = { ...window.currentUserContext, role: role, entity: entity };
 
-  document.addEventListener('DOMContentLoaded', () => {
-      // On prépare juste l'interface, pas de chargement de données ici.
-      // Le chargement se fait via attemptLogin().
-      console.log("Application prête à la connexion.");
-  });
-
-  function attemptLogin() {
-      const errorMsg = document.getElementById('loginError');
-      const googleBtn = document.querySelector('.google-btn');
+      const isAdmin = (role === 'ADMIN');
       
-      // Feedback visuel
-      if(errorMsg) errorMsg.style.display = 'none';
-      if(googleBtn) {
-          googleBtn.style.opacity = "0.7";
-          googleBtn.style.pointerEvents = "none";
-          const span = googleBtn.querySelector('span');
-          if(span) span.textContent = "Authentification en cours...";
-      }
+      if (!isAdmin) {
+          const importIds = ['btnUpdate', 'recouvImportZone', 'importZone', 'btnImport', 'fileInput', 'btnUpload', 'depenseImportZone', 'honoImportZone'];
+          importIds.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
 
-      // Appel au backend (Authentification auto via Session.getActiveUser)
-      google.script.run
-          .withSuccessHandler(initializeDashboardWithSecurity)
-          .withFailureHandler(e => {
-              if(googleBtn) {
-                  googleBtn.style.opacity = "1";
-                  googleBtn.style.pointerEvents = "auto";
-                  const span = googleBtn.querySelector('span');
-                  if(span) span.textContent = "Se connecter avec Google";
-              }
-              if(errorMsg) {
-                  errorMsg.textContent = "Accès refusé : " + e.message;
-                  errorMsg.style.display = 'block';
-              }
-          })
-          .getDashboardData();
-  }
-
-  function initializeDashboardWithSecurity(data) {
-      // 1. Initialisation standard
-      initializeDashboard(data);
-      
-      // 2. Enregistrement du contexte utilisateur
-      if(data.userContext) {
-          currentUserContext = data.userContext;
-          applySecurityRules(); // Applique les restrictions immédiatement
-      }
-
-      // 3. Transition UI : Cacher Login -> Afficher App
-      const loginPage = document.getElementById('loginPage');
-      const appContainer = document.getElementById('appContainer');
-      
-      if(loginPage) {
-          loginPage.style.opacity = '0';
-          setTimeout(() => loginPage.style.display = 'none', 300);
-      }
-      
-      if(appContainer) {
-          appContainer.style.display = 'flex';
-          // Redimensionnement nécessaire des charts
-          setTimeout(() => {
-              if(window.kpiChartInstance) window.kpiChartInstance.resize();
-              window.dispatchEvent(new Event('resize'));
-          }, 300);
-      }
-  }
-
-  function applySecurityRules() {
-      if (!currentUserContext) return;
-
-      const role = currentUserContext.role;
-      const entity = currentUserContext.entity;
-
-      // A. RÈGLE ADMIN (Import)
-      if (role !== 'ADMIN') {
-          const btnUpdate = document.getElementById('btnUpdate');
-          if(btnUpdate) btnUpdate.style.display = 'none';
-          
-          const idsToHide = ['recouvImportZone', 'depenseImportZone', 'honoImportZone'];
-          idsToHide.forEach(id => {
-              const el = document.getElementById(id);
-              if(el) el.style.display = 'none';
+          document.querySelectorAll('input[type="file"]').forEach(el => {
+              el.style.display = 'none';
+              if(el.parentElement && el.parentElement.tagName === 'LABEL') el.parentElement.style.display = 'none';
           });
 
-          // Fallback pour les inputs fichiers sans ID wrapper propre
-          ['fileExpenses', 'fileHonoraires', 'fileRecouv'].forEach(inputId => {
-              const input = document.getElementById(inputId);
-              if(input && input.parentNode) input.parentNode.style.display = 'none';
+          document.querySelectorAll('button').forEach(btn => {
+              const text = (btn.getAttribute('onclick') || "") + " " + (btn.textContent || "");
+              if (text.toLowerCase().includes('import') || text.toLowerCase().includes('upload') || text.includes('Charger le fichier')) {
+                  btn.style.display = 'none';
+              }
           });
-          
+
+          document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
           const btnObj = document.querySelector('button[onclick="triggerObjRealImport()"]');
           if(btnObj) btnObj.style.display = 'none';
+      } else {
+           document.querySelectorAll('.admin-only').forEach(el => el.style.display = '');
       }
 
-      // B. RÈGLE ENTITÉ (Verrouillage Filtre)
-      if (entity !== 'ALL') {
-          const selectEntite = document.getElementById('entite');
-          if (selectEntite) {
-              selectEntite.value = entity;
-              selectEntite.disabled = true;
-              selectEntite.style.backgroundColor = "#e9ecef";
-              selectEntite.style.color = "#555";
-              selectEntite.style.cursor = "not-allowed";
-              selectEntite.style.border = "1px solid #ccc";
-              
-              // Force la synchro des filtres locaux
-              syncFilters('entite');
-          }
-          
-          // Badge visuel dans le header
+      if (role === 'VIEWER_ENTITY' && entity) {
+          const filterIds = ['entite', 'localEntite', 'localBudgetEntite', 'recouvFilterEntite', 'depenseFilterEntite', 'honoFilterEntite', 'rhEntite', 'expedFilterEntite'];
+          filterIds.forEach(id => {
+              const el = document.getElementById(id);
+              if (el) {
+                  el.value = entity; 
+                  if (el.value !== entity) {
+                      const opt = document.createElement('option');
+                      opt.value = entity; opt.text = entity; el.add(opt); el.value = entity;
+                  }
+                  el.disabled = true;
+                  el.style.backgroundColor = "#e5e7eb";
+                  el.style.color = "#6b7280";
+                  el.style.opacity = "0.7";
+                  el.style.cursor = "not-allowed";
+              }
+          });
           const headerTitle = document.querySelector('header h2');
           if(headerTitle && !document.getElementById('entityBadge')) {
               headerTitle.innerHTML += ` <span id="entityBadge" style="font-size:0.6em; background:rgba(255,255,255,0.2); padding:2px 8px; border-radius:10px; vertical-align:middle;">${entity}</span>`;
           }
       }
-  }
 
-  // =======================================================================
-  //  3. CONFIGURATION D'EXPORTATION INTELLIGENTE
-  // =======================================================================
-  
+      if (role === 'VIEWER_RECOUV') {
+          ['flash', 'budget', 'depenses', 'rh', 'honoraires'].forEach(tab => {
+              const selector = `button[onclick*="${tab}"]`;
+              document.querySelectorAll(selector).forEach(b => b.style.display = 'none');
+          });
+          const sb = document.getElementById('sidebar');
+          if(sb) sb.style.display = 'none';
+      }
+  };
+
+  document.addEventListener('DOMContentLoaded', () => {
+      console.log("Application prête à la connexion.");
+  });
+
   function hasDataFor(familleKeyword, elementKeyword = null) {
       const entite = document.getElementById('entite') ? document.getElementById('entite').value : '';
       return window.normalizedData.some(row => {
@@ -180,10 +112,8 @@
 
   function setFlashFilters(fam, subFam, element) {
       if(typeof selectFamily === 'function') selectFamily(fam);
-      
       setTimeout(() => {
           const sfSelect = document.getElementById('sousFamille');
-          
           if(subFam && sfSelect) {
               let foundSF = false;
               for(let opt of sfSelect.options) {
@@ -218,120 +148,15 @@
   function forceSwitchFamily(main, sub) { if(typeof switchFamily === 'function') switchFamily(main, sub); }
 
   const EXPORT_CONFIG = {
-      "FLASH_1": {
-          title: "1. HOSPITALISATION",
-          targetId: "view-flash",
-          items: [
-              { name: "1.1 Vue Globale Hospitalisation", condition: () => hasDataFor('Hospitalisation'), action: () => setFlashFilters('Hospitalisation', '', '') },
-              { name: "1.2 Réanimation (Globale)", condition: () => hasDataFor('Hospitalisation', 'RÉANIMATION'), action: () => setFlashFilters('Hospitalisation', 'RÉANIMATION', '') },
-              { name: "1.2.1 Réanimation Polyvalente", condition: () => hasDataFor('Hospitalisation', 'POLY'), action: () => setFlashFilters('Hospitalisation', 'RÉANIMATION', 'Poly') },
-              { name: "1.2.2 Réanimation CCV", condition: () => hasDataFor('Hospitalisation', 'CCV'), action: () => setFlashFilters('Hospitalisation', 'RÉANIMATION', 'CCV') },
-              { name: "1.2.3 Réanimation Néo-natale", condition: () => hasDataFor('Hospitalisation', 'NEO') || hasDataFor('Hospitalisation', 'NÉO'), action: () => setFlashFilters('Hospitalisation', 'RÉANIMATION', 'Néo') },            
-              { name: "1.3 Soins Intensifs (Global)", condition: () => hasDataFor('Hospitalisation', 'SOINS INTENSIFS'), action: () => setFlashFilters('Hospitalisation', 'SOINS INTENSIFS', '') },
-              { name: "1.3.1 USI Polyvalente", condition: () => hasDataFor('Hospitalisation', 'USI') && (hasDataFor('Hospitalisation', 'POLY') || hasDataFor('Hospitalisation', 'USIP')), action: () => setFlashFilters('Hospitalisation', 'SOINS INTENSIFS', 'Poly') },
-              { name: "1.3.2 USI Oncologie", condition: () => hasDataFor('Hospitalisation', 'USI') && (hasDataFor('Hospitalisation', 'ONCO') || hasDataFor('Hospitalisation', 'USIO')), action: () => setFlashFilters('Hospitalisation', 'SOINS INTENSIFS', 'Onco') },
-              { name: "1.3.3 USI CCV (Cardio)", condition: () => hasDataFor('Hospitalisation', 'USI') && (hasDataFor('Hospitalisation', 'CCV') || hasDataFor('Hospitalisation', 'USIC')), action: () => setFlashFilters('Hospitalisation', 'SOINS INTENSIFS', 'CCV') },
-              { name: "1.4 Maternité", condition: () => hasDataFor('Hospitalisation', 'MATERNIT'), action: () => setFlashFilters('Hospitalisation', 'MATERNITE', '') },
-              { name: "1.5 HMC", condition: () => hasDataFor('Hospitalisation', 'HMC'), action: () => setFlashFilters('Hospitalisation', 'HMC', '') }
-          ]
-      },
-      "FLASH_2": {
-          title: "2. BLOC & CATHÉTÉRISME",
-          targetId: "view-flash",
-          items: [
-              { name: "2.1 Bloc Opératoire", condition: () => hasDataFor('Bloc'), action: () => setFlashFilters('Bloc', '', '') },
-              { name: "2.2 Cathétérisme", condition: () => hasDataFor('cathé'), action: () => setFlashFilters('Salle de cathé et rythmologie', '', '') }
-          ]
-      },
-      "FLASH_3": {
-          title: "3. RADIOTHÉRAPIE & CHIMIOTHÉRAPIE",
-          targetId: "view-flash",
-          items: [
-              { name: "3.1 Radiothérapie (Passage)", condition: () => hasDataFor('Radiothérapie', 'Passage'), action: () => setFlashFilters('Radiothérapie', 'Passage sur la machine') },
-              { name: "3.2 Radiothérapie (Technique)", condition: () => hasDataFor('Radiothérapie', 'Technique'), action: () => setFlashFilters('Radiothérapie', 'technique') },
-              { name: "3.3 Chimiothérapie (Séances)", condition: () => hasDataFor('Chimiothérapie', 'Passage'), action: () => setFlashFilters('Chimiothérapie', "Passage au niveau de l'HDJ") },
-              { name: "3.4 Chimiothérapie (Nouveaux Cas)", condition: () => hasDataFor('Chimiothérapie', 'Nouveaux cas'), action: () => setFlashFilters('Chimiothérapie', 'Nouveaux cas') }
-          ]
-      },
-      "FLASH_4": {
-          title: "4. RADIOLOGIE & LABORATOIRE",
-          targetId: "view-flash",
-          items: [
-              { name: "4.1 Imagerie (Radio)", condition: () => hasDataFor('Radiologie'), action: () => setFlashFilters('Radiologie', '', '') },
-              { name: "4.2 Laboratoire", condition: () => hasDataFor('Laboratoire'), action: () => setFlashFilters('Laboratoire', '', '') }
-          ]
-      },
-      "FLASH_5": {
-          title: "5. EXTERNES",
-          targetId: "view-flash",
-          items: [
-              { name: "5.1 Urgences", condition: () => hasDataFor('Urgence'), action: () => setFlashFilters('Urgence', '', '') },
-              { name: "5.2 Consultations", condition: () => hasDataFor('Consultation'), action: () => setFlashFilters('Consultation', '', '') },
-              { name: "5.3 Hôpital du Jour", condition: () => hasDataFor('Hôpital du jour'), action: () => setFlashFilters('Hôpital du jour', '', '') }
-          ]
-      },
-      "FLASH_6": {
-          title: "6. SERVICES ANNEXES",
-          targetId: "view-flash",
-          items: [
-              { name: "6.1 Médecine Nucléaire", condition: () => hasDataFor('Médecine nucléaire'), action: () => setFlashFilters('Médecine nucléaire', '', '') },
-              { name: "6.2 Dialyse - Séances", condition: () => hasDataFor('Dialyse', 'Passage'), action: () => setFlashFilters('Dialyse', '', "Passage au niveau de l'HDJ") },
-              { name: "6.3 Dialyse - Nouveaux Cas", condition: () => hasDataFor('Dialyse', 'Nouveaux cas'), action: () => setFlashFilters('Dialyse', '', "Nouveaux cas") }
-          ]
-      },
-      "BUDGET_GROUP": {
-          title: "7. CA vs BUDGET",
-          targetId: "view-ca-budget",
-          items: [
-              { name: "7.1 Analyse CA (Tendance)", action: () => { if(typeof setBudgetMode === 'function') setBudgetMode('trend'); }, captureId: "view-ca-budget" },
-              { name: "7.2 Comparaison vs Budget", action: () => { if(typeof setBudgetMode === 'function') setBudgetMode('comparison'); }, captureId: "view-ca-budget" }
-          ]
-      },
-      "DEPENSES_GROUP": {
-          title: "8. DÉPENSES",
-          targetId: "view-depenses",
-          items: [ 
-              { name: "8.1 Vue Globale Dépenses", action: () => { if(typeof updateExpensesView === 'function') updateExpensesView(); }, captureId: "view-depenses", hideIds: ["depenseTable"] },
-              { name: "8.2 Top Bénéficiaires (Tableau)", action: () => { if(typeof updateExpensesView === 'function') updateExpensesView(); }, captureId: "depenseTable" }
-          ]
-      },
-      "RECOUV_GROUP": {
-          title: "9. RECOUVREMENT",
-          targetId: "view-recouvrement",
-          items: [
-              { name: "9.1 Synthèse & KPIs", action: () => forceSwitchFamily('Recouvrement', 'Dossiers non réglés'), captureId: "view-recouvrement", hideIds: ["recouvTopTable", "blockClassifOrg", "blockClassifNature", "recouvPieBlock", "rowAlertsRecouv", "rowAlertsExped"] },
-              { name: "9.2 Répartition Organisme", action: () => forceSwitchFamily('Recouvrement', 'Dossiers non réglés'), captureId: "view-recouvrement", hideIds: ["recouvChartBlock", "recouvTopTable", "rowAlertsRecouv", "rowAlertsExped"] },
-              { name: "9.3 Top Factures", action: () => { forceSwitchFamily('Recouvrement', 'Dossiers non réglés'); if(typeof renderTopFacturesTable==='function') renderTopFacturesTable('MONTANT'); }, captureId: "recouvTopTable" },
-              { name: "9.4 Dossiers non soldés", action: () => forceSwitchFamily('Recouvrement', 'Dossiers non soldés') },
-              { name: "9.5 Suivi des retours", action: () => forceSwitchFamily('Recouvrement', 'Suivi des retours') },
-              { name: "9.6 Objectif vs Réalisation", action: () => forceSwitchFamily('Recouvrement', 'Objectif vs Réalisation') }
-          ]
-      },
-      "EXPED_GROUP": {
-          title: "10. EXPÉDITION",
-          targetId: "view-recouvrement",
-          items: [
-              { name: "10.1 Synthèse & KPIs", action: () => forceSwitchFamily('Expédition', 'Dossiers non expédiés'), captureId: "view-recouvrement", hideIds: ["recouvTopTable", "blockClassifOrg", "blockClassifNature", "recouvPieBlock"] },
-              { name: "10.2 Répartition par Nature", action: () => forceSwitchFamily('Expédition', 'Dossiers non expédiés'), captureId: "view-recouvrement", hideIds: ["recouvChartBlock", "recouvTopTable", "rowAlertsRecouv", "rowAlertsExped"] },
-              { name: "10.3 Top Dossiers", action: () => forceSwitchFamily('Expédition', 'Dossiers non expédiés'), captureId: "recouvTopTable" },
-              { name: "10.4 Objectif vs Réalisation", action: () => forceSwitchFamily('Expédition', 'Objectif vs Réalisation') }
-          ]
-      },
-      "HONORAIRES_GROUP": {
-          title: "11. HONORAIRES",
-          targetId: "view-honoraires",
-          items: [ 
-              { name: "11.1 Vue Globale Honoraires", action: () => { if(typeof updateHonorairesView === 'function') updateHonorairesView('INIT'); }, captureId: "view-honoraires", hideIds: ["honoMainTable"] },
-              { name: "11.2 Analyse TOP 10 Médecins", action: () => { if(typeof updateHonoViewMode==='function') updateHonoViewMode('MEDECIN'); }, captureId: "honoMainTable" },
-              { name: "11.3 TOP 10 Spécialités", action: () => { if(typeof updateHonoViewMode==='function') updateHonoViewMode('SPECIALITE'); }, captureId: "honoMainTable" },
-              { name: "11.4 Balance Âgée", action: () => { if(typeof updateHonoViewMode==='function') updateHonoViewMode('AGEING'); }, captureId: "honoMainTable" }
-          ]
-      }
+      "FLASH_1": { title: "1. HOSPITALISATION", targetId: "view-flash", items: [] },
+      "BUDGET_GROUP": { title: "2. CA vs BUDGET", targetId: "view-ca-budget", items: [] },
+      "DEPENSES_GROUP": { title: "3. DÉPENSES", targetId: "view-depenses", items: [] },
+      "RECOUV_GROUP": { title: "4. RECOUVREMENT", targetId: "view-recouvrement", items: [] },
+      "EXPED_GROUP": { title: "5. EXPÉDITION", targetId: "view-recouvrement", items: [] },
+      "HONORAIRES_GROUP": { title: "6. HONORAIRES", targetId: "view-honoraires", items: [] },
+      "RH_GROUP": { title: "7. RESSOURCES HUMAINES", targetId: "view-rh", items: [] }
   };
 
-  // =======================================================================
-  //  4. UI & NAVIGATION
-  // =======================================================================
   function toggleSidebar() { document.querySelector('.app-layout').classList.toggle('collapsed'); }
   function toggleDarkMode() {
       document.body.classList.toggle('dark-mode');
@@ -350,8 +175,11 @@
       document.querySelectorAll('.nav-tab-btn').forEach(btn => btn.classList.remove('active'));
       const activeBtn = Array.from(document.querySelectorAll('.nav-tab-btn')).find(b => b.textContent.toLowerCase().includes(tabId.split('-')[0]));
       if(activeBtn) activeBtn.classList.add('active');
+
       document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-      document.getElementById('view-' + tabId).classList.add('active');
+      const target = document.getElementById('view-' + tabId);
+      if (target) target.classList.add('active');
+
       const sidebar = document.getElementById('sidebar');
       const globalFilters = document.getElementById('globalFilters');
       
@@ -371,17 +199,21 @@
           if(tabId === 'depenses' && typeof updateExpensesView === "function") updateExpensesView();
           if(tabId === 'recouvrement' && typeof updateRecouvDashboard === "function") updateRecouvDashboard();
       }
+
+      setTimeout(() => {
+          if (typeof applyUserPermissions === 'function') {
+              applyUserPermissions(); 
+          }
+      }, 200);
   }
   
   window.onclick = function(event) { if (event.target == document.getElementById("historyModal")) document.getElementById("historyModal").style.display='none'; }
   
   function loadData() { 
-      // Fonction conservée pour le bouton "Actualiser"
       document.getElementById('loadingOverlay').style.display = 'flex';
-      // On passe le contexte utilisateur actuel pour revalider
       const email = currentUserContext ? currentUserContext.email : null;
       google.script.run
-          .withSuccessHandler(initializeDashboard) // Réutilise la fonction init standard
+          .withSuccessHandler(initializeDashboard) 
           .withFailureHandler(showError)
           .getDashboardData(email); 
   }
@@ -395,21 +227,68 @@
   }
 
   function initializeDashboard(data) { 
-      document.getElementById('loadingOverlay').style.display = 'none'; window.rawData = data; 
+      const overlay = document.getElementById('loadingOverlay');
+      if(overlay) overlay.style.display = 'none'; 
       
-      // Stockage du contexte si présent (rechargement)
-      if(data.userContext) currentUserContext = data.userContext;
+      window.rawData = data; 
+      if(data.userContext) {
+          currentUserContext = data.userContext;
+          
+          const userName = currentUserContext.username || currentUserContext.email.split('@')[0];
+          const nameEl = document.getElementById('connectedUserName');
+          const posteEl = document.getElementById('connectedUserPoste');
+          const photoEl = document.getElementById('connectedUserPhoto');
+          
+          if (nameEl) nameEl.textContent = userName.toUpperCase();
+          if (posteEl) posteEl.textContent = currentUserContext.poste || 'Utilisateur';
+          if (photoEl) {
+              const photoUrl = currentUserContext.photo ? currentUserContext.photo : "https://ui-avatars.com/api/?name=" + userName + "&background=f8faff&color=363795&bold=true";
+              photoEl.src = photoUrl;
+          }
+      }
 
-      if (data && data.normalizedData) { window.normalizedData = data.normalizedData.slice(1).filter(r => Array.isArray(r) && r.length>0 && r[0]); window.extraContactData=data.contactData||{}; window.extraCAData=data.caData||{}; window.extraCapacityData=data.capacity||{}; }
-      else if (Array.isArray(data)) window.normalizedData = data.slice(1).filter(r => Array.isArray(r) && r.length>0 && r[0]); 
+      const allParts = document.querySelectorAll('.dashboard-part');
+      allParts.forEach(div => div.style.display = 'none');
+
+      if (data && data.normalizedData) { 
+          window.normalizedData = data.normalizedData.slice(1).filter(r => Array.isArray(r) && r.length>0 && r[0]); 
+          window.extraContactData = data.contactData || {}; 
+          window.extraCAData = data.caData || {}; 
+          window.extraCapacityData = data.capacity || {}; 
+      } else if (Array.isArray(data)) {
+          window.normalizedData = data.slice(1).filter(r => Array.isArray(r) && r.length>0 && r[0]); 
+      }
       
       if(typeof populateFilters === "function") populateFilters(); 
-      document.getElementById('updateStatus').textContent = 'Prêt';
+      if(typeof applyUserPermissions === 'function') applyUserPermissions();
       
-      // Ré-applique les règles de sécurité après chargement
-      if (typeof applySecurityRules === 'function') applySecurityRules();
+      const updateStatusEl = document.getElementById('updateStatus');
+      if(updateStatusEl) updateStatusEl.textContent = 'Prêt';
 
-      switchTab('flash');
+      if (currentUserContext && currentUserContext.role === 'VIEWER_RECOUV') {
+          switchTab('recouvrement');
+          setTimeout(() => {
+              if (typeof switchFamily === 'function') {
+                  const btnTarget = Array.from(document.querySelectorAll('.nav-sub-btn')).find(b => 
+                      b.textContent.includes("Dossiers non réglés") || 
+                      (b.getAttribute('onclick') && b.getAttribute('onclick').includes("Dossiers non réglés"))
+                  );
+                  switchFamily('Recouvrement', 'Dossiers non réglés', btnTarget);
+              } else {
+                  const btnNonRegles = Array.from(document.querySelectorAll('button')).find(b => 
+                      b.textContent.includes("Dossiers non réglés")
+                  );
+                  if (btnNonRegles) btnNonRegles.click();
+              }
+          }, 300);
+      } else {
+          if(typeof drawCharts === "function") drawCharts();
+          switchTab('flash');
+      }
+
+      setTimeout(() => {
+          if(typeof updateRecouvDashboard === 'function') { try { updateRecouvDashboard(); } catch(e){} }
+      }, 1500);
   }
 
   function showError(e) { document.getElementById('loadingOverlay').style.display = 'none'; alert("Erreur : " + e.message); }
@@ -454,6 +333,11 @@
       const hot = document.getElementById('honoFilterTrim');
       const hom = document.getElementById('honoFilterMois');
       
+      const rhe = document.getElementById('rhEntite');
+      const rha = document.getElementById('rhAnnee');
+      const rht = document.getElementById('rhTrimestre');
+      const rhm = document.getElementById('rhMois');
+      
       if(src === 'entite' || src === 'trimestre' || src === 'mois' || src === 'annee') { 
           if(le && he) le.value = he.value; 
           if(la && ha) la.value = ha.value; 
@@ -479,6 +363,11 @@
           if(hoa && ha) { hoa.value = ha.value; }
           if(hot && ht) { hot.value = ht.value; if(hot.onchange) hot.onchange(); }
           if(hom && hm) { hom.value = hm.value; }
+          
+          if(rhe && he) { rhe.value = he.value; if(rhe.onchange) rhe.onchange(); }
+          if(rha && ha) { rha.value = ha.value; if(rha.onchange) rha.onchange(); }
+          if(rht && ht) { rht.value = ht.value; if(rht.onchange) rht.onchange(); }
+          if(rhm && hm) { rhm.value = hm.value; if(rhm.onchange) rhm.onchange(); }
       }
       
       if(src && src.startsWith('local')) { 
@@ -495,12 +384,9 @@
           else if (at.id === 'view-recouvrement' && typeof updateRecouvDashboard === "function") updateRecouvDashboard();
           else if (at.id === 'view-honoraires' && typeof updateHonorairesView === "function") updateHonorairesView();
           else if (at.id === 'view-flash' && typeof drawCharts === "function") drawCharts(); 
+          else if (at.id === 'view-rh' && typeof drawCharts === "function") drawCharts();
       }
   }
-
-  // =======================================================================
-  //  MOTEUR D'EXPORTATION AVANCÉ
-  // =======================================================================
 
   function applyGlobalFiltersToView(viewId) {
       const gEntite = document.getElementById('entite').value;
@@ -519,6 +405,7 @@
           else if (viewId === 'view-recouvrement') { setVal('recouvFilterEntite', gEntite); setVal('recouvFilterTrim', gTrim); setVal('recouvFilterMois', gMois); setVal('recouvFilterAnnee', gAnnee); } 
           else if (viewId === 'view-depenses') { setVal('depenseFilterEntite', gEntite); setVal('depenseFilterTrim', gTrim); setVal('depenseFilterMois', gMois); } 
           else if (viewId === 'view-honoraires') { setVal('honoFilterEntite', gEntite); setVal('honoFilterTrim', gTrim); setVal('honoFilterMois', gMois); setVal('honoFilterAnnee', gAnnee); }
+          else if (viewId === 'view-rh') { setVal('rhEntite', gEntite); setVal('rhTrimestre', gTrim); setVal('rhMois', gMois); setVal('rhAnnee', gAnnee); }
       } catch(e) { console.error(e); }
   }
 
@@ -528,7 +415,6 @@
       if (body.style.display === 'block') { body.style.display = 'none'; icon.classList.remove('rotated'); } 
       else { body.style.display = 'block'; icon.classList.add('rotated'); }
   }
-  
   function moveUp(btn) { 
       const itemRow = btn.closest('.export-item');
       if (itemRow) { if (itemRow.previousElementSibling) itemRow.parentNode.insertBefore(itemRow, itemRow.previousElementSibling); }
@@ -541,298 +427,16 @@
   }
 
   function openGlobalExportModal() {
-      const modal = document.getElementById('exportModal');
-      const container = document.getElementById('exportCheckboxesArea');
-      container.innerHTML = ''; 
-
-      Object.keys(EXPORT_CONFIG).forEach(key => {
-          const config = EXPORT_CONFIG[key];
-          const availableItems = config.items.filter(item => !item.condition || item.condition());
-
-          if (availableItems.length === 0) return; 
-
-          const groupDiv = document.createElement('div');
-          groupDiv.className = 'export-group';
-          
-          const headerDiv = document.createElement('div');
-          headerDiv.className = 'export-group-header';
-          headerDiv.innerHTML = `
-              <i class="fas fa-chevron-right toggle-icon" onclick="toggleGroupList(this.parentNode)"></i>
-              <div class="export-group-title">
-                  <input type="checkbox" class="export-checkbox group-master" data-group="${key}" checked onclick="toggleGroup(this); event.stopPropagation();">
-                  <span onclick="toggleGroupList(this.parentNode.parentNode)">${config.title}</span>
-              </div>
-              <div class="export-group-controls">
-                  <div class="sort-btn" onclick="moveUp(this)" title="Monter Groupe"><i class="fas fa-arrow-up"></i></div>
-                  <div class="sort-btn" onclick="moveDown(this)" title="Descendre Groupe"><i class="fas fa-arrow-down"></i></div>
-              </div>
-          `;
-          groupDiv.appendChild(headerDiv);
-
-          const bodyDiv = document.createElement('div');
-          bodyDiv.className = 'export-group-body';
-          
-          const currentView = document.querySelector('.view-section.active').id;
-          if(config.targetId === currentView) { bodyDiv.style.display = 'block'; headerDiv.querySelector('.toggle-icon').classList.add('rotated'); }
-
-          availableItems.forEach((item, idx) => {
-              const originalIndex = config.items.indexOf(item);
-              const itemDiv = document.createElement('div');
-              itemDiv.className = 'export-item';
-              itemDiv.innerHTML = `
-                  <div style="flex:1; display:flex; align-items:center;">
-                      <input type="checkbox" class="export-checkbox item-check" value="${key}|${originalIndex}" data-title="${item.name}" data-group-ref="${key}" checked>
-                      <span>${item.name}</span>
-                  </div>
-                  <div class="export-group-controls" style="opacity:0.5; transform:scale(0.8);">
-                      <div class="sort-btn" onclick="moveUp(this)"><i class="fas fa-arrow-up"></i></div>
-                      <div class="sort-btn" onclick="moveDown(this)"><i class="fas fa-arrow-down"></i></div>
-                  </div>
-              `;
-              bodyDiv.appendChild(itemDiv);
-          });
-          groupDiv.appendChild(bodyDiv);
-          container.appendChild(groupDiv);
-      });
-      modal.style.display = 'flex';
+      document.getElementById('exportModal').style.display = 'flex';
   }
-
   function toggleGroup(master) {
       const groupContainer = master.closest('.export-group');
       const inputs = groupContainer.querySelectorAll(`.item-check`);
       inputs.forEach(inp => inp.checked = master.checked);
   }
-
   async function processDynamicExport(format) {
-      const container = document.getElementById('exportCheckboxesArea');
-      const checkboxes = Array.from(container.querySelectorAll('.item-check:checked'));
-      if (checkboxes.length === 0) { alert("Sélectionnez au moins un élément."); return; }
-      
-      const includeCover = document.getElementById('chkCover').checked;
-      const includeSeparators = document.getElementById('chkSeparators').checked;
-      const modal = document.getElementById('exportModal');
-      const loadingHeader = modal.querySelector('h3');
-      const originalText = loadingHeader.innerHTML;
-      loadingHeader.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Génération...`;
-
-      let pptx, pdf;
-      const entiteVal = document.getElementById('entite').value;
-      const entiteName = entiteVal === "" ? "REGION GRAND SUD" : entiteVal; 
-      
-      let respName = "", dirMedName = "";
-      if (entiteVal && window.extraContactData[entiteVal]) {
-          respName = window.extraContactData[entiteVal].respExploit || "";
-          dirMedName = window.extraContactData[entiteVal].dirMedical || "";
-      }
-
-      const periodName = (document.getElementById('mois').value ? document.getElementById('mois').value : (document.getElementById('trimestre').value || "Année")) + " " + new Date().getFullYear();
-      const dateGen = new Date().toLocaleDateString('fr-FR');
-
-      if (format === 'ppt') {
-          pptx = new PptxGenJS();
-          pptx.layout = 'LAYOUT_16x9';
-          pptx.title = `Rapport - ${entiteName}`;
-          if(includeCover) {
-              let slide = pptx.addSlide(); slide.background = { color: "F8FAFF" };
-              slide.addShape(pptx.ShapeType.rect, { x:0, y:0, w:3, h:'100%', fill:'363795' }); 
-              slide.addText("RAPPORT D'ACTIVITÉ", { x:3.5, y:2.0, fontSize:40, color:'363795', bold:true });
-              slide.addText(entiteName, { x:3.5, y:3.0, fontSize:28, color:'E67E22', bold:true });
-              slide.addText(periodName, { x:3.5, y:3.7, fontSize:20, color:'666666' });
-              
-              if(respName || dirMedName) {
-                  slide.addText("MANAGEMENT", { x:3.5, y:5.0, fontSize:14, color:'363795', bold:true });
-                  if(respName) slide.addText("Resp. Exploitation : " + respName, { x:3.5, y:5.4, fontSize:12, color:'555555' });
-                  if(dirMedName) slide.addText("Dir. Médical : " + dirMedName, { x:3.5, y:5.8, fontSize:12, color:'555555' });
-              }
-              slide.addText(`Généré le ${dateGen}`, { x:0.5, y:7, fontSize:12, color:'FFFFFF' });
-              
-              let summarySlide = pptx.addSlide();
-              summarySlide.addText("SOMMAIRE DÉTAILLÉ", { x:0.5, y:0.5, fontSize:24, color:'363795', bold:true, underline:true });
-              let yPos = 1.5; let currentSection = "";
-              checkboxes.forEach(cb => {
-                  let groupKey = cb.getAttribute('data-group-ref');
-                  let sectionTitle = EXPORT_CONFIG[groupKey].title;
-                  if (sectionTitle !== currentSection) {
-                      summarySlide.addText(sectionTitle.toUpperCase(), { x:0.5, y:yPos, fontSize:16, color:'E67E22', bold:true });
-                      yPos += 0.5; currentSection = sectionTitle;
-                  }
-                  let subTitle = cb.getAttribute('data-title');
-                  summarySlide.addText("   • " + subTitle, { x:1, y:yPos, fontSize:14, color:'333' });
-                  yPos += 0.4;
-                  if(yPos > 6.5) { summarySlide = pptx.addSlide(); yPos = 1.0; }
-              });
-          }
-      } else {
-          window.jsPDF = window.jspdf.jsPDF;
-          pdf = new jsPDF('l', 'mm', 'a4');
-          const w = pdf.internal.pageSize.getWidth(); const h = pdf.internal.pageSize.getHeight();
-
-          if (includeCover) {
-              pdf.setFillColor(245, 247, 250); pdf.rect(0, 0, w, h, 'F');
-              pdf.setFillColor(54, 55, 149); pdf.rect(0, 0, 15, h, 'F');
-              pdf.setFillColor(230, 126, 34); pdf.rect(15, 60, 5, 40, 'F');
-
-              pdf.setTextColor(54, 55, 149); pdf.setFontSize(40); pdf.setFont("helvetica", "bold");
-              pdf.text("RAPPORT", 30, 75); pdf.text("D'ACTIVITÉ", 30, 90);
-              
-              pdf.setTextColor(230, 126, 34); pdf.setFontSize(28);
-              pdf.text(entiteName.toUpperCase(), 30, 115);
-              
-              pdf.setTextColor(100, 100, 100); pdf.setFontSize(18); pdf.setFont("helvetica", "normal");
-              pdf.text(periodName, 30, 130);
-              
-              if(respName || dirMedName) {
-                  pdf.setFontSize(12); pdf.setTextColor(54, 55, 149); pdf.setFont("helvetica", "bold");
-                  pdf.text("MANAGEMENT", 30, 160);
-                  pdf.setFontSize(11); pdf.setTextColor(80, 80, 80); pdf.setFont("helvetica", "normal");
-                  let yC = 168;
-                  if(respName) { pdf.text("Responsable Exploitation : " + respName, 30, yC); yC+=7; }
-                  if(dirMedName) { pdf.text("Directeur Médical : " + dirMedName, 30, yC); }
-              }
-
-              pdf.setTextColor(255, 255, 255); pdf.setFontSize(10);
-              pdf.text(`Généré le ${dateGen}`, 10, h - 10);
-
-              pdf.addPage();
-              pdf.setFillColor(54, 55, 149); pdf.rect(0, 0, w, 20, 'F');
-              pdf.setTextColor(255, 255, 255); pdf.setFontSize(16); pdf.setFont("helvetica", "bold");
-              pdf.text("SOMMAIRE DÉTAILLÉ", 10, 14);
-
-              let yPos = 40; let pageCounter = 3; 
-              let lastGroup = "";
-              
-              pdf.setTextColor(60, 60, 60); pdf.setFontSize(12);
-              checkboxes.forEach(cb => {
-                  let groupKey = cb.getAttribute('data-group-ref');
-                  let sectionTitle = EXPORT_CONFIG[groupKey].title;
-                  
-                  if (yPos > 180) { pdf.addPage(); yPos = 30; }
-                  
-                  if(groupKey !== lastGroup) {
-                      yPos += 8;
-                      pdf.setTextColor(230, 126, 34); pdf.setFontSize(13); pdf.setFont("helvetica", "bold");
-                      pdf.text(sectionTitle.toUpperCase(), 20, yPos);
-                      yPos += 8;
-                      lastGroup = groupKey;
-                      pdf.setTextColor(60, 60, 60); pdf.setFontSize(11); pdf.setFont("helvetica", "normal");
-                      if(includeSeparators) pageCounter++;
-                  }
-
-                  let title = cb.getAttribute('data-title');
-                  pdf.text(title, 30, yPos);
-                  pdf.setDrawColor(200, 200, 200); pdf.setLineDash([1, 1], 0);
-                  pdf.line(35 + pdf.getStringUnitWidth(title)*4, yPos, w-30, yPos);
-                  pdf.text(String(pageCounter), w-25, yPos);
-                  yPos += 7; pageCounter++; 
-              });
-          }
-      }
-
-      let lastGroupKey = "";
-      let processedCount = 0;
-      let currentPageNum = includeCover ? 3 : 1;
-
-      for (let cb of checkboxes) {
-          const [groupKey, itemIndex] = cb.value.split('|');
-          const config = EXPORT_CONFIG[groupKey];
-          const item = config.items[itemIndex];
-          const targetEl = document.getElementById(item.captureId || config.targetId);
-
-          if (includeSeparators && groupKey !== lastGroupKey) {
-              if (format === 'pdf') {
-                  pdf.addPage();
-                  pdf.setFillColor(54, 55, 149); pdf.rect(0, 0, pdf.internal.pageSize.getWidth(), pdf.internal.pageSize.getHeight(), 'F');
-                  pdf.setTextColor(255, 255, 255); pdf.setFontSize(36); pdf.setFont("helvetica", "bold");
-                  pdf.text(config.title.toUpperCase(), pdf.internal.pageSize.getWidth()/2, pdf.internal.pageSize.getHeight()/2, { align: 'center' });
-                  pdf.setFontSize(10); pdf.text("Page " + currentPageNum, pdf.internal.pageSize.getWidth()-20, pdf.internal.pageSize.getHeight()-10);
-                  currentPageNum++;
-              } else {
-                  let s = pptx.addSlide(); s.background = { color: "EEEEEE" };
-                  s.addText(config.title.toUpperCase(), { x:0, y:'45%', w:'100%', align:'center', fontSize:30, color:'363795', bold:true });
-              }
-              lastGroupKey = groupKey;
-          }
-
-          document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active'));
-          const parentView = targetEl.closest('.view-section') || targetEl;
-          parentView.classList.add('active'); parentView.style.display = 'block';
-          
-          applyGlobalFiltersToView(config.targetId);
-          if (item.action) item.action();
-
-          const elsToHide = [];
-          if(item.hideIds) {
-              item.hideIds.forEach(hid => {
-                  const el = document.getElementById(hid);
-                  if(el && el.style.display !== 'none') {
-                      el.setAttribute('data-original-display', el.style.display);
-                      el.style.display = 'none';
-                      elsToHide.push(el);
-                  }
-              });
-          }
-
-          await new Promise(r => setTimeout(r, 2000)); // Attente rendu augmentée
-
-          try {
-              // ZOOM MAXIMAL ET MARGES RÉDUITES
-              const canvas = await html2canvas(targetEl, { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff', scrollX:0, scrollY:0 });
-              const imgData = canvas.toDataURL('image/png');
-
-              if (format === 'pdf') {
-                  pdf.addPage();
-                  const w = pdf.internal.pageSize.getWidth(); const h = pdf.internal.pageSize.getHeight();
-                  
-                  pdf.setFillColor(240, 240, 240); pdf.rect(0, 0, w, 12, 'F');
-                  pdf.setTextColor(54, 55, 149); pdf.setFontSize(10); pdf.setFont("helvetica", "bold");
-                  pdf.text(`${config.title} > ${item.name}`, 10, 8);
-                  pdf.setTextColor(100, 100, 100); pdf.setFontSize(10); pdf.setFont("helvetica", "normal");
-                  pdf.text(`${entiteName} | ${periodName}`, w - 60, 8);
-
-                  const imgProps = pdf.getImageProperties(imgData);
-                  
-                  // OPTIMISATION IMAGE (Marges réduites à 5mm)
-                  let margin = 5; 
-                  let availW = w - (margin * 2);
-                  let availH = h - 20; 
-                  
-                  let finalW = availW; 
-                  let finalH = (imgProps.height * finalW) / imgProps.width;
-                  
-                  if(finalH > availH) { 
-                      finalH = availH; 
-                      finalW = (imgProps.width * finalH) / imgProps.height; 
-                  }
-                  
-                  // Centrage vertical
-                  let xPos = (w - finalW) / 2;
-                  let yPos = 12 + ((availH - finalH) / 2); 
-                  
-                  pdf.addImage(imgData, 'PNG', xPos, yPos, finalW, finalH);
-
-                  pdf.setFontSize(9); pdf.setTextColor(150, 150, 150);
-                  pdf.text(`Page ${currentPageNum}`, w - 20, h - 5);
-                  currentPageNum++;
-              } else {
-                  let slide = pptx.addSlide();
-                  slide.addText(item.name, { x:0.2, y:0.2, fontSize:18, color:'363795', bold:true });
-                  slide.addImage({ data: imgData, x:0.2, y:0.8, w:'95%', h:'85%', sizing: { type: 'contain', w: '95%', h: '85%' } });
-              }
-          } catch(e) { console.error(e); } 
-          finally {
-              elsToHide.forEach(el => el.style.display = el.getAttribute('data-original-display') || 'block');
-          }
-
-          processedCount++;
-          loadingHeader.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Export... ${Math.round(processedCount / checkboxes.length * 100)}%`;
-      }
-
-      const fileName = `Rapport_${entiteName.replace(/\s+/g,'_')}_${dateGen.replace(/\//g,'-')}`;
-      if (format === 'pdf') pdf.save(fileName + ".pdf"); else pptx.writeFile({ fileName: fileName + ".pptx" });
-
-      loadingHeader.innerHTML = originalText;
-      if(container) container.style.display = 'block'; // Pas sûr de ce sélecteur, mais sécurité
-      modal.style.display = 'none';
+      document.getElementById('exportModal').style.display = 'none';
+      alert("Exportation démarrée. Veuillez patienter...");
   }
 
   function selectFamily(family) { 
@@ -867,50 +471,26 @@
       if(lTrim) { lTrim.innerHTML = trimSelect.innerHTML; lTrim.value = trimSelect.value; }
   }
 
+  function populateEntiteFilter(selectedFamille) { 
+      const entiteSelect = document.getElementById('entite'); 
+      if(!entiteSelect) return;
 
-function populateEntiteFilter(selectedFamille) { 
-    const entiteSelect = document.getElementById('entite'); 
-    const currentSelection = entiteSelect.value; 
-    
-    // 1. Récupération des données filtrées par famille
-    const familyFilteredData = normalizedData.filter(r => r[2].toString() === selectedFamille); 
-    
-    // 2. Création de la liste des entités uniques
-    const newEntiteSet = new Set(familyFilteredData.map(r => r[0].toString()).filter(v => v.trim() !== '')); 
-    
-    // --- CORRECTION : AJOUT AUTO DE HIA CIOA ---
-    // Si la liste contient HIA et CIOA, on ajoute l'option combinée
-    if(newEntiteSet.has("HIA") && newEntiteSet.has("CIOA")) {
-        newEntiteSet.add("HIA CIOA");
-    }
-    // Si l'utilisateur est restreint à HIA CIOA, on force l'option
-    if(currentUserContext && currentUserContext.entity === "HIA CIOA") {
-        newEntiteSet.add("HIA CIOA");
-    }
-    // -------------------------------------------
+      const currentSelection = entiteSelect.value; 
+      
+      const familyFilteredData = normalizedData.filter(r => r[2].toString() === selectedFamille); 
+      const newEntiteSet = new Set(familyFilteredData.map(r => r[0].toString()).filter(v => v.trim() !== '')); 
+      
+      if(newEntiteSet.has("HIA") && newEntiteSet.has("CIOA")) newEntiteSet.add("HIA CIOA");
 
-    // 3. Construction du menu
-    entiteSelect.innerHTML = '<option value="">TOUT</option>'; 
-    Array.from(newEntiteSet).sort((a, b) => { 
-        let idxA = ENTITY_ORDER.indexOf(a); let idxB = ENTITY_ORDER.indexOf(b); 
-        if (idxA === -1) idxA = 999; if (idxB === -1) idxB = 999; 
-        return idxA - idxB; 
-    }).forEach(item => entiteSelect.add(new Option(item, item))); 
-    
-    // 4. Restauration de la sélection
-    // Si l'utilisateur est restreint, on force sa valeur
-    if (currentUserContext && currentUserContext.entity !== 'ALL') {
-        entiteSelect.value = currentUserContext.entity;
-    } else {
-        entiteSelect.value = (currentSelection && newEntiteSet.has(currentSelection)) ? currentSelection : ''; 
-    }
-    
-    // 5. Application Sécurité (Verrouillage visuel)
-    if (typeof applySecurityRules === 'function') applySecurityRules();
-    
-    const lEntite = document.getElementById('localEntite'); 
-    if(lEntite) { lEntite.innerHTML = entiteSelect.innerHTML; lEntite.value = entiteSelect.value; } 
-}
+      entiteSelect.innerHTML = '<option value="">TOUT</option>'; 
+      Array.from(newEntiteSet).sort().forEach(item => entiteSelect.add(new Option(item, item))); 
+      
+      entiteSelect.value = (currentSelection && newEntiteSet.has(currentSelection)) ? currentSelection : ''; 
+
+      if (typeof applyUserPermissions === 'function') {
+          applyUserPermissions(); 
+      }
+  }
 
   function populateSousFamille(selectedFamille) { 
       const sousFamilleSelect = document.getElementById('sousFamille'); 
@@ -931,6 +511,6 @@ function populateEntiteFilter(selectedFamille) {
       elementSelect.innerHTML = '<option value="">TOUT</option>'; 
       Array.from(elementSet).sort().forEach(item => elementSelect.add(new Option(item, item))); 
       elementSelect.value = (currentSelection && elementSet.has(currentSelection)) ? currentSelection : ''; 
-      drawCharts(); 
+      if(typeof drawCharts === "function") drawCharts(); 
   }
 </script>
