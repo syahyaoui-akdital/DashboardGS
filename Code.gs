@@ -19,35 +19,43 @@ function getSecurityDb() {
 
 // 1. RÉCUPÉRER LE CONTEXTE (Remplaçant de votre ancienne fonction)
 // Cette fonction est utilisée par getDashboardData pour filtrer les données
+// Remplacez la fonction getUserContext() par celle-ci :
+// 1. RÉCUPÉRER LE CONTEXTE
 function getUserContext() {
   const email = Session.getActiveUser().getEmail().toLowerCase();
   const ss = getSecurityDb();
   const sheet = ss.getSheetByName("Users");
   const data = sheet.getDataRange().getValues();
   
-  // Recherche de l'utilisateur par Email dans le Sheet
-  // Colonne C (index 2) = Email
   let userConfig = null;
+  
+  // Recherche de l'utilisateur par Email dans le Sheet
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][2]).toLowerCase() === email) {
-      userConfig = { role: data[i][3], entity: data[i][4] };
-      break;
+      userConfig = { 
+        role: data[i][3], 
+        entity: data[i][4],
+        poste: data[i][5] || 'Utilisateur',
+        photo: data[i][6] || '' 
+      };
+      break; // Ce break est maintenant bien à l'intérieur de la boucle for
     }
   }
 
   if (!userConfig) {
-    return { email: email, hasAccess: false, role: 'NONE', entity: 'NONE' };
+    return { email: email, hasAccess: false, role: 'NONE', entity: 'NONE', poste: '', photo: '' };
   }
 
   return {
     email: email,
     hasAccess: true,
     role: userConfig.role,
-    entity: userConfig.entity
+    entity: userConfig.entity,
+    poste: userConfig.poste,
+    photo: userConfig.photo
   };
 }
 
-// 2. VÉRIFICATION LOGIN AVEC LOGS (Pour l'écran de connexion)
 function verifyCustomLogin(username, password, clientIp) {
   const ss = getSecurityDb();
   const userSheet = ss.getSheetByName('Users');
@@ -56,8 +64,8 @@ function verifyCustomLogin(username, password, clientIp) {
   const activeEmail = Session.getActiveUser().getEmail().toLowerCase();
   username = String(username).trim().toLowerCase();
   password = String(password).trim();
-  
   const data = userSheet.getDataRange().getValues();
+  
   let userData = null;
 
   // Recherche utilisateur (Col A = Username)
@@ -67,9 +75,11 @@ function verifyCustomLogin(username, password, clientIp) {
         pass: data[i][1], 
         email: String(data[i][2]).toLowerCase(), 
         role: data[i][3], 
-        entity: data[i][4] 
+        entity: data[i][4],
+        poste: data[i][5] || 'Utilisateur',
+        photo: data[i][6] || ''
       };
-      break;
+      break; // Ce break est également bien protégé dans sa boucle
     }
   }
 
@@ -78,8 +88,7 @@ function verifyCustomLogin(username, password, clientIp) {
     logSheet.appendRow([new Date(), username, clientIp, "LOGIN", status, details]);
   };
 
-  // Règle 1 : Cohérence Email Google vs Username (Votre règle)
-  // Ex: s.yahyaoui doit correspondre au compte Google connecté
+  // Règle 1 : Cohérence Email Google vs Username
   let emailPrefix = activeEmail.split('@')[0];
   if (activeEmail && username !== emailPrefix) {
       log("FAIL", "Incohérence Compte Google (" + activeEmail + ")");
@@ -93,15 +102,23 @@ function verifyCustomLogin(username, password, clientIp) {
   }
 
   // Règle 3 : Mot de passe
-  // Note : On compare avec String() pour éviter les erreurs de type chiffre/texte
   if (String(userData.pass) !== password) {
     log("FAIL", "Mot de passe incorrect");
     return { success: false, message: "Identifiant ou mot de passe incorrect." };
   }
 
   log("SUCCESS", "OK");
-  return { success: true, role: userData.role, entity: userData.entity, username: username, email: activeEmail };
+  return { 
+    success: true, 
+    role: userData.role, 
+    entity: userData.entity, 
+    username: username, 
+    email: activeEmail,
+    poste: userData.poste,
+    photo: userData.photo
+  };
 }
+
 
 // 3. NOUVEAU : CHANGER MOT DE PASSE
 function changeUserPassword(username, oldPass, newPass, clientIp) {

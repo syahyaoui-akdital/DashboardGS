@@ -164,36 +164,100 @@ if (role === 'VIEWER_RECOUV') {
       console.log("Application prête à la connexion.");
   });
 
-  function attemptLogin() {
-      const errorMsg = document.getElementById('loginError');
-      const googleBtn = document.querySelector('.google-btn');
-      
-      // Feedback visuel
-      if(errorMsg) errorMsg.style.display = 'none';
-      if(googleBtn) {
-          googleBtn.style.opacity = "0.7";
-          googleBtn.style.pointerEvents = "none";
-          const span = googleBtn.querySelector('span');
-          if(span) span.textContent = "Authentification en cours...";
-      }
+function attemptLogin() {
+    const u = document.getElementById('loginUser').value.trim().toLowerCase();
+    const p = document.getElementById('loginPass').value.trim();
+    const detectedEmailEl = document.getElementById('detectedEmail');
+    const detectedEmail = detectedEmailEl ? detectedEmailEl.value.trim().toLowerCase() : '';
+    
+    const btn = document.getElementById('btnLogin');
+    const err = document.getElementById('loginError');
 
-      // Appel au backend (Authentification auto via Session.getActiveUser)
-      google.script.run
-          .withSuccessHandler(initializeDashboardWithSecurity)
-          .withFailureHandler(e => {
-              if(googleBtn) {
-                  googleBtn.style.opacity = "1";
-                  googleBtn.style.pointerEvents = "auto";
-                  const span = googleBtn.querySelector('span');
-                  if(span) span.textContent = "Se connecter avec Google";
-              }
-              if(errorMsg) {
-                  errorMsg.textContent = "Accès refusé : " + e.message;
-                  errorMsg.style.display = 'block';
-              }
-          })
-          .getDashboardData();
-  }
+    if(!u || !p) {
+        err.innerHTML = "<i class='fas fa-exclamation-circle'></i> Veuillez remplir l'utilisateur et le mot de passe.";
+        err.style.display = 'block';
+        return;
+    }
+
+    // Validation Client : Username == Email Prefix
+    if (detectedEmail) {
+        const prefix = detectedEmail.split('@')[0];
+        if (u !== prefix) {
+            err.innerHTML = `<i class='fas fa-shield-alt'></i> <b>Erreur de sécurité :</b><br>L'utilisateur saisi (<b>${u}</b>) ne correspond pas au compte Google connecté (<b>${prefix}</b>).`;
+            err.style.display = 'block';
+            return;
+        }
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Vérification...';
+    err.style.display = 'none';
+
+    google.script.run
+        .withSuccessHandler(function(res) {
+            if (res.success) {
+                // 1. Stockage du contexte utilisateur avec les nouvelles infos
+                window.currentUserContext = {
+                    role: res.role,
+                    entity: res.entity,
+                    username: res.username,
+                    email: res.email,
+                    poste: res.poste,
+                    photo: res.photo
+                };
+
+                // 2. MISE À JOUR VISUELLE DU PROFIL DANS LE HEADER
+                const nameEl = document.getElementById('connectedUserName');
+                const posteEl = document.getElementById('connectedUserPoste');
+                const photoEl = document.getElementById('connectedUserPhoto');
+                
+                if (nameEl) nameEl.textContent = res.username.toUpperCase();
+                if (posteEl) posteEl.textContent = res.poste || 'Utilisateur';
+                
+                if (photoEl) {
+                    // Si pas de photo dans la base, on génère un avatar avec la première lettre
+                    const photoUrl = res.photo ? res.photo : `https://ui-avatars.com/api/?name=${res.username}&background=f8faff&color=363795&bold=true`;
+                    photoEl.src = photoUrl;
+                }
+
+                // 3. Application des permissions
+                if(typeof applyUserPermissions === 'function') {
+                    applyUserPermissions(res.role, res.entity);
+                }
+
+                // 4. Transition UI
+                const overlay = document.getElementById('loginOverlay');
+                overlay.style.transition = 'opacity 0.5s';
+                overlay.style.opacity = '0';
+                
+                setTimeout(() => { 
+                    overlay.style.display = 'none'; 
+                    document.body.style.overflow = 'auto';
+                    
+                    // Lancement du Dashboard
+                    const app = document.getElementById('appContainer');
+                    if(app) {
+                        app.style.display = 'flex';
+                        if(typeof loadData === 'function') loadData(); 
+                        window.dispatchEvent(new Event('resize'));
+                    }
+                }, 500);
+
+            } else {
+                err.innerHTML = `<i class='fas fa-exclamation-triangle'></i> ${res.message}`;
+                err.style.display = 'block';
+                btn.disabled = false;
+                btn.innerHTML = 'SE CONNECTER <i class="fas fa-arrow-right"></i>';
+            }
+        })
+        .withFailureHandler(function(e) {
+            err.innerHTML = `<i class='fas fa-wifi'></i> Erreur de connexion serveur : ${e.message}`;
+            err.style.display = 'block';
+            btn.disabled = false;
+            btn.innerHTML = 'SE CONNECTER <i class="fas fa-arrow-right"></i>';
+        })
+        .verifyCustomLogin(u, p, window.clientIP || "Unknown"); 
+}
 
   function initializeDashboardWithSecurity(data) {
       // 1. Initialisation standard
@@ -541,84 +605,90 @@ if (role === 'VIEWER_RECOUV') {
   }
 
 function initializeDashboard(data) { 
-      // 1. Masquer le chargement
-      const overlay = document.getElementById('loadingOverlay');
-      if(overlay) overlay.style.display = 'none'; 
-      
-      // 2. Stockage des données
-      window.rawData = data; 
-      if(data.userContext) currentUserContext = data.userContext;
+    // 1. Masquer le chargement
+    const overlay = document.getElementById('loadingOverlay');
+    if(overlay) overlay.style.display = 'none'; 
+    
+    // 2. Stockage des données et mise à jour de l'UI du profil
+    window.rawData = data; 
+    if(data.userContext) {
+        currentUserContext = data.userContext;
+        
+        // --- MISE À JOUR DE L'INTERFACE UTILISATEUR DU HEADER ---
+        const userName = currentUserContext.username || currentUserContext.email.split('@')[0];
+        const nameEl = document.getElementById('connectedUserName');
+        const posteEl = document.getElementById('connectedUserPoste');
+        const photoEl = document.getElementById('connectedUserPhoto');
+        
+        if (nameEl) nameEl.textContent = userName.toUpperCase();
+        if (posteEl) posteEl.textContent = currentUserContext.poste || 'Utilisateur';
+        if (photoEl) {
+            const photoUrl = currentUserContext.photo ? currentUserContext.photo : `https://ui-avatars.com/api/?name=${userName}&background=f8faff&color=363795&bold=true`;
+            photoEl.src = photoUrl;
+        }
+    }
 
-      // --- SÉCURITÉ RADICALE : On masque TOUS les contenus immédiatement ---
-      // Cela évite que le Flash ne "saute" aux yeux avant la redirection
-      const allParts = document.querySelectorAll('.dashboard-part');
-      allParts.forEach(div => div.style.display = 'none');
+    // --- SÉCURITÉ RADICALE : On masque TOUS les contenus immédiatement ---
+    const allParts = document.querySelectorAll('.dashboard-part');
+    allParts.forEach(div => div.style.display = 'none');
 
-      // 3. Traitement des données
-      if (data && data.normalizedData) { 
-          window.normalizedData = data.normalizedData.slice(1).filter(r => Array.isArray(r) && r.length>0 && r[0]); 
-          // ... (reste des données annexes)
-          window.extraContactData = data.contactData || {}; 
-          window.extraCAData = data.caData || {}; 
-          window.extraCapacityData = data.capacity || {}; 
-      } else if (Array.isArray(data)) {
-          window.normalizedData = data.slice(1).filter(r => Array.isArray(r) && r.length>0 && r[0]); 
-      }
-      
-      // 4. Initialisation Filtres & Sécurité
-      if(typeof populateFilters === "function") populateFilters(); 
-      if(typeof applyUserPermissions === 'function') applyUserPermissions();
-      document.getElementById('updateStatus').textContent = 'Prêt';
+    // 3. Traitement des données
+    if (data && data.normalizedData) { 
+        window.normalizedData = data.normalizedData.slice(1).filter(r => Array.isArray(r) && r.length>0 && r[0]); 
+        window.extraContactData = data.contactData || {}; 
+        window.extraCAData = data.caData || {}; 
+        window.extraCapacityData = data.capacity || {}; 
+    } else if (Array.isArray(data)) {
+        window.normalizedData = data.slice(1).filter(r => Array.isArray(r) && r.length>0 && r[0]); 
+    }
+    
+    // 4. Initialisation Filtres & Sécurité
+    if(typeof populateFilters === "function") populateFilters(); 
+    if(typeof applyUserPermissions === 'function') applyUserPermissions();
+    
+    const updateStatusEl = document.getElementById('updateStatus');
+    if(updateStatusEl) updateStatusEl.textContent = 'Prêt';
 
-      // =========================================================
-      // 5. ROUTAGE ET REDIRECTION FORCÉE
-      // =========================================================
-      
-      if (currentUserContext && currentUserContext.role === 'VIEWER_RECOUV') {
-          console.log("🔒 ROLE RECOUVREMENT : Activation forcée 'Dossiers non réglés'");
-          
-          // A. On active l'onglet principal Recouvrement
-          // (Note : switchTab gère l'affichage du div, donc il va ré-afficher le bon div masqué plus haut)
-          switchTab('recouvrement');
+    // =========================================================
+    // 5. ROUTAGE ET REDIRECTION FORCÉE
+    // =========================================================
+    
+    if (currentUserContext && currentUserContext.role === 'VIEWER_RECOUV') {
+        console.log("🔒 ROLE RECOUVREMENT : Activation forcée 'Dossiers non réglés'");
+        
+        // Forcer l'onglet principal
+        switchTab('recouvrement');
 
-          // B. On active le sous-onglet "Dossiers non réglés"
-          // On utilise setInterval pour attendre que le bouton soit bien présent dans le DOM
-          const checkBtnInterval = setInterval(() => {
-              // On cherche le bouton spécifique
-              // Sélecteur qui cherche un bouton contenant le texte exact ou l'onclick
-              const btnNonRegles = Array.from(document.querySelectorAll('button')).find(b => 
-                  b.textContent.includes("Dossiers non réglés") || 
-                  (b.getAttribute('onclick') && b.getAttribute('onclick').includes("Dossiers non réglés"))
-              );
+        // Forcer le sous-module
+        setTimeout(() => {
+            if (typeof switchFamily === 'function') {
+                const btnTarget = Array.from(document.querySelectorAll('.nav-sub-btn')).find(b => 
+                    b.textContent.includes("Dossiers non réglés") || 
+                    (b.getAttribute('onclick') && b.getAttribute('onclick').includes("Dossiers non réglés"))
+                );
+                switchFamily('Recouvrement', 'Dossiers non réglés', btnTarget);
+                console.log("✅ Routage Recouvrement appliqué via switchFamily");
+            } else {
+                console.warn("⚠️ Fonction switchFamily introuvable, tentative via clic simulé.");
+                const btnNonRegles = Array.from(document.querySelectorAll('button')).find(b => 
+                    b.textContent.includes("Dossiers non réglés")
+                );
+                if (btnNonRegles) btnNonRegles.click();
+            }
+        }, 300);
 
-              if (btnNonRegles) {
-                  clearInterval(checkBtnInterval); // On arrête de chercher
-                  console.log("👉 Clic simulé sur Dossiers non réglés");
-                  btnNonRegles.click(); // On simule le clic : c'est la méthode la plus fiable
-              } else if (typeof switchFamily === 'function') {
-                  // Fallback si bouton pas trouvé mais fonction dispo
-                  clearInterval(checkBtnInterval);
-                  switchFamily('Recouvrement', 'Dossiers non réglés');
-              }
-          }, 100); // Vérifie toutes les 0.1s
+    } else {
+        // --- COMPORTEMENT STANDARD (Flash) ---
+        console.log("🏠 ACCUEIL : Flash");
+        if(typeof drawCharts === "function") drawCharts();
+        switchTab('flash');
+    }
 
-          // Sécurité anti-boucle infinie (arrête de chercher après 5s)
-          setTimeout(() => clearInterval(checkBtnInterval), 5000);
-
-      } else {
-          // --- COMPORTEMENT STANDARD (Flash) ---
-          console.log("🏠 ACCUEIL : Flash");
-          if(typeof drawCharts === "function") drawCharts();
-          switchTab('flash');
-      }
-
-      // 6. Chargement arrière-plan (reste inchangé)
-      // ... (votre code setTimeout existant pour charger les autres données)
-      setTimeout(() => {
-          if(typeof updateRecouvDashboard === 'function') { try { updateRecouvDashboard(); } catch(e){} }
-          // etc...
-      }, 1500);
-  }
+    // 6. Chargement arrière-plan
+    setTimeout(() => {
+        if(typeof updateRecouvDashboard === 'function') { try { updateRecouvDashboard(); } catch(e){} }
+    }, 1500);
+}
   function showError(e) { document.getElementById('loadingOverlay').style.display = 'none'; alert("Erreur : " + e.message); }
   
   function updateMonthOptions() {
