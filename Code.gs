@@ -187,9 +187,18 @@ function resetUserPassword(email) {
 function doGet() {
   var template = HtmlService.createTemplateFromFile('Index');
   
-  // Récupère l'email de la personne connectée au compte Google
-  var email = Session.getActiveUser().getEmail();
-  template.userEmail = email; // On passe l'email à la page HTML
+  // 1. Appel de votre fonction existante pour récupérer le contexte utilisateur
+  var userContext = getUserContext();
+  
+  // 2. Transmission des variables au template HTML (Index.html)
+  template.userEmail = userContext.email;
+  template.userName = userContext.email.split('@')[0].replace('.', ' '); // Déduit le prénom/nom
+  
+  // 3. Récupération du Poste (avec une valeur par défaut de sécurité)
+  template.userPoste = userContext.poste ? userContext.poste : "Collaborateur Akdital";
+  
+  // 4. Récupération de la Photo (avec avatar dynamique par défaut si vide)
+  template.userPhoto = userContext.photo ? userContext.photo : "https://ui-avatars.com/api/?name=" + template.userName + "&background=e0e7ff&color=005c97&bold=true";
   
   return template.evaluate()
       .setTitle('DASHBOARD - REGION GRAND SUD')

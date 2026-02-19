@@ -625,7 +625,10 @@ function initializeDashboard(data) {
       // 4. Initialisation Filtres & Sécurité
       if(typeof populateFilters === "function") populateFilters(); 
       if(typeof applyUserPermissions === 'function') applyUserPermissions();
-      document.getElementById('updateStatus').textContent = 'Prêt';
+      const updateStatusEl = document.getElementById('updateStatus');
+if (updateStatusEl) {
+    updateStatusEl.textContent = 'Prêt';
+}
 
       // =========================================================
       // 5. ROUTAGE ET REDIRECTION FORCÉE

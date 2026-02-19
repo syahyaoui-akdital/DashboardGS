@@ -34,7 +34,15 @@
       
       /* Login Overlay Styles */
       #loginOverlay { font-family: 'Segoe UI', sans-serif; }
-      .login-input { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; outline: none; transition: border-color 0.3s; }
+.login-input { 
+    width: 100%; 
+    padding: 12px 12px 12px 40px; /* Le 40px dégage l'espace pour l'icône */
+    border: 1px solid #cbd5e1; 
+    border-radius: 6px; 
+    box-sizing: border-box; 
+    outline: none; 
+    transition: border-color 0.3s; 
+}
       .login-input:focus { border-color: #3b82f6; }
       .login-label { display: block; font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 5px; text-align: left; }
     </style>
@@ -61,7 +69,7 @@
                         </div>
                         
                         <div class="founder-profile">
-                            <img src="https://ui-avatars.com/api/?name=Fondateur+2&background=fff&color=005c97" alt="O. Duieb">
+                            <img src="https://i.ibb.co/YvtwVwN/Whats-App-Image-2026-02-19-at-14-20-37-1.jpg" alt="O. Duieb">
                             <div class="founder-info">
                                 <h4>Othmane Duieb</h4>
                                 <span>Chargé de reporting</span>
@@ -73,19 +81,36 @@
 
             <div class="login-right-panel">
                 <div class="login-form-container">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/5/56/Akdital_%281%29.png" alt="AKDITAL" class="akdital-logo">
+                    <img src="https://myakdital.humaneo.ma/rails/active_storage/blobs/redirect/eyJfcmFpbHMiOnsiZGF0YSI6NiwicHVyIjoiYmxvYl9pZCJ9fQ==--0976c7c23de2a60252dabfe89e491678d4c651a9/akdital-secondary.png" alt="AKDITAL" class="akdital-logo">
                     
                     <h2 class="login-title">Bienvenue</h2>
                     <p class="login-subtitle">Veuillez vous authentifier pour accéder à votre espace.</p>
                     
-                    <div class="google-active-account">
-                        <i class="fab fa-google"></i>
-                        <div class="google-account-info">
-                            <span>Compte Google connecté</span>
-                            <strong><?= userEmail ?></strong>
-                            <input type="hidden" id="detectedEmail" value="<?= userEmail ?>">
-                        </div>
-                    </div>
+    
+<div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 12px; margin-bottom: 25px; display: flex; align-items: center; gap: 15px; text-align: left;">
+    
+    <img src="<?= userPhoto ?>" alt="Avatar" style="width: 54px; height: 54px; border-radius: 50%; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.05); flex-shrink: 0; object-fit: cover;">
+    
+    <div style="display: flex; flex-direction: column; overflow: hidden; width: 100%;">
+        
+        <span style="font-size: 1rem; font-weight: 800; color: #1e293b; text-transform: uppercase; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">
+            <?= userName ?>
+        </span>
+        
+        <span style="font-size: 0.8rem; color: #64748b; font-weight: 600; margin-bottom: 6px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">
+            <?= userPoste ?>
+        </span>
+        
+        <div style="display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #475569; background: #e2e8f0; padding: 3px 8px; border-radius: 6px; width: fit-content; max-width: 100%;">
+            <i class="fab fa-google" style="color: #ea4335; flex-shrink: 0;"></i>
+            <span style="white-space: nowrap; text-overflow: ellipsis; overflow: hidden; font-weight: 500;">
+                <?= userEmail ?>
+            </span>
+        </div>
+        
+        <input type="hidden" id="detectedEmail" value="<?= userEmail ?>">
+    </div>
+</div>
                     
                     <div class="form-group">
                         <label class="login-label">Identifiant</label>
@@ -150,7 +175,7 @@
     <div id="loadingOverlay">
         <div class="loader"></div>
         <h3 id="loadingText" style="margin-top: 15px;">Chargement...</h3>
-        <p id="loadingSubText" style="color: #ccc; font-size: 0.9em;">Connexion sécurisée en cours</p>
+        <p id="loadingSubText" style="color: #ccc; font-size: 0.9em;">Connexion des données</p>
     </div>
 
     <div id="exportModal" style="display:none; position:fixed; z-index:3000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); backdrop-filter:blur(3px); align-items:center; justify-content:center;">
@@ -229,24 +254,37 @@
               </div>
           </div>
 <div class="header-right">
-        <div class="user-profile-widget" onclick="openChangePassModal()" title="Changer de mot de passe">
+    <button class="action-btn" onclick="toggleDarkMode()" title="Mode Sombre">🌙</button>
+    <button id="btnUpdate" class="action-btn" onclick="updateData()" title="Actualiser">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="white"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+    </button>
+    <button class="action-btn" onclick="openGlobalExportModal()" title="Générer Rapport">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="white"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+    </button>
+
+    <div style="width: 1px; height: 30px; background: rgba(255,255,255,0.2); margin: 0 10px;"></div>
+
+    <div class="dropdown-container">
+        <div class="user-profile-widget" onclick="document.getElementById('profileDropdown').classList.toggle('show')" title="Mon Compte">
             <img id="connectedUserPhoto" src="https://ui-avatars.com/api/?name=User&background=f4f6f9&color=363795" alt="Profil">
             <div class="user-profile-info">
                 <span id="connectedUserName">Chargement...</span>
                 <span id="connectedUserPoste">---</span>
             </div>
+            <i class="fas fa-chevron-down" style="font-size: 0.8em; margin-left: 5px; opacity: 0.8; color: white;"></i>
         </div>
         
-        <div style="width: 1px; height: 30px; background: rgba(255,255,255,0.2); margin: 0 10px;"></div>
-        
-        <button class="action-btn" onclick="toggleDarkMode()" title="Mode Sombre">🌙</button>
-        <button id="btnUpdate" class="action-btn" onclick="updateData()" title="Actualiser">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="white"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
-        </button>
-        <button class="action-btn" onclick="openGlobalExportModal()" title="Générer Rapport">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="white"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-        </button>
+<div id="profileDropdown" class="dropdown-menu">
+    <div class="dropdown-header">Mon Compte</div>
+    <button class="dropdown-item" onclick="openChangePassModal(); document.getElementById('profileDropdown').classList.remove('show');">
+        <i class="fas fa-key" style="width: 20px;"></i> Changer Mot de passe
+    </button>
+    <button class="dropdown-item logout-btn" onclick="logoutApp()">
+        <i class="fas fa-sign-out-alt" style="width: 20px;"></i> Se déconnecter
+    </button>
+</div>
     </div>
+</div>
           
         </header>
         
@@ -484,6 +522,39 @@
     document.getElementById('loginPass').addEventListener('keypress', function (e) {
         if (e.key === 'Enter') attemptLogin();
     });
+
+  // 1. Fermer le menu du profil si on clique n'importe où ailleurs sur la page
+    window.addEventListener('click', function(e) {
+        if (!e.target.closest('.dropdown-container')) {
+            const dropdown = document.getElementById('profileDropdown');
+            if (dropdown && dropdown.classList.contains('show')) {
+                dropdown.classList.remove('show');
+            }
+        }
+    });
+
+    // 2. Fonction pour gérer la déconnexion
+    function logoutApp() {
+        // Cacher le menu déroulant
+        document.getElementById('profileDropdown').classList.remove('show');
+        
+        // Masquer l'application principale
+        document.getElementById('appContainer').style.display = 'none';
+        
+        // Réafficher la page de connexion
+        const loginPage = document.getElementById('loginOverlay');
+        loginPage.style.display = 'flex';
+        loginPage.style.opacity = '1';
+        
+        // Vider le champ du mot de passe par sécurité
+        document.getElementById('loginPass').value = '';
+        const err = document.getElementById('loginError');
+        if (err) err.style.display = 'none';
+        
+        // Effacer le contexte utilisateur en mémoire
+        window.currentUserContext = null;
+    }
+    
     </script>
   </body>
 </html>
