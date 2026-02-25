@@ -47,7 +47,7 @@ function loadRecouvData() {
             });
         }
         
-        // 2. Recouvrement (Focus)
+        // 2. Recouvrement (Focus Dossiers Non Réglés)
         google.script.run.withSuccessHandler(response => {
             if (response && response.data) {
                 if (response.lastUpdate) lastUpdateRecouv = response.lastUpdate;
@@ -60,21 +60,13 @@ function loadRecouvData() {
                     const btn = document.querySelector('.nav-sub-btn.active') || document.querySelector('.nav-sub-btn');
                     // On ne force le switch que si aucune vue n'est active ou au premier chargement
                     if (!document.querySelector('.nav-sub-btn.active')) {
-                        switchFamily('Recouvrement', 'Dossiers non réglés', btn);
+                        if (typeof switchFamily === 'function') switchFamily('Recouvrement', 'Dossiers non réglés', btn);
                     } else {
-                        updateRecouvDashboard(); // Rafraîchissement simple
+                        updateRecouvDashboard(); 
                     }
                 }
             }
         }).getRecouvFocusData();
-
-        google.script.run.withSuccessHandler(response => {
-    if (response && response.data) {
-        nonSoldesData = processBackendData(response.data, 'NON_SOLDES');
-        // Si on est sur l'onglet Non Soldés, on rafraîchit
-        if (currentSubFamily === 'Dossiers non soldés') updateRecouvDashboard();
-    }
-        }).getNonSoldesData();
 
         // 3. Expédition
         google.script.run.withSuccessHandler(response => {
@@ -98,21 +90,27 @@ function loadRecouvData() {
             }
         }).getSuiviRetoursData();
 
-        // 5. Objectifs vs Réalisations (AJOUT CRUCIAL)
+        // 5. Objectifs vs Réalisations
         google.script.run.withSuccessHandler(response => {
-            // Utilisation de la fonction de traitement spécifique créée précédemment
             if (typeof processObjRealData === 'function') {
                 objRealData = processObjRealData(response);
             } else {
-                console.warn("Fonction processObjRealData manquante, utilisation brute.");
                 objRealData = response;
             }
-            
             // Si on est sur l'onglet Objectifs, on rafraîchit
             if (currentSubFamily === 'Objectif vs Réalisation') {
                 if(typeof updateObjRealDashboard === 'function') updateObjRealDashboard();
             }
         }).getObjRealDashboardData();
+
+        // 6. Dossiers non soldés (LE NOUVEL AJOUT)
+        google.script.run.withSuccessHandler(response => {
+            if (response && response.data) {
+                nonSoldesData = processBackendData(response.data, 'NON_SOLDES');
+                // Si on est sur l'onglet Non Soldés, on rafraîchit
+                if (currentSubFamily === 'Dossiers non soldés') updateRecouvDashboard();
+            }
+        }).getNonSoldesData();
 
     }).getDelaisData();
 }
@@ -150,39 +148,30 @@ function processBackendData(rawData, type) {
         let dossier = "", patient = "", facture = "", organisme = "Autre", montant = 0;
         let dateRef = null; let motif = "", nature = "";
         let datePEC = null; let dateEntree = null; let respPEC = ""; 
+        let service = "", totPatient = 0, totPaiement = 0, reste = 0, chqImpaye = "", chqCaution = "", etatDossier = "", noteDossier = "";
         
         if (type === 'RECOUVREMENT') {
             dossier = r[2]; patient = r[3]; facture = r[4];
             organisme = String(r[16] || "Autre").trim();
             try { montant = parseFloat(String(r[18]).replace(/[^0-9.-]/g, '')) || 0; } catch(e){}
             dateRef = parseDate(r[9], r[10], r[11]); 
-        // Modifiez le if/else if (type === ...) dans processBackendData pour inclure NON_SOLDES
-else if (type === 'NON_SOLDES') {
-    // Index selon la structure générée dans Code.gs (saveNonSoldesData)
-    dossier = r[1]; patient = r[3];
-    let service = r[4];
-    dateRef = parseDate(r[5], r[6], r[7]);
-    organisme = String(r[8] || "Autre").trim();
-    facture = r[9];
-    let totPatient = r[10] || 0;
-    let totPaiement = r[11] || 0;
-    let reste = r[12] || 0;
-    let chqImpaye = r[13];
-    let chqCaution = r[14];
-    let etatDossier = r[15];
-    let noteDossier = r[16];
-
-    return {
-        entite: entite, dossier: dossier, patient: patient, service: service,
-        dateRefObj: dateRef, dateRefDisplay: (dateRef && !isNaN(dateRef.getTime())) ? formatDateFR(dateRef) : '-',
-        anneeRef: dateRef ? dateRef.getFullYear().toString() : "", 
-        moisRef: dateRef ? REC_MONTHS[dateRef.getMonth()] : "",
-        organisme: organisme, facture: facture,
-        totPatient: totPatient, totPaiement: totPaiement, reste: reste, montant: reste, // 'montant' sert pour les graphs génériques
-        chqImpaye: chqImpaye, chqCaution: chqCaution, etatDossier: etatDossier, noteDossier: noteDossier, type: type
-    };
-}    
-        } else if (type === 'EXPEDITION') { 
+        } 
+        else if (type === 'NON_SOLDES') {
+            dossier = r[1]; patient = r[3];
+            service = r[4];
+            dateRef = parseDate(r[5], r[6], r[7]);
+            organisme = String(r[8] || "Autre").trim();
+            facture = r[9];
+            totPatient = r[10] || 0;
+            totPaiement = r[11] || 0;
+            reste = r[12] || 0;
+            chqImpaye = r[13];
+            chqCaution = r[14];
+            etatDossier = r[15];
+            noteDossier = r[16];
+            montant = reste; 
+        } 
+        else if (type === 'EXPEDITION') { 
             dossier = r[1]; patient = r[2]; motif = r[3];
             dateRef = parseDate(r[4], r[5], r[6]); 
             organisme = String(r[7] || "Autre").trim();
@@ -231,10 +220,13 @@ else if (type === 'NON_SOLDES') {
             datePEC: datePEC, datePECDisplay: (datePEC && !isNaN(datePEC.getTime())) ? formatDateFR(datePEC) : '-',
             dateEntree: dateEntree, dateEntreeDisplay: (dateEntree && !isNaN(dateEntree.getTime())) ? formatDateFR(dateEntree) : '-',
             ancienneteEntree: ancienneteEntree, ancienneteSortie: ancienneteSortie,
-            respPEC: respPEC, isAlertPEC: isAlertPEC, etatDossier: "", natureDossier: ""
+            respPEC: respPEC, isAlertPEC: isAlertPEC, 
+            service: service, totPatient: totPatient, totPaiement: totPaiement, reste: reste, 
+            chqImpaye: chqImpaye, chqCaution: chqCaution, etatDossier: etatDossier, noteDossier: noteDossier
         };
     });
 }
+
 
 // --- NAVIGATION & DISPATCHER ---
 window.switchFamily = function(mainFam, subFam, btn) {
@@ -244,16 +236,13 @@ window.switchFamily = function(mainFam, subFam, btn) {
     currentFamily = mainFam; 
     currentSubFamily = subFam;
     
-    // UI Updates Generiques
     safeSetText('recouvMainTitle', mainFam.toUpperCase());
     const subTitle = document.getElementById('recouvSubTitle');
     if(subTitle) subTitle.textContent = subFam.toUpperCase();
 
-    // Reset basics
     recouvTopN = 25; if(document.getElementById('recouvTopN')) document.getElementById('recouvTopN').value = "25";
     isProcheFilterActive = false;
 
-    // Gestion de l'affichage des panneaux
     const importZone = document.getElementById('recouvImportZone');
     const standardDashboard = document.getElementById('recouvDataContent');
     const objRealDiv = document.getElementById('objRealDataContent');
@@ -264,20 +253,19 @@ window.switchFamily = function(mainFam, subFam, btn) {
     if(objRealDiv) objRealDiv.style.display = (subFam === 'Objectif vs Réalisation') ? 'block' : 'none';
     if(recouvFilterRow) recouvFilterRow.style.display = 'flex';
 
-    // ROUTAGE VERS LES FICHIERS SPECIFIQUES & NETTOYAGE FILTRES
     if (subFam === 'Objectif vs Réalisation') {
-        toggleFilters('OBJECTIF'); // Nouveau mode pour nettoyer les filtres inutiles
+        toggleFilters('OBJECTIF');
         if(typeof updateObjRealDashboard === 'function') updateObjRealDashboard();
-    } else if (subFam === 'Dossiers non soldés') {
-        currentData = nonSoldesData;
-        safeSetText('recouvLastUpdate', "Actualisé via l'import");
-        toggleFilters('NON_SOLDES');
-        updateRecouvDashboard();
     } else if (subFam === 'Suivi des retours') {
         currentData = (typeof enrichSuiviRetoursData === 'function') ? enrichSuiviRetoursData() : [];
         safeSetText('recouvLastUpdate', "Temps réel (Sheets)");
         toggleFilters('SUIVI_RETOURS');
         updateRecouvDashboard(); 
+    } else if (subFam === 'Dossiers non soldés') {
+        currentData = nonSoldesData;
+        safeSetText('recouvLastUpdate', "Actualisation via import");
+        toggleFilters('NON_SOLDES');
+        updateRecouvDashboard();
     } else if (mainFam === 'Recouvrement') {
         currentData = recouvData;
         safeSetText('recouvLastUpdate', "Date d'actualisation : " + lastUpdateRecouv);
@@ -460,12 +448,10 @@ function updateRecouvDashboard() {
     const fOrg = document.getElementById('recouvFilterOrganisme').value;
     const fTrim = document.getElementById('recouvFilterTrim').value;
 
-    // --- GESTION SOUS-ENTITÉ ---
     const subContainer = document.getElementById('recouvSubEntityContainer');
     const subSel = document.getElementById('recouvFilterSubEntity');
     let fSub = "";
 
-    // Affichage et remplissage du menu si "HIA CIOA" est sélectionné
     if (fEnt === "HIA CIOA") {
         if(subContainer) subContainer.style.display = "flex";
         if(subSel && subSel.options.length === 0) {
@@ -477,7 +463,6 @@ function updateRecouvDashboard() {
         if(subSel) subSel.value = "";
     }
 
-    // Mise à jour Management (Raffiné avec la sous-entité)
     let lookupEnt = (fEnt === 'HIA CIOA' || fEnt === 'HIA' || fEnt === 'CIOA') ? 'HIA' : fEnt;
     if (fEnt === "HIA CIOA" && fSub) lookupEnt = fSub; 
 
@@ -489,15 +474,12 @@ function updateRecouvDashboard() {
     safeSetText('recouvResp', infoMgmt.respExploit || '-');
     safeSetText('recouvDirMed', infoMgmt.dirMedical || '-');
 
-    // DISPATCH VERS OBJECTIFS (Si c'est l'onglet actif)
     if (currentSubFamily === 'Objectif vs Réalisation') {
         if(typeof updateObjRealDashboard === 'function') updateObjRealDashboard();
         return;
     }
 
-    // FILTRAGE GÉNÉRAL (Pour Dossiers Non Réglés, Expédition, Retours)
     let filtered = currentData.filter(d => {
-        // Filtre Entité & Sous-Entité
         if (fEnt === "HIA CIOA") { 
             if (d.entite !== "HIA" && d.entite !== "CIOA") return false; 
             if (fSub && d.entite !== fSub) return false; 
@@ -506,7 +488,6 @@ function updateRecouvDashboard() {
         
         if (fOrg && d.organisme !== fOrg) return false;
 
-        // Filtres Temporels
         if (fAn && String(d.anneeRef) !== String(fAn)) return false;
         if (fMois && d.moisRef !== fMois) return false;
         
@@ -522,13 +503,14 @@ function updateRecouvDashboard() {
         return true;
     });
 
-    // Rendu selon la vue active
     if (currentFamily === 'Recouvrement' && currentSubFamily === 'Dossiers non réglés') {
         if(typeof renderNonReglesView === 'function') renderNonReglesView(filtered);
     } else if (currentFamily === 'Expédition') {
         if(typeof renderExpeditionView === 'function') renderExpeditionView(filtered);
     } else if (currentSubFamily === 'Suivi des retours') {
         if(typeof renderRetoursView === 'function') renderRetoursView(filtered);
+    } else if (currentSubFamily === 'Dossiers non soldés') {
+        if(typeof renderNonSoldesView === 'function') renderNonSoldesView(filtered);
     }
 }
 
@@ -540,7 +522,6 @@ function safeSetHTML(id, h) { const e=document.getElementById(id); if(e) e.inner
 
 // Toggle Filters UI
 function toggleFilters(mode) {
-    // Cache tout d'abord (Liste exhaustive des conteneurs de filtres spécifiques)
     const ids = [
         'filterStatutContainer', 
         'filterApprocheContainer', 
@@ -555,20 +536,19 @@ function toggleFilters(mode) {
     ];
     ids.forEach(id => { const el = document.getElementById(id); if(el) el.style.display = 'none'; });
 
-    // Affiche selon le mode
     if (mode === 'RECOUVREMENT') { 
         ['filterStatutContainer', 'rowAlertsRecouv', 'blockClassifOrg', 'filterOrganismeContainer'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display='flex'; }); 
-    } else if (mode === 'NON_SOLDES') {
-    ['rowAlertsRecouv', 'blockClassifNature', 'blockClassifOrg', 'filterOrganismeContainer'].forEach(id => { 
-        const el = document.getElementById(id); 
-        if(el) el.style.display='flex';     
+} else if (mode === 'NON_SOLDES') {
+        ['rowAlertsRecouv', 'blockClassifNature', 'blockClassifOrg', 'filterOrganismeContainer'].forEach(id => { 
+            const el = document.getElementById(id); 
+            if(el) el.style.display='flex';     
+        }); // <-- C'EST CETTE LIGNE EXACTEMENT QU'IL MANQUAIT
     } else if (mode === 'EXPEDITION') {
         ['filterApprocheContainer', 'filterPatientContainer', 'rowAlertsExped', 'blockClassifNature', 'blockClassifOrg', 'filterOrganismeContainer'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display='flex'; });
         const e2 = document.getElementById('rowAlertsExped'); if(e2) e2.style.display='grid';
     } else if (mode === 'SUIVI_RETOURS') {
         ['filterMotifContainer', 'filterEtatContainer', 'filterOrganismeContainer'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display='flex'; });
     }
-    // Pour 'OBJECTIF', on ne réactive rien de spécifique, on garde juste Entité/Année/Trim/Mois qui sont toujours visibles.
 }
 
 // =========================================================
@@ -675,13 +655,19 @@ window.drawRecouvCharts = function(dataSet) {
         } 
     });
     
-    // PIE CHART (Répartition Organisme)
+// PIE CHART (Répartition Dynamique)
     const canvasPie = document.getElementById('chartRecouvPie');
     if (canvasPie) {
         const ctxPie = canvasPie.getContext('2d');
         if (recouvChartPieInstance) recouvChartPieInstance.destroy();
         
-        const aggPie = {}; dataSet.forEach(d=>aggPie[d.organisme]=(aggPie[d.organisme]||0)+d.montant);
+        const aggPie = {}; 
+        dataSet.forEach(d => {
+            // Si on est sur Non Soldés, on regroupe par Service, sinon par Organisme
+            let key = (currentSubFamily === 'Dossiers non soldés') ? (d.service || "Non défini") : (d.organisme || "Autre");
+            aggPie[key] = (aggPie[key]||0) + d.montant;
+        });
+        
         const sortedPie = Object.entries(aggPie).sort((a,b)=>b[1]-a[1]); 
         let pL=[], pD=[], other=0; 
         sortedPie.forEach((i,x) => { if(x<7) { pL.push(i[0]); pD.push(i[1]); } else other+=i[1]; }); 
@@ -743,19 +729,24 @@ function processRecouvFile(file) {
         else if (n.includes("ALHIKMA") || n.includes("HIKMA") || n.includes("CAH")) detectedEntity = "ALHIKMA"; 
         else if (n.includes("CID")) detectedEntity = "CID";
 
-        // 2. DÉTECTION INTELLIGENTE DU TYPE (Correction de la confusion)
-        // On regarde le nom du fichier pour savoir si c'est Expédition ou Recouvrement
+// 2. DÉTECTION INTELLIGENTE DU TYPE (Corrigée)
         let targetMode = ""; 
         
         if (n.includes("NON_ENVOYES") || n.includes("NON ENVOYES") || n.includes("NON-ENVOYES")) {
             targetMode = 'EXPEDITION';
         } else if (n.includes("NON_SOLDES") || n.includes("NON SOLDES") || n.includes("NON-SOLDES")) {
-    targetMode = 'NON_SOLDES'; //
+            targetMode = 'NON_SOLDES'; 
         } else if (n.includes("NON_REGLEES") || n.includes("NON REGLEES") || n.includes("NON-REGLEES") || n.includes("NON RÉGLÉES")) {
             targetMode = 'RECOUVREMENT';
         } else {
-            // Fallback : Si le nom n'est pas explicite, on utilise l'onglet actif
-            targetMode = (currentFamily === 'Expédition') ? 'EXPEDITION' : 'RECOUVREMENT';
+            // Fallback super-intelligent : on se fie à l'onglet ouvert !
+            if (currentFamily === 'Expédition') {
+                targetMode = 'EXPEDITION';
+            } else if (currentSubFamily === 'Dossiers non soldés') {
+                targetMode = 'NON_SOLDES';
+            } else {
+                targetMode = 'RECOUVREMENT';
+            }
         }
 
         const reader = new FileReader();
@@ -1227,23 +1218,13 @@ window.renderDetailTable = function(dataset) {
 
 // --- GESTION DES CLICS SUR LA CARTE VARIABLE (BLEUE) ---
 window.handleVariableCardClick = function() {
-    // 1. Vue RECOUVREMENT - Non Réglés (Pas d'action ici car le bouton est DANS la carte)
-    if(currentFamily === 'Recouvrement' && currentSubFamily === 'Dossiers non réglés') {
-        return; // Le clic est géré par le bouton "Activer/Désactiver" interne
-    } 
-    else if (currentSubFamily === 'Dossiers non soldés') {
-    if(typeof renderNonSoldesView === 'function') renderNonSoldesView(filtered);
-    }
-    // 2. Vue EXPEDITION
+    if(currentFamily === 'Recouvrement' && currentSubFamily === 'Dossiers non réglés') return; 
+    else if (currentFamily === 'Recouvrement' && currentSubFamily === 'Dossiers non soldés') return; 
     else if (currentFamily === 'Expédition') {
         openRecouvDetailCustom(currentFilteredDataGlobal.filter(d => d.isAlertPEC || d.nature === "Suivi PEC vide"), 'Dossiers PEC Non Traité');
-    } 
-    // 3. Vue RETOURS
-    else if (currentSubFamily === 'Suivi des retours') {
+    } else if (currentSubFamily === 'Suivi des retours') {
         openRecouvDetailCustom(currentFilteredDataGlobal, 'Liste des Retours');
-    }
-    // 4. Autres
-    else {
+    } else {
         openRecouvDetailCustom(currentFilteredDataGlobal, 'Détail');
     }
 };
@@ -1806,13 +1787,13 @@ function parseNonSoldesImportData(rows, entityName) {
         return parseFloat(String(val).replace(/[^0-9.,-]/g, '').replace(',', '.')) || 0;
     };
 
-    const parseRobustDate = (val) => {
+const parseRobustDate = (val) => {
         if(!val) return ["", "", ""];
         let jsDate = null;
         if (typeof val === 'number') { jsDate = new Date(Math.round((val - 25569) * 86400 * 1000)); } 
         else if (val instanceof Date) { jsDate = val; } 
         else {
-            let s = String(val).trim();
+            let s = String(val).trim().split(' ')[0]; // <-- COUPE L'HEURE
             let parts = s.split(/[\/\-\.]/);
             if(parts.length >= 3) {
                 let y = parts[2].length === 4 ? parts[2] : (parts[0].length === 4 ? parts[0] : null);
@@ -1859,5 +1840,147 @@ function parseNonSoldesImportData(rows, entityName) {
     }
     return result;
 }
+
+// =========================================================
+// AFFICHAGE : DOSSIERS NON SOLDÉS (LA LIAISON)
+// =========================================================
+
+window.renderNonSoldesView = function(dataSet) {
+    currentFilteredDataGlobal = dataSet;
+
+    let totalReste = 0, countChequeImpaye = 0, countChequeCaution = 0;
+    const aggEnt = {}, aggOrg = {};
+
+    dataSet.forEach(d => {
+        totalReste += d.reste || 0;
+        let imp = String(d.chqImpaye||"").trim().toUpperCase();
+        let cau = String(d.chqCaution||"").trim().toUpperCase();
+        if (imp !== "" && imp !== "NON" && imp !== "0") countChequeImpaye++;
+        if (cau !== "" && cau !== "NON" && cau !== "0") countChequeCaution++;
+
+        aggEnt[d.entite] = (aggEnt[d.entite]||0) + (d.reste || 0);
+        aggOrg[d.organisme] = (aggOrg[d.organisme]||0) + (d.reste || 0);
+    });
+
+    safeSetText('kpiRecouvMontant', formatMoney(totalReste) + ' DH');
+    safeSetText('kpiRecouvCount', dataSet.length);
+
+    const sortEnt = Object.entries(aggEnt).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    safeSetHTML('kpiRecouvTopEntities', sortEnt.map(i => `<div style="display:flex; justify-content:space-between; margin-bottom:5px;"><span>${i[0]}</span><strong>${formatMoney(i[1])}</strong></div>`).join('') || 'Aucune donnée');
+
+    const sortOrg = Object.entries(aggOrg).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    safeSetHTML('kpiRecouvTopOrgList', sortOrg.map(i => `<div style="display:flex; justify-content:space-between; margin-bottom:5px;"><span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; width:100px;">${i[0]}</span><strong>${formatMoney(i[1])}</strong></div>`).join('') || 'Aucune donnée');
+
+    const rowAlerts = document.getElementById('rowAlertsRecouv');
+    if(rowAlerts) {
+        rowAlerts.innerHTML = `
+            <div class="stat-card" style="flex:1; border-top: 4px solid #c0392b; background:#fff5f5; padding:20px; cursor:pointer;" onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>String(d.chqImpaye).toUpperCase()!=='NON'&&d.chqImpaye!==''), 'Chèques Impayés')">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div><div class="stat-title" style="color:#c0392b;">CHÈQUES IMPAYÉS</div><div class="stat-value" style="color:#c0392b; font-size:1.8em;">${countChequeImpaye}</div></div>
+                    <div style="font-size:3em; opacity:0.1; color:#c0392b;">⚠️</div>
+                </div>
+            </div>
+            <div class="stat-card" style="flex:1; border-top: 4px solid #f39c12; background:#fdf8e4; padding:20px; cursor:pointer;" onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>String(d.chqCaution).toUpperCase()!=='NON'&&d.chqCaution!==''), 'Chèques Caution')">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div><div class="stat-title" style="color:#f39c12;">CHÈQUES CAUTION</div><div class="stat-value" style="color:#f39c12; font-size:1.8em;">${countChequeCaution}</div></div>
+                    <div style="font-size:3em; opacity:0.1; color:#f39c12;">🔒</div>
+                </div>
+            </div>`;
+    }
+
+    const cardVar = document.getElementById('cardVariable');
+    if(cardVar) cardVar.style.display = 'none';
+
+    if(typeof drawRecouvCharts === 'function') drawRecouvCharts(dataSet);
+    
+    if(typeof renderClassificationService === 'function') renderClassificationService(dataSet);
+    if(typeof renderClassificationEtat === 'function') renderClassificationEtat(dataSet);
+    
+    if (recouvTableMode === 'LIST') {
+        if(typeof renderNonSoldesListTable === 'function') renderNonSoldesListTable(dataSet);
+    } else {
+        if(typeof renderBalanceTable === 'function') renderBalanceTable(dataSet);
+    }
+};
+
+window.renderClassificationService = function(dataSet) {
+    const tbody = document.querySelector('#tableRecouvOrg tbody'); 
+    if(!tbody) return; tbody.innerHTML = '';
+    
+    const h4Org = document.querySelector('#blockClassifOrg h4');
+    if(h4Org) h4Org.textContent = "Analyse par Service";
+    const h4Pie = document.querySelector('#recouvPieBlock h4');
+    if(h4Pie) h4Pie.textContent = "Répartition par Service";
+
+    const counts = {}; const amounts = {};
+    dataSet.forEach(d => {
+        let srv = d.service || "Non défini";
+        counts[srv] = (counts[srv]||0)+1; amounts[srv] = (amounts[srv]||0)+(d.reste||0);
+    });
+    
+    const total = dataSet.reduce((s,d)=>s+(d.reste||0),0);
+    Object.entries(amounts).sort((a,b) => b[1] - a[1]).forEach(i => { 
+        const p = total > 0 ? (i[1]/total*100).toFixed(0) : 0; 
+        tbody.insertAdjacentHTML('beforeend', `<tr onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>d.service==='${i[0].replace(/'/g, "\\'")}'), 'Service ${i[0].replace(/'/g, "\\'")}')" style="cursor:pointer;"><td style="text-align:left;">${i[0]}</td><td style="text-align:center;">${counts[i[0]]}</td><td style="text-align:right; font-weight:bold;">${formatMoney(i[1])}</td><td style="text-align:right;">${p}%</td></tr>`); 
+    });
+    
+    const canvasPie = document.getElementById('chartRecouvPie');
+    if (canvasPie && typeof Chart !== 'undefined') {
+        const ctxPie = canvasPie.getContext('2d');
+        if (recouvChartPieInstance) recouvChartPieInstance.destroy();
+        let pL=[], pD=[], other=0; 
+        Object.entries(amounts).sort((a,b) => b[1] - a[1]).forEach((i,x) => { if(x<7) { pL.push(i[0]); pD.push(i[1]); } else other+=i[1]; }); 
+        if(other>0) { pL.push("Autres"); pD.push(other); }
+        recouvChartPieInstance = new Chart(ctxPie, { 
+            type: 'doughnut', 
+            data: { labels: pL, datasets: [{ data: pD, backgroundColor: REC_COLORS }] }, 
+            options: { responsive: true, maintainAspectRatio: false, cutout: '55%', plugins: { legend: { position:'right' } } } 
+        });
+    }
+};
+
+window.renderClassificationEtat = function(dataSet) {
+    const tbody = document.querySelector('#tableRecouvNature tbody'); 
+    if(!tbody) return; tbody.innerHTML = '';
+    
+    const h4Nat = document.querySelector('#blockClassifNature h4');
+    if(h4Nat) h4Nat.textContent = "Analyse par État de Dossier";
+    
+    const h4NatPie = document.querySelector('#blockClassifNature').nextElementSibling;
+    if(h4NatPie && h4NatPie.querySelector('h4')) h4NatPie.querySelector('h4').textContent = "Répartition par État";
+
+    const counts = {}; const amounts = {};
+    dataSet.forEach(d => {
+        let etat = d.etatDossier || "Non défini";
+        counts[etat] = (counts[etat]||0)+1; amounts[etat] = (amounts[etat]||0)+(d.reste||0);
+    });
+    
+    const total = dataSet.reduce((s,d)=>s+(d.reste||0),0);
+    Object.entries(amounts).sort((a,b) => b[1] - a[1]).forEach(i => { 
+        const p = total > 0 ? (i[1]/total*100).toFixed(0) : 0; 
+        tbody.insertAdjacentHTML('beforeend', `<tr onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>d.etatDossier==='${i[0].replace(/'/g, "\\'")}'), 'État ${i[0].replace(/'/g, "\\'")}')" style="cursor:pointer;"><td style="text-align:left;">${i[0]}</td><td style="text-align:center;">${counts[i[0]]}</td><td style="text-align:right; font-weight:bold;">${formatMoney(i[1])}</td><td style="text-align:right;">${p}%</td></tr>`); 
+    });
+    if(typeof drawNatureChart === 'function') drawNatureChart(amounts);
+};
+
+window.renderNonSoldesListTable = function(dataSet) {
+    const tbody = document.querySelector('#tableTopFactures tbody');
+    const thead = document.querySelector('#tableTopFactures thead tr');
+    if(!tbody || !thead) return;
+
+    thead.innerHTML = `<th style="text-align:left;">Entité</th><th style="text-align:left;">Dossier / Patient</th><th style="text-align:left;">Service</th><th style="text-align:center;">Date Sortie</th><th style="text-align:left;">Organisme</th><th style="text-align:right;">Tot. Patient</th><th style="text-align:right;">Payé</th><th style="text-align:right; color:#c0392b;">Reste</th><th style="text-align:center;">État</th>`;
+    tbody.innerHTML = '';
+    
+    let sortedData = [...dataSet];
+    if (recouvSortMode === 'MONTANT') sortedData.sort((a,b) => (b.reste||0) - (a.reste||0));
+    const limit = (recouvTopN === 1000) ? sortedData.length : recouvTopN;
+    
+    sortedData.slice(0, limit).forEach(d => {
+        let alertIcon = (d.chqImpaye && d.chqImpaye !== "NON" && d.chqImpaye !== "0") ? ' <i class="fas fa-exclamation-triangle" style="color:#c0392b;" title="Chèque Impayé"></i>' : '';
+        let cautionIcon = (d.chqCaution && d.chqCaution !== "NON" && d.chqCaution !== "0") ? ' <i class="fas fa-lock" style="color:#f39c12;" title="Chèque Caution"></i>' : '';
+        
+        tbody.insertAdjacentHTML('beforeend', `<tr style="border-bottom:1px solid #eee;"><td style="text-align:left;">${d.entite}</td><td style="text-align:left;"><b>${d.dossier}</b>${alertIcon}${cautionIcon}<br>${d.patient}</td><td style="text-align:left; font-size:0.9em;">${d.service}</td><td style="text-align:center;">${d.dateRefDisplay}</td><td style="text-align:left;">${d.organisme}</td><td style="text-align:right;">${formatMoney(d.totPatient)}</td><td style="text-align:right; color:#27ae60;">${formatMoney(d.totPaiement)}</td><td style="text-align:right; font-weight:bold; color:#c0392b;">${formatMoney(d.reste)}</td><td style="text-align:center; font-size:0.85em;">${d.etatDossier || '-'}</td></tr>`);
+    });
+};
 
 </script>

@@ -3,107 +3,90 @@
  * MODULE RECOUVREMENT - DOSSIERS NON SOLDÉS
  */
 
+// =========================================================
+// AFFICHAGE : DOSSIERS NON SOLDÉS
+// =========================================================
+
 window.renderNonSoldesView = function(dataSet) {
     currentFilteredDataGlobal = dataSet;
 
-    // 1. CALCUL DES KPIs
-    let totalReste = 0;
-    let countDossiers = dataSet.length;
-    let countChequeImpaye = 0;
-    let countChequeCaution = 0;
-    
+    let totalReste = 0, countChequeImpaye = 0, countChequeCaution = 0;
+    const aggEnt = {}, aggOrg = {};
+
     dataSet.forEach(d => {
         totalReste += d.reste || 0;
-        if (d.chqImpaye && String(d.chqImpaye).trim() !== "") {
-            countChequeImpaye++;
-        }
-        if (d.chqCaution && String(d.chqCaution).trim() !== "") {
-            countChequeCaution++;
-        }
+        let imp = String(d.chqImpaye||"").trim().toUpperCase();
+        let cau = String(d.chqCaution||"").trim().toUpperCase();
+        if (imp !== "" && imp !== "NON" && imp !== "0") countChequeImpaye++;
+        if (cau !== "" && cau !== "NON" && cau !== "0") countChequeCaution++;
+
+        aggEnt[d.entite] = (aggEnt[d.entite]||0) + (d.reste || 0);
+        aggOrg[d.organisme] = (aggOrg[d.organisme]||0) + (d.reste || 0);
     });
 
-    // Mise à jour de l'UI globale
+    // KPIs principaux
     safeSetText('kpiRecouvMontant', formatMoney(totalReste) + ' DH');
-    safeSetText('kpiRecouvCount', countDossiers);
-    
-    // Modification des cartes d'alertes pour afficher les infos Chèques
-    document.querySelector('#rowAlertsRecouv .stat-title').textContent = "CHÈQUES IMPAYÉS";
-    safeSetText('kpiEchueMontant', countChequeImpaye);
-    safeSetText('kpiEchueCount', "Dossiers avec impayé");
-    
-    document.querySelectorAll('#rowAlertsRecouv .stat-title')[1].textContent = "CHÈQUES CAUTION";
-    safeSetText('kpiNonEchueMontant', countChequeCaution); 
-    safeSetText('kpiNonEchueCount', "Dossiers avec caution");
+    safeSetText('kpiRecouvCount', dataSet.length);
 
-    // 2. CLASSIFICATION PAR SERVICE
+    // Top Entités / Organismes
+    const sortEnt = Object.entries(aggEnt).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    safeSetHTML('kpiRecouvTopEntities', sortEnt.map(i => `<div style="display:flex; justify-content:space-between; margin-bottom:5px;"><span>${i[0]}</span><strong>${formatMoney(i[1])}</strong></div>`).join('') || 'Aucune donnée');
+
+    const sortOrg = Object.entries(aggOrg).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    safeSetHTML('kpiRecouvTopOrgList', sortOrg.map(i => `<div style="display:flex; justify-content:space-between; margin-bottom:5px;"><span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; width:100px;">${i[0]}</span><strong>${formatMoney(i[1])}</strong></div>`).join('') || 'Aucune donnée');
+
+    // Panneau Alertes (Chèques)
+    const rowAlerts = document.getElementById('rowAlertsRecouv');
+    if(rowAlerts) {
+        rowAlerts.innerHTML = `
+            <div class="stat-card" style="flex:1; border-top: 4px solid #c0392b; background:#fff5f5; padding:20px; cursor:pointer;" onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>String(d.chqImpaye).toUpperCase()!=='NON'&&d.chqImpaye!==''), 'Chèques Impayés')">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div><div class="stat-title" style="color:#c0392b;">CHÈQUES IMPAYÉS</div><div class="stat-value" style="color:#c0392b; font-size:1.8em;">${countChequeImpaye}</div></div>
+                    <div style="font-size:3em; opacity:0.1; color:#c0392b;">⚠️</div>
+                </div>
+            </div>
+            <div class="stat-card" style="flex:1; border-top: 4px solid #f39c12; background:#fdf8e4; padding:20px; cursor:pointer;" onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>String(d.chqCaution).toUpperCase()!=='NON'&&d.chqCaution!==''), 'Chèques Caution')">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div><div class="stat-title" style="color:#f39c12;">CHÈQUES CAUTION</div><div class="stat-value" style="color:#f39c12; font-size:1.8em;">${countChequeCaution}</div></div>
+                    <div style="font-size:3em; opacity:0.1; color:#f39c12;">🔒</div>
+                </div>
+            </div>`;
+    }
+
+    const cardVar = document.getElementById('cardVariable');
+    if(cardVar) cardVar.style.display = 'none';
+
+    // Rendu Tableaux & Graphs
+    if(typeof drawRecouvCharts === 'function') drawRecouvCharts(dataSet);
     renderClassificationService(dataSet);
-
-    // 3. CLASSIFICATION PAR ETAT DOSSIER
     renderClassificationEtat(dataSet);
-
-    // 4. GRAPHIQUE D'EVOLUTION (Utilise le montant du 'reste' qui a été mappé sur 'montant')
-    if (typeof drawRecouvCharts === 'function') {
-        drawRecouvCharts(dataSet);
-    }
-
-    // 5. LISTE DES DOSSIERS
-    if (recouvTableMode === 'LIST') {
-        renderNonSoldesListTable(dataSet);
-    } else {
-        renderBalanceTable(dataSet);
-    }
+    if (recouvTableMode === 'LIST') renderNonSoldesListTable(dataSet);
+    else renderBalanceTable(dataSet);
 };
 
 window.renderClassificationService = function(dataSet) {
     const tbody = document.querySelector('#tableRecouvOrg tbody'); 
-    if(!tbody) return; 
-    tbody.innerHTML = '';
+    if(!tbody) return; tbody.innerHTML = '';
     
-    // Modification des titres pour coller à l'analyse "Service"
     document.querySelector('#blockClassifOrg h4').textContent = "Analyse par Service";
     document.querySelector('#recouvPieBlock h4').textContent = "Répartition par Service";
 
     const counts = {}; const amounts = {};
     dataSet.forEach(d => {
         let srv = d.service || "Non défini";
-        counts[srv] = (counts[srv]||0)+1;
-        amounts[srv] = (amounts[srv]||0)+(d.reste||0);
+        counts[srv] = (counts[srv]||0)+1; amounts[srv] = (amounts[srv]||0)+(d.reste||0);
     });
     
     const total = dataSet.reduce((s,d)=>s+(d.reste||0),0);
-    let sorted = Object.entries(amounts).sort((a,b) => b[1] - a[1]);
-    
-    sorted.forEach(i => { 
+    Object.entries(amounts).sort((a,b) => b[1] - a[1]).forEach(i => { 
         const p = total > 0 ? (i[1]/total*100).toFixed(0) : 0; 
-        tbody.insertAdjacentHTML('beforeend', `
-            <tr onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>d.service==='${i[0].replace(/'/g, "\\'")}'), 'Détail Service ${i[0].replace(/'/g, "\\'")}')" style="cursor:pointer;">
-                <td style="text-align:left;">${i[0]}</td>
-                <td style="text-align:center;">${counts[i[0]]}</td>
-                <td style="text-align:right; font-weight:bold;">${formatMoney(i[1])}</td>
-                <td style="text-align:right;">${p}%</td>
-            </tr>`); 
+        tbody.insertAdjacentHTML('beforeend', `<tr onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>d.service==='${i[0].replace(/'/g, "\\'")}'), 'Service ${i[0].replace(/'/g, "\\'")}')" style="cursor:pointer;"><td style="text-align:left;">${i[0]}</td><td style="text-align:center;">${counts[i[0]]}</td><td style="text-align:right; font-weight:bold;">${formatMoney(i[1])}</td><td style="text-align:right;">${p}%</td></tr>`); 
     });
-
-    // Mise à jour du Pie Chart
-    const canvasPie = document.getElementById('chartRecouvPie');
-    if (canvasPie && typeof Chart !== 'undefined') {
-        const ctxPie = canvasPie.getContext('2d');
-        if (window.recouvChartPieInstance) window.recouvChartPieInstance.destroy();
-        let pL=[], pD=[], other=0; 
-        sorted.forEach((i,x) => { if(x<7) { pL.push(i[0]); pD.push(i[1]); } else other+=i[1]; }); 
-        if(other>0) { pL.push("Autres"); pD.push(other); }
-        window.recouvChartPieInstance = new Chart(ctxPie, { 
-            type: 'doughnut', 
-            data: { labels: pL, datasets: [{ data: pD, backgroundColor: window.REC_COLORS }] }, 
-            options: { responsive: true, maintainAspectRatio: false, cutout: '55%', plugins: { legend: { position:'right' } } } 
-        });
-    }
 };
 
 window.renderClassificationEtat = function(dataSet) {
     const tbody = document.querySelector('#tableRecouvNature tbody'); 
-    if(!tbody) return; 
-    tbody.innerHTML = '';
+    if(!tbody) return; tbody.innerHTML = '';
     
     document.querySelector('#blockClassifNature h4').textContent = "Analyse par État de Dossier";
     document.querySelector('#blockClassifNature').nextElementSibling.querySelector('h4').textContent = "Répartition par État";
@@ -111,24 +94,14 @@ window.renderClassificationEtat = function(dataSet) {
     const counts = {}; const amounts = {};
     dataSet.forEach(d => {
         let etat = d.etatDossier || "Non défini";
-        counts[etat] = (counts[etat]||0)+1;
-        amounts[etat] = (amounts[etat]||0)+(d.reste||0);
+        counts[etat] = (counts[etat]||0)+1; amounts[etat] = (amounts[etat]||0)+(d.reste||0);
     });
     
     const total = dataSet.reduce((s,d)=>s+(d.reste||0),0);
-    let sorted = Object.entries(amounts).sort((a,b) => b[1] - a[1]);
-    
-    sorted.forEach(i => { 
+    Object.entries(amounts).sort((a,b) => b[1] - a[1]).forEach(i => { 
         const p = total > 0 ? (i[1]/total*100).toFixed(0) : 0; 
-        tbody.insertAdjacentHTML('beforeend', `
-            <tr onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>d.etatDossier==='${i[0].replace(/'/g, "\\'")}'), 'Détail État ${i[0].replace(/'/g, "\\'")}')" style="cursor:pointer;">
-                <td style="text-align:left;">${i[0]}</td>
-                <td style="text-align:center;">${counts[i[0]]}</td>
-                <td style="text-align:right; font-weight:bold;">${formatMoney(i[1])}</td>
-                <td style="text-align:right;">${p}%</td>
-            </tr>`); 
+        tbody.insertAdjacentHTML('beforeend', `<tr onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>d.etatDossier==='${i[0].replace(/'/g, "\\'")}'), 'État ${i[0].replace(/'/g, "\\'")}')" style="cursor:pointer;"><td style="text-align:left;">${i[0]}</td><td style="text-align:center;">${counts[i[0]]}</td><td style="text-align:right; font-weight:bold;">${formatMoney(i[1])}</td><td style="text-align:right;">${p}%</td></tr>`); 
     });
-
     drawNatureChart(amounts);
 };
 
@@ -137,44 +110,18 @@ window.renderNonSoldesListTable = function(dataSet) {
     const thead = document.querySelector('#tableTopFactures thead tr');
     if(!tbody || !thead) return;
 
-    thead.innerHTML = `
-        <th style="text-align:left;">Entité</th>
-        <th style="text-align:left;">Dossier / Patient</th>
-        <th style="text-align:left;">Service</th>
-        <th style="text-align:center;">Date Sortie</th>
-        <th style="text-align:left;">Organisme</th>
-        <th style="text-align:right;">Total Patient</th>
-        <th style="text-align:right;">Total Payé</th>
-        <th style="text-align:right; color:#c0392b;">Reste</th>
-        <th style="text-align:center;">État Dossier</th>
-    `;
-
+    thead.innerHTML = `<th style="text-align:left;">Entité</th><th style="text-align:left;">Dossier / Patient</th><th style="text-align:left;">Service</th><th style="text-align:center;">Date Sortie</th><th style="text-align:left;">Organisme</th><th style="text-align:right;">Tot. Patient</th><th style="text-align:right;">Payé</th><th style="text-align:right; color:#c0392b;">Reste</th><th style="text-align:center;">État</th>`;
     tbody.innerHTML = '';
     
     let sortedData = [...dataSet];
-    if (recouvSortMode === 'MONTANT') {
-        sortedData.sort((a,b) => (b.reste||0) - (a.reste||0));
-    }
-
+    if (recouvSortMode === 'MONTANT') sortedData.sort((a,b) => (b.reste||0) - (a.reste||0));
     const limit = (recouvTopN === 1000) ? sortedData.length : recouvTopN;
     
     sortedData.slice(0, limit).forEach(d => {
-        let alertIcon = d.chqImpaye ? ' <i class="fas fa-exclamation-triangle" style="color:#c0392b;" title="Chèque Impayé"></i>' : '';
-        let cautionIcon = d.chqCaution ? ' <i class="fas fa-lock" style="color:#f39c12;" title="Chèque Caution"></i>' : '';
+        let alertIcon = (d.chqImpaye && d.chqImpaye !== "NON" && d.chqImpaye !== "0") ? ' <i class="fas fa-exclamation-triangle" style="color:#c0392b;" title="Chèque Impayé"></i>' : '';
+        let cautionIcon = (d.chqCaution && d.chqCaution !== "NON" && d.chqCaution !== "0") ? ' <i class="fas fa-lock" style="color:#f39c12;" title="Chèque Caution"></i>' : '';
         
-        tbody.insertAdjacentHTML('beforeend', `
-            <tr style="border-bottom:1px solid #eee;">
-                <td style="text-align:left;">${d.entite}</td>
-                <td style="text-align:left;"><b>${d.dossier}</b>${alertIcon}${cautionIcon}<br>${d.patient}</td>
-                <td style="text-align:left; font-size:0.9em;">${d.service}</td>
-                <td style="text-align:center;">${d.dateRefDisplay}</td>
-                <td style="text-align:left;">${d.organisme}</td>
-                <td style="text-align:right;">${formatMoney(d.totPatient)}</td>
-                <td style="text-align:right; color:#27ae60;">${formatMoney(d.totPaiement)}</td>
-                <td style="text-align:right; font-weight:bold; color:#c0392b;">${formatMoney(d.reste)}</td>
-                <td style="text-align:center; font-size:0.85em;">${d.etatDossier || '-'}</td>
-            </tr>
-        `);
+        tbody.insertAdjacentHTML('beforeend', `<tr style="border-bottom:1px solid #eee;"><td style="text-align:left;">${d.entite}</td><td style="text-align:left;"><b>${d.dossier}</b>${alertIcon}${cautionIcon}<br>${d.patient}</td><td style="text-align:left; font-size:0.9em;">${d.service}</td><td style="text-align:center;">${d.dateRefDisplay}</td><td style="text-align:left;">${d.organisme}</td><td style="text-align:right;">${formatMoney(d.totPatient)}</td><td style="text-align:right; color:#27ae60;">${formatMoney(d.totPaiement)}</td><td style="text-align:right; font-weight:bold; color:#c0392b;">${formatMoney(d.reste)}</td><td style="text-align:center; font-size:0.85em;">${d.etatDossier || '-'}</td></tr>`);
     });
 };
 </script>
