@@ -186,19 +186,16 @@ function resetUserPassword(email) {
 
 function doGet() {
   var template = HtmlService.createTemplateFromFile('Index');
-  
-  // 1. Appel de votre fonction existante pour récupérer le contexte utilisateur
   var userContext = getUserContext();
   
-  // 2. Transmission des variables au template HTML (Index.html)
   template.userEmail = userContext.email;
-  template.userName = userContext.email.split('@')[0].replace('.', ' '); // Déduit le prénom/nom
-  
-  // 3. Récupération du Poste (avec une valeur par défaut de sécurité)
+  template.userName = userContext.email.split('@')[0].replace('.', ' ');
   template.userPoste = userContext.poste ? userContext.poste : "Collaborateur Akdital";
-  
-  // 4. Récupération de la Photo (avec avatar dynamique par défaut si vide)
   template.userPhoto = userContext.photo ? userContext.photo : "https://ui-avatars.com/api/?name=" + template.userName + "&background=e0e7ff&color=005c97&bold=true";
+  
+  // 👇 NOUVEAU : Récupération dynamique depuis la mémoire du script
+  const props = PropertiesService.getScriptProperties();
+  template.appVersion = props.getProperty('APP_VERSION') || "v1.0.0"; 
   
   return template.evaluate()
       .setTitle('DASHBOARD - REGION GRAND SUD')
@@ -214,6 +211,8 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('⚙️ Administration')
     .addItem('🔄 Mettre à jour Flash (BDD)', 'clientNormalizeData')
     .addItem('📥 Import Détail Organismes', 'importDetailsOrganisme')
+    .addSeparator() // Ajoute une ligne de séparation
+    .addItem('🚀 Incrémenter la version Dashboard', 'incrementAppVersion') // <-- NOUVEAU
     .addToUi();
 }
 
@@ -1872,4 +1871,39 @@ function getDetailsOrganismeData(type) {
   const data = sheet.getDataRange().getValues();
   if (data.length <= 1) return [];
   return data;
+}
+
+// =======================================================================
+// GESTION AUTOMATIQUE DE LA VERSION
+// =======================================================================
+function incrementAppVersion() {
+  const props = PropertiesService.getScriptProperties();
+  let currentVersion = props.getProperty('APP_VERSION');
+  
+  // Si c'est la toute première fois
+  if (!currentVersion) {
+    currentVersion = "v1.0.0";
+  }
+  
+  // Sépare la version (ex: "v1.0.5" -> ["1", "0", "5"])
+  let parts = currentVersion.replace('v', '').split('.');
+  
+  if (parts.length === 3) {
+    // Incrémente le dernier chiffre (+1)
+    parts[2] = parseInt(parts[2]) + 1; 
+  } else {
+    parts = ["1", "0", "1"];
+  }
+  
+  const newVersion = "v" + parts.join('.');
+  
+  // Sauvegarde la nouvelle version en mémoire
+  props.setProperty('APP_VERSION', newVersion);
+  
+  SpreadsheetApp.getUi().alert(
+    "✅ Version mise à jour avec succès !\n\n" +
+    "Ancienne version : " + currentVersion + "\n" +
+    "Nouvelle version : " + newVersion + "\n\n" +
+    "⚠️ N'oubliez pas d'aller dans Apps Script > Déployer > Nouveau déploiement pour que les utilisateurs voient les changements."
+  );
 }

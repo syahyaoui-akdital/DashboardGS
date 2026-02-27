@@ -75,30 +75,232 @@
     opacity: 0.8; 
 }
 
-  /* --- VARIABLES CSS & DARK MODE --- */
+/* ========================================================= */
+  /* --- 1. VARIABLES & PALETTE "DEEP NAVY" (MODE SOMBRE PRO) --- */
+  /* ========================================================= */
+  
+  /* Retrait de la surbrillance bleue sur mobile */
+  * { -webkit-tap-highlight-color: transparent; }
+
   :root {
     --bg-body: #f4f6f9;
     --bg-card: #ffffff;
-    --text-main: #333333;
-    --text-sub: #666666;
-    --header-bg: linear-gradient(90deg, #005c97 0%, #363795 100%);
-    --border-color: #eee;
-    --shadow: 0 4px 6px rgba(0,0,0,0.05);
-    --pill-bg: #f8faff;
-    --pill-border: #e1e8f0;
+    --text-main: #1e293b;
+    --text-sub: #64748b;
+    --border-color: #e2e8f0;
+    --header-bg: linear-gradient(135deg, #1e3a8a 0%, #312e81 100%);
+    --shadow: 0 4px 15px rgba(0,0,0,0.05);
+    --accent: #3b82f6;
   }
 
+  /* Palette élégante : Aucun gris, aucun noir pur. Uniquement des bleus profonds. */
   body.dark-mode {
-    --bg-body: #1a1a1a;
-    --bg-card: #2d2d2d;
-    --text-main: #e0e0e0;
-    --text-sub: #aaaaaa;
-    --header-bg: linear-gradient(90deg, #1f1f1f 0%, #333 100%);
-    --border-color: #444;
-    --shadow: 0 4px 6px rgba(0,0,0,0.3);
-    --pill-bg: #333;
-    --pill-border: #444;
+    --bg-body: #070b14 !important;      /* Bleu abyssal pour le fond */
+    --bg-card: #0f1523 !important;      /* Bleu nuit pour les cartes */
+    --text-main: #f8fafc !important;    /* Blanc bleuté très lisible */
+    --text-sub: #8b9bb4 !important;     /* Texte secondaire doux */
+    --border-color: #1e293b !important; /* Bordures subtiles */
+    --header-bg: #070b14 !important;    
+    --shadow: 0 8px 25px rgba(0,0,0,0.6) !important;
+    --accent: #3b82f6 !important;
   }
+
+  /* ========================================================= */
+  /* --- 2. OVERRIDES FORCÉS POUR LE MODE SOMBRE --- */
+  /* ========================================================= */
+  
+  /* Cible de nombreux éléments avec des backgrounds clairs codés en dur */
+  body.dark-mode .view-section div[style*="background: white"],
+  body.dark-mode .view-section div[style*="background:white"],
+  body.dark-mode .view-section div[style*="background: #fff"],
+  body.dark-mode .view-section div[style*="background:#fff"],
+  body.dark-mode .view-section div[style*="background: #ffffff"],
+  body.dark-mode .view-section div[style*="background:#ffffff"],
+  body.dark-mode .stat-card,
+  body.dark-mode .chart-container,
+  body.dark-mode .table-container,
+  body.dark-mode .rh-header,
+  body.dark-mode .kpi-card,
+  body.dark-mode .chart-box,
+  body.dark-mode .age-section,
+  body.dark-mode .mass-wrap,
+  body.dark-mode .obj-card,
+  body.dark-mode .obj-box,
+  body.dark-mode .rh-masse-detail-card,
+  body.dark-mode .chart-card {
+      background-color: var(--bg-card) !important;
+      border-color: var(--border-color) !important;
+      color: var(--text-main) !important;
+      box-shadow: var(--shadow) !important;
+  }
+
+  /* --- Menus et Sidebars --- */
+  body.dark-mode #sidebar, 
+  body.dark-mode div[style*="width: 260px"] {
+      background-color: #0f172a !important;
+      border-right-color: var(--border-color) !important;
+  }
+  
+  body.dark-mode #sidebarProfile, 
+  body.dark-mode div[style*="padding: 25px 20px"],
+  body.dark-mode div[style*="padding: 30px 20px"] {
+      background-color: var(--bg-card) !important;
+      border-bottom-color: var(--border-color) !important;
+  }
+
+  /* Boutons de navigation (Recouvrement, Budget) */
+  body.dark-mode .nav-sub-btn, 
+  body.dark-mode .budget-nav-btn {
+      color: var(--text-sub) !important;
+      background: transparent !important;
+      border-color: transparent !important;
+  }
+  body.dark-mode .nav-sub-btn:hover, 
+  body.dark-mode .budget-nav-btn:hover {
+      background-color: #334155 !important;
+      color: white !important;
+  }
+  body.dark-mode .nav-sub-btn.active,
+  body.dark-mode .budget-nav-btn.active {
+      background: #3b82f6 !important;
+      color: white !important;
+      box-shadow: none !important;
+  }
+
+  /* --- Textes et Titres --- */
+  body.dark-mode h2, body.dark-mode h3, body.dark-mode h4, 
+  body.dark-mode .stat-title, body.dark-mode .obj-title, 
+  body.dark-mode .rh-title, body.dark-mode .chart-header {
+      color: var(--text-main) !important;
+  }
+
+  /* Rendre les valeurs importantes (chiffres) bleu lumineux */
+  body.dark-mode .stat-value, 
+  body.dark-mode .kpi-value, 
+  body.dark-mode .obj-val, 
+  body.dark-mode .ttTotal, 
+  body.dark-mode .val,
+  body.dark-mode div[id*="Montant"],
+  body.dark-mode div[id*="Count"] {
+      color: #38bdf8 !important; 
+  }
+
+  /* --- Tableaux Ultra-Pro --- */
+  body.dark-mode table, body.dark-mode th, body.dark-mode td {
+      border-color: var(--border-color) !important;
+  }
+  body.dark-mode th, body.dark-mode thead th, body.dark-mode thead tr, body.dark-mode .table-mini thead {
+      background-color: #334155 !important;
+      color: #e2e8f0 !important;
+  }
+  body.dark-mode td, body.dark-mode tbody tr {
+      background-color: transparent !important;
+      color: var(--text-main) !important;
+  }
+  body.dark-mode tbody tr:hover td {
+      background-color: #334155 !important;
+  }
+  
+  /* Supprimer les fonds colorés pastel des tableaux dans les différents modules */
+  body.dark-mode tr[style*="background:#f9f9f9"], 
+  body.dark-mode td[style*="background:#f9f9f9"],
+  body.dark-mode tr[style*="background:#f4f6f9"],
+  body.dark-mode td[style*="background:#f4f6f9"] {
+      background-color: #1e293b !important;
+  }
+  
+  body.dark-mode td[style*="background:#fff3e0"], body.dark-mode th[style*="background:#fff3e0"],
+  body.dark-mode td[style*="background:#fff8e1"], body.dark-mode th[style*="background:#fff8e1"],
+  body.dark-mode td[style*="background:#e3f2fd"], body.dark-mode th[style*="background:#e3f2fd"],
+  body.dark-mode td[style*="background:#fce4ec"], body.dark-mode th[style*="background:#fce4ec"],
+  body.dark-mode td[style*="background:#e8f5e9"], body.dark-mode th[style*="background:#e8f5e9"],
+  body.dark-mode th[style*="background:#ecf0f1"], body.dark-mode th[style*="background:#eafaf1"] {
+      background-color: #0f172a !important; 
+      color: var(--text-main) !important;
+  }
+
+  /* --- Modales --- */
+  body.dark-mode .modal-content, 
+  body.dark-mode .rh-modal, 
+  body.dark-mode .custom-modal, 
+  body.dark-mode div[style*="background-color:#fff; margin:2% auto"],
+  body.dark-mode div[style*="background-color:#fff; margin:5% auto"] {
+      background-color: var(--bg-card) !important;
+      border: 1px solid var(--border-color);
+  }
+  
+  body.dark-mode .rh-modal-head, 
+  body.dark-mode .custom-modal-header,
+  body.dark-mode div[style*="border-bottom:1px solid #eee; background:#f4f6f9"],
+  body.dark-mode div[style*="padding:15px; border-top:1px solid #eee; background:#f4f6f9"],
+  body.dark-mode div[style*="padding:20px; background:linear-gradient"] {
+      background: #334155 !important;
+      color: white !important;
+      border-bottom-color: var(--border-color) !important;
+      border-top-color: var(--border-color) !important;
+  }
+
+  /* --- Formulaires, Filtres, Boutons --- */
+  body.dark-mode select, 
+  body.dark-mode input, 
+  body.dark-mode .sec-filter-group select, 
+  body.dark-mode .rh-select {
+      background-color: #334155 !important;
+      color: #f8fafc !important;
+      border-color: #475569 !important;
+  }
+
+  body.dark-mode .toggle-chart-btn {
+      background-color: #334155 !important;
+      color: #94a3b8 !important;
+      border-color: #475569 !important;
+  }
+  body.dark-mode .toggle-chart-btn.active {
+      background-color: #3b82f6 !important;
+      color: white !important;
+      border-color: #3b82f6 !important;
+  }
+
+  body.dark-mode .obj-btn-group {
+      background-color: #334155 !important;
+      border-color: #475569 !important;
+  }
+  body.dark-mode .obj-btn {
+      background-color: transparent !important;
+      color: #94a3b8 !important;
+      border-right-color: #475569 !important;
+  }
+  body.dark-mode .obj-btn.active {
+      background-color: #3b82f6 !important;
+      color: white !important;
+  }
+
+  /* --- Cartes Alerte (Adoucissement des fonds) --- */
+  body.dark-mode div[style*="background:#fff5f5"], 
+  body.dark-mode .bg-bloc-sec {
+      background-color: rgba(239, 68, 68, 0.15) !important;
+  }
+  body.dark-mode div[style*="background:#f0fbf4"] {
+      background-color: rgba(34, 197, 94, 0.15) !important;
+  }
+  body.dark-mode div[style*="background:#fdf8e4"] {
+      background-color: rgba(245, 158, 11, 0.15) !important;
+  }
+
+  /* --- Compléments --- */
+  body.dark-mode #infoBar, body.dark-mode .rh-header {
+      background-color: var(--bg-card) !important;
+      border-color: var(--border-color) !important;
+  }
+  body.dark-mode .metric-pill { 
+      background-color: #334155 !important; 
+      border-color: #475569 !important; 
+  }
+  body.dark-mode .metric-icon { 
+      background-color: #1e293b !important; 
+      color: #38bdf8 !important; 
+  }
+  body.dark-mode .user-profile-widget { background: rgba(255,255,255,0.1); }
 
   /* --- Styles Généraux --- */
   body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: var(--bg-body); color: var(--text-main); transition: background 0.3s, color 0.3s; }
@@ -461,7 +663,7 @@
 
   /* 1. Agrandir la carte globale et l'empêcher de couper le contenu en bas */
 .login-main-card {
-    max-width: 1000px !important; /* Agrandit la largeur totale */
+    max-width: 1300px !important; /* Agrandit la largeur totale */
     min-height: 400px !important; /* Hauteur minimale confortable */
     height: auto !important; /* INDISPENSABLE : S'adapte au contenu pour ne rien masquer */
     align-items: stretch !important;
@@ -469,7 +671,7 @@
 
 /* 2. Agrandir spécifiquement la zone du formulaire à droite */
 .login-form-container {
-    max-width: 420px !important; /* Donne plus d'air au formulaire */
+    max-width: 620px !important; /* Donne plus d'air au formulaire */
     padding: 20px 10px !important; /* Ajoute de l'espace en haut et en bas */
     margin: 0 auto !important;
 }
@@ -487,5 +689,221 @@
     text-align: center !important;
     display: block !important;
     padding-bottom: 20px !important; /* Sécurité pour ne pas coller au bord inférieur */
+}
+/* ========================================================= */
+  /* --- 1. VARIABLES & PALETTE "DEEP NAVY" (MODE SOMBRE PRO) --- */
+  /* ========================================================= */
+  
+  /* Retrait de la surbrillance bleue sur mobile */
+  * { -webkit-tap-highlight-color: transparent; }
+
+  :root {
+    --bg-body: #f4f6f9;
+    --bg-card: #ffffff;
+    --text-main: #1e293b;
+    --text-sub: #64748b;
+    --border-color: #e2e8f0;
+    --header-bg: linear-gradient(135deg, #1e3a8a 0%, #312e81 100%);
+    --shadow: 0 4px 15px rgba(0,0,0,0.05);
+    --accent: #3b82f6;
+  }
+
+  /* Palette élégante : Aucun gris, aucun noir pur. Uniquement des bleus profonds. */
+  body.dark-mode {
+    --bg-body: #070b14 !important;      /* Bleu abyssal pour le fond */
+    --bg-card: #0f1523 !important;      /* Bleu nuit pour les cartes */
+    --text-main: #f8fafc !important;    /* Blanc bleuté très lisible */
+    --text-sub: #8b9bb4 !important;     /* Texte secondaire doux */
+    --border-color: #1e293b !important; /* Bordures subtiles */
+    --header-bg: #070b14 !important;    
+    --shadow: 0 8px 25px rgba(0,0,0,0.6) !important;
+    --accent: #3b82f6 !important;
+  }
+
+  /* ========================================================= */
+  /* --- 2. FORCAGE ABSOLU DU MODE SOMBRE --- */
+  /* ========================================================= */
+  
+  body.dark-mode { background-color: var(--bg-body); color: var(--text-main); }
+  
+  body.dark-mode div[style*="background: white"], body.dark-mode div[style*="background:white"],
+  body.dark-mode div[style*="background: #fff"], body.dark-mode div[style*="background:#fff"],
+  body.dark-mode div[style*="background: #ffffff"], body.dark-mode div[style*="background:#ffffff"],
+  body.dark-mode .stat-card, body.dark-mode .chart-container, body.dark-mode .table-container, 
+  body.dark-mode .obj-card, body.dark-mode .obj-box, body.dark-mode .export-group {
+      background-color: var(--bg-card) !important;
+      border-color: var(--border-color) !important;
+      color: var(--text-main) !important;
+      box-shadow: var(--shadow) !important;
+  }
+
+  /* Sidebar & Header */
+  body.dark-mode #sidebar, body.dark-mode #sidebarProfile {
+      background-color: #0a0f1c !important; border-color: var(--border-color) !important;
+  }
+  body.dark-mode header { background: var(--bg-card) !important; border-bottom: 1px solid var(--border-color) !important; }
+
+  /* Boutons de navigation */
+  body.dark-mode .nav-tab-btn, body.dark-mode .nav-sub-btn { color: var(--text-sub) !important; }
+  body.dark-mode .nav-tab-btn.active, body.dark-mode .nav-sub-btn.active {
+      background-color: rgba(59, 130, 246, 0.15) !important;
+      color: var(--accent) !important;
+      border-color: transparent !important;
+  }
+
+  /* Textes, Chiffres et Titres */
+  body.dark-mode h1, body.dark-mode h2, body.dark-mode h3, body.dark-mode h4, body.dark-mode span, body.dark-mode b { color: var(--text-main) !important; }
+  body.dark-mode .stat-title, body.dark-mode .stat-sub { color: var(--text-sub) !important; }
+  body.dark-mode .stat-value, body.dark-mode .obj-val { color: #60a5fa !important; } /* Chiffres en bleu néon */
+
+  /* Tableaux */
+  body.dark-mode table, body.dark-mode th, body.dark-mode td { border-color: var(--border-color) !important; }
+  body.dark-mode thead, body.dark-mode th { background-color: #162032 !important; color: #cbd5e1 !important; font-weight: bold; }
+  body.dark-mode tbody tr { background-color: transparent !important; transition: background 0.2s; }
+  body.dark-mode tbody tr:hover td { background-color: #1e293b !important; }
+  body.dark-mode tr[style*="background"], body.dark-mode td[style*="background"] { background-color: transparent !important; }
+
+  /* Alertes (Avertissements adoucis pour fond sombre) */
+  body.dark-mode div[style*="color:#c0392b"], body.dark-mode span[style*="color:#c0392b"], body.dark-mode td[style*="color:#c0392b"] { color: #f87171 !important; } /* Rouge clair */
+  body.dark-mode div[style*="color:#27ae60"], body.dark-mode td[style*="color:#27ae60"] { color: #4ade80 !important; } /* Vert clair */
+  body.dark-mode div[style*="background:#fff5f5"], body.dark-mode div[style*="background:#f0fbf4"] { background-color: #162032 !important; border: 1px solid var(--border-color) !important; }
+
+  /* Modales */
+  body.dark-mode div[id*="Modal"] > div { background-color: var(--bg-card) !important; border: 1px solid var(--border-color); }
+  body.dark-mode div[style*="background:#f4f6f9"] { background-color: #0a0f1c !important; }
+  body.dark-mode input, body.dark-mode select { background-color: #162032 !important; color: #fff !important; border-color: var(--border-color) !important; }
+
+  /* Scrollbars furtives */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+  body.dark-mode ::-webkit-scrollbar-thumb { background: #334155; }
+
+  /* ========================================================= */
+  /* --- 3. RESPONSIVE MOBILE : EXPÉRIENCE APP NATIVE --- */
+  /* ========================================================= */
+  
+  .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9998; backdrop-filter: blur(2px); }
+
+  @media (max-width: 850px) {
+      /* Structure générale */
+      body { overflow-x: hidden; }
+      .app-layout { flex-direction: column; }
+      .main-content { padding: 10px 10px 80px 10px !important; height: calc(100vh - 120px); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+      /* Tiroir latéral (Sidebar off-canvas) */
+      body.sidebar-open .sidebar-overlay { display: block; }
+      #sidebar { position: fixed; top: 0; left: -100%; width: 260px; height: 100vh; z-index: 9999; transition: left 0.3s ease; box-shadow: 2px 0 15px rgba(0,0,0,0.2); }
+      body.sidebar-open #sidebar { left: 0; }
+
+      /* Header repensé en Haut */
+      header { flex-direction: column; padding: 10px 15px; height: auto; gap: 10px; }
+      .header-left { width: 100%; justify-content: space-between; }
+      .header-center { width: 100%; margin: 0; }
+      .header-right { position: absolute; right: 15px; top: 10px; }
+
+      /* Menu principal (Onglets horizontaux balayables type Google Play) */
+      .nav-tabs { 
+          display: flex; overflow-x: auto; scroll-snap-type: x mandatory; 
+          padding-bottom: 5px; border: none; width: calc(100vw - 30px); gap: 10px;
+      }
+      .nav-tabs::-webkit-scrollbar { display: none; }
+      .nav-tab-btn { 
+          scroll-snap-align: start; flex-shrink: 0; padding: 8px 18px; 
+          border-radius: 20px; background: var(--bg-card); box-shadow: 0 2px 5px rgba(0,0,0,0.05); 
+          border: 1px solid var(--border-color); font-size: 0.85em; 
+      }
+      .nav-tab-btn.active { background: var(--accent); color: white; border: none; }
+
+      /* Filtres tactiles condensés */
+      .header-filters, #recouvFilterRow, div[style*="display: flex; gap: 15px; flex-wrap: wrap"] { 
+          display: flex !important; overflow-x: auto; gap: 8px !important; flex-wrap: nowrap !important; 
+          padding-bottom: 10px; width: 100%; -webkit-overflow-scrolling: touch;
+      }
+      .header-filters::-webkit-scrollbar, #recouvFilterRow::-webkit-scrollbar { display: none; }
+      .header-filters label, .sec-filter-group label { display: none; }
+      .header-select, .sec-filter-group select { flex-shrink: 0; min-width: 100px; border-radius: 15px; padding: 8px 12px; font-size: 0.8em; }
+
+      /* Grilles (KPIs et Graphiques) transformées en listes verticales */
+      .cards-row, .obj-kpi-grid, 
+      div[style*="grid-template-columns: repeat(4, 1fr)"], div[style*="display:grid"],
+      div[style*="display: flex; gap: 20px"], div[style*="display:flex; gap:20px"] { 
+          display: flex !important; flex-direction: column !important; gap: 12px !important; height: auto !important; 
+      }
+      .stat-card, .obj-card, .chart-container, .table-container, .obj-box { width: 100% !important; flex: none !important; min-height: auto !important; }
+      canvas { max-height: 250px !important; } /* Empêche les graphiques d'être immenses */
+
+      /* Tableaux horizontaux balayables */
+      .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 10px; }
+      table { min-width: 600px; font-size: 0.75em !important; }
+      th, td { padding: 10px 8px !important; white-space: nowrap; }
+
+      /* --- MODALES EN PLEIN ÉCRAN TYPE "SLIDE UP" --- */
+      div[id*="Modal"] > div {
+          width: 100% !important; height: 100vh !important; max-height: 100vh !important; max-width: 100% !important;
+          margin: 0 !important; border-radius: 15px 15px 0 0 !important;
+          position: absolute; bottom: 0; display: flex; flex-direction: column;
+          animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+      
+      /* Login App Interface */
+      .login-main-card { flex-direction: column; width: 100%; height: 100vh; border-radius: 0; }
+      .login-left-panel { display: none; } /* On cache l'image sur mobile pour gagner de la place */
+      .login-right-panel { width: 100%; padding: 20px; justify-content: center; }
+  }
+
+  /* Clic / Touch Feedback */
+  .action-btn:active, .nav-tab-btn:active, .stat-card:active { transform: scale(0.97); transition: transform 0.1s; }
+
+  /* ========================================================= */
+/* --- 6. MASQUAGE DYNAMIQUE DES BARRES LATÉRALES INTERNES --- */
+/* ========================================================= */
+
+/* 1. Appliquer une transition fluide à toutes les barres internes */
+#view-recouvrement > div > div:first-child,
+#view-ca-budget > div > div:first-child,
+#view-honoraires > div > div:first-child,
+#view-rh > div > div:first-child {
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s, padding 0.3s;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+/* 2. Réduire la taille à 0 quand le menu est cliqué (classe .collapsed) */
+.app-layout.collapsed #view-recouvrement > div > div:first-child,
+.app-layout.collapsed #view-ca-budget > div > div:first-child,
+.app-layout.collapsed #view-honoraires > div > div:first-child,
+.app-layout.collapsed #view-rh > div > div:first-child {
+    width: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    opacity: 0;
+    border-right: none !important;
+}
+
+/* 3. Ajustement parfait pour l'application Mobile */
+@media (max-width: 850px) {
+    /* Transforme l'affichage horizontal en vertical sur mobile */
+    #view-recouvrement > div,
+    #view-ca-budget > div,
+    #view-honoraires > div,
+    #view-rh > div {
+        flex-direction: column !important;
+        height: auto !important;
+        min-height: auto !important;
+    }
+
+    /* La barre latérale interne devient un bloc d'en-tête à 100% de large */
+    #view-recouvrement > div > div:first-child,
+    #view-ca-budget > div > div:first-child,
+    #view-honoraires > div > div:first-child,
+    #view-rh > div > div:first-child {
+        width: 100% !important;
+        height: auto !important;
+        border-right: none !important;
+        border-bottom: 1px solid var(--border-color) !important;
+        padding-bottom: 10px !important;
+    }
 }
 </style>

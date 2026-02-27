@@ -1,6 +1,6 @@
 <script>
 /**
- * MODULE DÉPENSES - VERSION FINALE (TRI ENTITÉS & GRAPH DYNAMIQUE)
+ * MODULE DÉPENSES - VERSION FINALE CORRIGÉE (SÉCURITÉ HIA/CIOA)
  */
 
 let globalExpensesData = [];
@@ -8,17 +8,16 @@ let currentFilteredData = [];
 let currentDetailData = []; 
 let depenseGraphMode = 'TIME'; 
 
-const depMonthOrder = ["JAN", "FEV", "MAR", "AVR", "MAI", "JUN", "JUL", "AOU", "SEP", "OCT", "NOV", "DEC"];
-const depQuarters = { "T1": ["JAN", "FEV", "MAR"], "T2": ["AVR", "MAI", "JUN"], "T3": ["JUL", "AOU", "SEP"], "T4": ["OCT", "NOV", "DEC"] };
+// Harmonisation stricte des mois
+const depMonthOrder = ["JAN", "FEV", "MAR", "AVR", "MAI", "JUIN", "JUIL", "AOU", "SEP", "OCT", "NOV", "DEC"];
+const depQuarters = { "T1": ["JAN", "FEV", "MAR"], "T2": ["AVR", "MAI", "JUIN"], "T3": ["JUIL", "AOU", "SEP"], "T4": ["OCT", "NOV", "DEC"] };
 const proPieColors = ['#42a5f5', '#66bb6a', '#ef5350', '#78909c', '#ffa726', '#ab47bc', '#8d6e63', '#7cb342'];
 
-// ORDRE DE TRI PERSONNALISÉ DES ENTITÉS
 const DEP_ENTITY_ORDER = ["HIA", "CIOA", "HIA CIOA", "CIT", "CID", "PIL", "HPG", "ALHIKMA", "AL HIKMA"];
 
 let expensesChartInstance = null;
 let expensesPieInstance = null;
 
-// Utilitaires
 function safeSetText(id, text) { const el = document.getElementById(id); if (el) el.textContent = text; }
 function safeSetHTML(id, html) { const el = document.getElementById(id); if (el) el.innerHTML = html; }
 const formatDynamicLabel = (val) => {
@@ -45,9 +44,13 @@ function renderExpensesDashboard(data) {
     
     globalExpensesData = data.slice(1).map(r => {
         let jour = r[1];
-        let mois = r[2];
+        let mois = String(r[2] || "").trim().toUpperCase();
         let annee = r[3];
-        if (!mois || !depMonthOrder.includes(mois)) mois = "DEC";
+        
+        // Correction des anciens imports JUN/JUL
+        if (mois === "JUN") mois = "JUIN";
+        if (mois === "JUL") mois = "JUIL";
+        if (!depMonthOrder.includes(mois)) mois = "DEC";
         
         let dateDisplay = "-";
         if (jour && mois && annee) {
@@ -57,7 +60,7 @@ function renderExpensesDashboard(data) {
             dateDisplay = `${dNum}/${mNum}/${annee}`;
         }
 
-        let ent = r[0];
+        let ent = String(r[0] || "").trim();
         let grp = (ent === "HIA" || ent === "CIOA") ? "HIA CIOA" : ent;
 
         return {
@@ -69,11 +72,9 @@ function renderExpensesDashboard(data) {
         };
     });
 
-    // TRI DES ENTITÉS SELON L'ORDRE DÉFINI
     const groupes = [...new Set(globalExpensesData.map(d => d.groupe))].sort((a, b) => {
         let idxA = DEP_ENTITY_ORDER.indexOf(a);
         let idxB = DEP_ENTITY_ORDER.indexOf(b);
-        // Si non trouvé, on met à la fin
         if (idxA === -1) idxA = 999;
         if (idxB === -1) idxB = 999;
         return idxA - idxB;
@@ -83,14 +84,27 @@ function renderExpensesDashboard(data) {
     const annees = [...new Set(globalExpensesData.map(d => d.annee))].filter(y => y).sort().reverse();
 
     const selEnt = document.getElementById('depenseFilterEntite');
-    if(selEnt) { selEnt.innerHTML = '<option value="">TOUT</option>'; groupes.forEach(g => selEnt.add(new Option(g, g))); }
+    if(selEnt) { 
+        const currentVal = selEnt.value;
+        selEnt.innerHTML = '<option value="">TOUT</option>'; 
+        groupes.forEach(g => selEnt.add(new Option(g, g))); 
+        if (currentVal && groupes.includes(currentVal)) selEnt.value = currentVal;
+    }
     
     const selAnnee = document.getElementById('depenseFilterAnnee');
-    if(selAnnee) { selAnnee.innerHTML = '<option value="">TOUT (Comparatif)</option>'; annees.forEach(a => selAnnee.add(new Option(a, a))); }
+    if(selAnnee) { 
+        const currentVal = selAnnee.value;
+        selAnnee.innerHTML = '<option value="">TOUT (Comparatif)</option>'; 
+        annees.forEach(a => selAnnee.add(new Option(a, a))); 
+        if (currentVal && annees.includes(parseInt(currentVal))) selAnnee.value = currentVal;
+    }
     
     populateExpSelect('depenseFilterType', types);
     updateExpensesMonthOptions();
-    updateDepenseGraphMode('TIME');
+    
+    // CORRECTION : Forcer l'affichage de la sous-entité si nécessaire
+    updateSubEntityFilter(); 
+    updateExpensesView(); 
 }
 
 function updateSubEntityFilter() {
@@ -98,15 +112,20 @@ function updateSubEntityFilter() {
     const subContainer = document.getElementById('containerSubEntity');
     const subSel = document.getElementById('depenseFilterSubEntity');
     if(!subSel) return;
+    
+    const currentVal = subSel.value;
     subSel.innerHTML = '<option value="">TOUTES</option>';
+    
     if (grp === "HIA CIOA") {
         if(subContainer) subContainer.style.display = "block";
         subSel.add(new Option("HIA", "HIA"));
         subSel.add(new Option("CIOA", "CIOA"));
+        // Restaure la valeur si elle est valide
+        if (currentVal === "HIA" || currentVal === "CIOA") subSel.value = currentVal;
     } else {
         if(subContainer) subContainer.style.display = "none";
+        subSel.value = "";
     }
-    subSel.value = "";
 }
 
 function updateExpensesView() {
@@ -133,7 +152,6 @@ function updateExpensesView() {
         return true;
     });
 
-    // Pour le Top 3 Entités, on veut voir les autres entités, donc on ignore le filtre groupe mais on garde les filtres temporels
     const filteredForEntities = globalExpensesData.filter(d => {
         if (fAnnee && String(d.annee) !== String(fAnnee)) return false;
         if (!targetMonths.includes(d.mois)) return false;
@@ -167,16 +185,17 @@ function updateExpensesView() {
     });
     safeSetHTML('kpiListTopEntities', htmlEnt || "<div style='color:#ccc'>R.A.S</div>");
 
-    // Top 3 Dépenses
+    // Top 3 Dépenses (Sécurisation des guillemets dans le titre)
     const sortedTransactions = [...currentFilteredData].sort((a, b) => b.montant - a.montant).slice(0, 3);
     let htmlAlert = "";
     sortedTransactions.forEach(d => {
         let actName = String(d.action || "Inconnu");
+        let tooltipName = actName.replace(/"/g, '&quot;');
         if(actName.length > 25) actName = actName.substring(0,22) + "...";
         htmlAlert += `
             <div class="alert-row">
                 <div class="alert-info">
-                    <span class="alert-benef" title="${d.action}">${actName}</span>
+                    <span class="alert-benef" title="${tooltipName}">${actName}</span>
                     <span class="alert-ent">${d.entite}</span>
                 </div>
                 <span class="alert-val">${formatMoney(d.montant)}</span>
@@ -184,7 +203,7 @@ function updateExpensesView() {
     });
     safeSetHTML('kpiListAlerts', htmlAlert || "<div style='color:#ccc'>R.A.S</div>");
 
-    drawExpensesCharts(currentFilteredData, fAnnee);
+    updateDepenseGraphMode(depenseGraphMode);
     updateExpensesTable(currentFilteredData, total);
 }
 
@@ -207,8 +226,12 @@ window.updateDepenseGraphMode = function(mode) {
 }
 
 function drawExpensesCharts(data, selectedYear) {
-    const ctxBar = document.getElementById('chartDepenseEvol').getContext('2d');
-    const ctxPie = document.getElementById('chartDepensePie').getContext('2d');
+    const canvasBar = document.getElementById('chartDepenseEvol');
+    const canvasPie = document.getElementById('chartDepensePie');
+    if (!canvasBar || !canvasPie) return;
+    
+    const ctxBar = canvasBar.getContext('2d');
+    const ctxPie = canvasPie.getContext('2d');
 
     if (expensesChartInstance) expensesChartInstance.destroy();
     if (expensesPieInstance) expensesPieInstance.destroy();
@@ -218,31 +241,27 @@ function drawExpensesCharts(data, selectedYear) {
 
     // MODE 1 : ANALYSE TEMPORELLE
     if (depenseGraphMode === 'TIME') {
-        
         let labelsX = [];
         const fTrim = document.getElementById('depenseFilterTrim').value;
         const fMois = document.getElementById('depenseFilterMois').value;
+        
+        // Filtres pour N-1
+        const fGroupe = document.getElementById('depenseFilterEntite').value;
+        const fSub = document.getElementById('depenseFilterSubEntity') ? document.getElementById('depenseFilterSubEntity').value : "";
 
-        // Définition de l'Axe X (Mois) selon le filtre Trimestre/Mois
         if (fMois) labelsX = [fMois];
         else if (fTrim) labelsX = depQuarters[fTrim];
         else labelsX = depMonthOrder;
 
         dynamicTitle = selectedYear ? `Évolution Mensuelle (${selectedYear})` : "Comparaison Annuelle";
 
-        // --- Cas A : Comparaison Annuelle (Pas d'année sélectionnée) ---
         if (!selectedYear) {
-            // Axe X = labelsX (Mois filtrés ou tous les mois)
             chartData.labels = labelsX; 
-            
             const yearsAvailable = [...new Set(data.map(d => d.annee))].filter(y => y).sort();
 
             chartData.datasets = yearsAvailable.map((yr, idx) => {
-                // Pour chaque année, on calcule les données pour les mois de l'axe X (labelsX)
                 const monthlyData = labelsX.map(m => {
-                    return data
-                        .filter(d => String(d.annee) === String(yr) && d.mois === m)
-                        .reduce((s,d) => s + d.montant, 0);
+                    return data.filter(d => String(d.annee) === String(yr) && d.mois === m).reduce((s,d) => s + d.montant, 0);
                 });
 
                 const isLast = idx === yearsAvailable.length - 1;
@@ -263,9 +282,7 @@ function drawExpensesCharts(data, selectedYear) {
                     }
                 };
             });
-
         } else {
-            // --- Cas B : Focus Année ---
             chartData.labels = labelsX;
             const currentTotals = labelsX.map(m => data.filter(d => String(d.annee)===String(selectedYear) && d.mois===m).reduce((s,d)=>s+d.montant,0));
             
@@ -276,7 +293,13 @@ function drawExpensesCharts(data, selectedYear) {
                     prevVal = data.filter(d => String(d.annee)===String(selectedYear) && d.mois===depMonthOrder[idx-1]).reduce((s,d)=>s+d.montant,0);
                 } else {
                     const prevYear = (parseInt(selectedYear) - 1).toString();
-                    prevVal = globalExpensesData.filter(d => String(d.annee)===prevYear && d.mois==="DEC" && d.entite === (data[0]?data[0].entite:d.entite)).reduce((s,d)=>s+d.montant,0);
+                    // CORRECTION ICI : Filtrage propre et sécurisé basé sur les filtres de la page
+                    prevVal = globalExpensesData.filter(d => {
+                        if (String(d.annee) !== prevYear || d.mois !== "DEC") return false;
+                        if (fGroupe && d.groupe !== fGroupe) return false;
+                        if (fSub && d.entite !== fSub) return false;
+                        return true;
+                    }).reduce((s,d)=>s+d.montant,0);
                 }
                 return (prevVal===0) ? 0 : ((currentTotals[i]-prevVal)/prevVal)*100;
             });
@@ -358,6 +381,7 @@ function drawExpensesCharts(data, selectedYear) {
                 legend: { position: 'right', labels: { boxWidth: 12, padding:10 } },
                 datalabels: { color: '#333', font: {weight:'bold'}, formatter: (val, ctx) => {
                     let sum = ctx.chart._metasets[ctx.datasetIndex].total;
+                    if (!sum) return ""; // CORRECTION : Évite le NaN si sum = 0
                     return (val*100/sum).toFixed(0) > 3 ? (val*100/sum).toFixed(0)+"%" : ""; 
                 }}
             },
@@ -394,6 +418,7 @@ function updateExpensesTable(data, total) {
                 <td style="text-align:right;">${formatMoney(item[1].amount)} DH</td>
                 <td style="text-align:right;padding-right:20px;">${pct}</td>`;
             tr.onclick = function() { showExpenseDetails(data.filter(d => d.action === item[0]), "Bénéficiaire : " + item[0]); };
+            tr.style.cursor = "pointer";
             tbody.appendChild(tr);
         });
     }
@@ -506,6 +531,8 @@ function openKpiDetail(type) { if (type === 'ALERTS') showExpenseDetails(current
 function populateExpSelect(id, items) { const sel = document.getElementById(id); if(id !== 'depenseFilterEntite' && id !== 'depenseFilterSubEntity') sel.innerHTML = '<option value="">TOUT</option>'; items.forEach(i => sel.add(new Option(i, i))); }
 function updateExpensesMonthOptions() { const trim = document.getElementById('depenseFilterTrim').value; const moisSel = document.getElementById('depenseFilterMois'); const cur = moisSel.value; moisSel.innerHTML = '<option value="">TOUT</option>'; let list = depMonthOrder; if (trim && depQuarters[trim]) list = depQuarters[trim]; list.forEach(m => moisSel.add(new Option(m, m))); if (list.includes(cur)) moisSel.value = cur; else moisSel.value = ""; }
 window.onclick = function(event) { if (event.target == document.getElementById('expenseDetailModal')) closeModal(); }
+
+// Assigner le chargement
 document.addEventListener('DOMContentLoaded', loadExpensesData);
 
 // --- IMPORT ---
@@ -600,8 +627,7 @@ function cleanRawData(rawData, entityName) {
         if (isNaN(montant)) continue; 
         
         let dateVal = colMap.date > -1 ? row[colMap.date] : null;
-        let day = "", month = "", year = "";
-        let monthName = "DEC";
+        let day = "", monthName = "DEC", year = "";
         let anneeCalcule = new Date().getFullYear();
 
         if (dateVal) {

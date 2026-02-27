@@ -42,6 +42,10 @@ function renderNonReglesView(dataSet) {
     // Si le filtre est actif, on force l'affichage des valeurs filtrées pour garantir l'égalité visuelle parfaite
     const displayProches = isProcheFilterActive ? finalData : prochesDispo;
 
+    // --- CORRECTION : FORCER LE RÉAFFICHAGE DE LA CARTE BLEUE ---
+    const cardVar = document.getElementById('cardVariable');
+    if(cardVar) cardVar.style.display = 'block';
+
     safeSetHTML('kpiCard4Title', isProcheFilterActive ? "FILTRE ACTIF : PROCHES" : "PROCHE ÉCHÉANCE (-15j)");
     
     const elVarVal = document.getElementById('kpiCard4Value');

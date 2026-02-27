@@ -24,6 +24,9 @@ function renderExpeditionView(dataSet) {
     // --- KPI Carte Bleue (PEC) ---
     const alertPec = finalData.filter(d => d.isAlertPEC || d.nature === "Suivi PEC vide");
     safeSetHTML('kpiCard4Title', "DEMANDE PEC NON TRAITÉE");
+
+    const cardVar = document.getElementById('cardVariable');
+    if(cardVar) cardVar.style.display = 'block'; // <-- FORCE L'AFFICHAGE
     
     const elVarVal = document.getElementById('kpiCard4Value');
     const elVarAction = document.getElementById('kpiCard4Action');
@@ -92,6 +95,7 @@ function updateExpeditionHeader(fPatient) {
             <th style="text-align:center; padding:12px;">N° Facture</th> 
             <th style="text-align:left; padding:12px;">Organisme</th> 
             <th style="text-align:left; padding:12px;">Motif / Resp. PEC</th> 
+            <th style="text-align:left; padding:12px;">Nature</th> 
             <th style="text-align:right; padding:12px;">Montant</th> 
             <th style="text-align:center; padding:12px;">Date Entrée</th> 
             <th style="text-align:center; padding:12px;">Date Sortie</th> 
@@ -110,7 +114,6 @@ function renderExpeditionTable(data, fPatient) {
 
     // --- APPLICATION DU TRI ---
     if (recouvSortMode === 'DELAI') {
-        // Tri par Ancienneté décroissante
         sorted.sort((a,b) => {
             let delaiA = (fPatient === 'HOSPITALISE' || !a.dateRefObj) ? a.ancienneteEntree : a.ancienneteSortie;
             let delaiB = (fPatient === 'HOSPITALISE' || !b.dateRefObj) ? b.ancienneteEntree : b.ancienneteSortie;
@@ -136,6 +139,7 @@ function renderExpeditionTable(data, fPatient) {
                 <td style="text-align:center;">${d.facture||'-'}</td>
                 <td style="text-align:left;">${d.organisme}</td>
                 <td style="text-align:left;">${d.motif||'-'} ${(d.respPEC ? '<br>Resp: '+d.respPEC : '')}</td>
+                <td style="text-align:left;">${d.nature||'-'}</td>
                 <td style="text-align:right; font-weight:bold;">${formatMoney(d.montant)}</td>
                 <td style="text-align:center;">${d.dateEntreeDisplay || '-'}</td>
                 <td style="text-align:center;">${d.dateRefDisplay||'-'}</td>
