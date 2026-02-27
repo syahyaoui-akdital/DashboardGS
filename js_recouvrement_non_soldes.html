@@ -7,10 +7,10 @@ window.renderNonSoldesView = function(dataSet) {
 
     dataSet.forEach(d => {
         totalReste += d.reste || 0;
-        let imp = String(d.chqImpaye||"").trim().toUpperCase();
-        let cau = String(d.chqCaution||"").trim().toUpperCase();
-        if (imp !== "" && imp !== "NON" && imp !== "0") countChequeImpaye++;
-        if (cau !== "" && cau !== "NON" && cau !== "0") countChequeCaution++;
+        let imp = d.chqImpaye;
+        let cau = d.chqCaution;
+        if (imp && imp > 0) countChequeImpaye++;
+        if (cau && cau > 0) countChequeCaution++;
 
         aggEnt[d.entite] = (aggEnt[d.entite]||0) + (d.reste || 0);
         aggOrg[d.organisme] = (aggOrg[d.organisme]||0) + (d.reste || 0);
@@ -25,7 +25,6 @@ window.renderNonSoldesView = function(dataSet) {
     const sortOrg = Object.entries(aggOrg).sort((a,b)=>b[1]-a[1]).slice(0,3);
     safeSetHTML('kpiRecouvTopOrgList', sortOrg.map(i => `<div style="display:flex; justify-content:space-between; margin-bottom:5px;"><span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; width:100px;">${i[0]}</span><strong>${formatMoney(i[1])}</strong></div>`).join('') || 'Aucune donnée');
 
-    // --- CORRECTION : Mise à jour des valeurs sans écraser le HTML ---
     safeSetText('kpiChqImpayeCount', countChequeImpaye);
     safeSetText('kpiChqCautionCount', countChequeCaution);
 
@@ -94,7 +93,7 @@ window.renderNonSoldesListTable = function(dataSet) {
     const thead = document.querySelector('#tableTopFactures thead tr');
     if(!tbody || !thead) return;
 
-    thead.innerHTML = `<th style="text-align:left; padding:12px;">Entité</th><th style="text-align:left; padding:12px;">Dossier / Patient</th><th style="text-align:left; padding:12px;">Service</th><th style="text-align:center; padding:12px;">Date Sortie</th><th style="text-align:left; padding:12px;">Organisme</th><th style="text-align:right; padding:12px;">Tot. Patient</th><th style="text-align:right; padding:12px;">Payé</th><th style="text-align:right; color:#c0392b; padding:12px;">Reste</th><th style="text-align:center; padding:12px;">État</th>`;
+    thead.innerHTML = `<th style="text-align:left; padding:12px;">Entité</th><th style="text-align:left; padding:12px;">Dossier / Patient</th><th style="text-align:left; padding:12px;">Service</th><th style="text-align:center; padding:12px;">Date Sortie</th><th style="text-align:left; padding:12px;">Organisme</th><th style="text-align:left; padding:12px;">Type Org</th><th style="text-align:right; padding:12px;">Tot. Patient</th><th style="text-align:right; padding:12px;">Payé</th><th style="text-align:right; color:#c0392b; padding:12px;">Reste</th><th style="text-align:center; padding:12px;">État</th>`;
     tbody.innerHTML = '';
     
     let sortedData = [...dataSet];
@@ -102,10 +101,11 @@ window.renderNonSoldesListTable = function(dataSet) {
     const limit = (recouvTopN === 1000) ? sortedData.length : recouvTopN;
     
     sortedData.slice(0, limit).forEach(d => {
-        let alertIcon = (d.chqImpaye && d.chqImpaye !== "NON" && d.chqImpaye !== "0") ? ' <i class="fas fa-exclamation-triangle" style="color:#c0392b;" title="Chèque Impayé"></i>' : '';
-        let cautionIcon = (d.chqCaution && d.chqCaution !== "NON" && d.chqCaution !== "0") ? ' <i class="fas fa-lock" style="color:#f39c12;" title="Chèque Caution"></i>' : '';
+        let linkHtml = d.extranetLink ? `<a href="${d.extranetLink}" target="_blank" style="color:#3498db; margin-left:5px;" title="Consulter dans l'extranet" onclick="event.stopPropagation()"><i class="fas fa-external-link-alt"></i></a>` : "";
+        let alertIcon = (d.chqImpaye > 0) ? ` <i class="fas fa-exclamation-triangle" style="color:#c0392b;" title="Chèque Impayé: ${formatMoney(d.chqImpaye)}"></i>` : '';
+        let cautionIcon = (d.chqCaution > 0) ? ` <i class="fas fa-lock" style="color:#f39c12;" title="Chèque Caution: ${formatMoney(d.chqCaution)}"></i>` : '';
         
-        tbody.insertAdjacentHTML('beforeend', `<tr style="border-bottom:1px solid #eee; cursor:pointer;" onclick="openRecouvDetailCustom([currentFilteredDataGlobal.find(x=>x.dossier=='${d.dossier}')], 'Dossier ${d.dossier}')"><td style="text-align:left;">${d.entite}</td><td style="text-align:left;"><b>${d.dossier}</b>${alertIcon}${cautionIcon}<br>${d.patient}</td><td style="text-align:left; font-size:0.9em;">${d.service}</td><td style="text-align:center;">${d.dateRefDisplay}</td><td style="text-align:left;">${d.organisme}</td><td style="text-align:right;">${formatMoney(d.totPatient)}</td><td style="text-align:right; color:#27ae60;">${formatMoney(d.totPaiement)}</td><td style="text-align:right; font-weight:bold; color:#c0392b;">${formatMoney(d.reste)}</td><td style="text-align:center; font-size:0.85em;">${d.etatDossier || '-'}</td></tr>`);
+        tbody.insertAdjacentHTML('beforeend', `<tr style="border-bottom:1px solid #eee; cursor:pointer;" onclick="openRecouvDetailCustom([currentFilteredDataGlobal.find(x=>x.dossier=='${d.dossier}')], 'Dossier ${d.dossier}')"><td style="text-align:left;">${d.entite}</td><td style="text-align:left;"><b>${d.dossier}</b>${linkHtml}${alertIcon}${cautionIcon}<br>${d.patient}</td><td style="text-align:left; font-size:0.9em;">${d.service}</td><td style="text-align:center;">${d.dateRefDisplay}</td><td style="text-align:left;">${d.organisme}</td><td style="text-align:left;">${d.typeOrganisme}</td><td style="text-align:right;">${formatMoney(d.totPatient)}</td><td style="text-align:right; color:#27ae60;">${formatMoney(d.totPaiement)}</td><td style="text-align:right; font-weight:bold; color:#c0392b;">${formatMoney(d.reste)}</td><td style="text-align:center; font-size:0.85em;">${d.etatDossier || '-'}</td></tr>`);
     });
 };
 </script>

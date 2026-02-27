@@ -149,10 +149,10 @@ function processBackendData(rawData, type) {
         // Nettoyage strict de l'entité pour éviter les bugs de filtre
         let entite = String(r[0] || "").trim();
         
-        let dossier = "", patient = "", facture = "", organisme = "Autre", montant = 0;
+        let dossier = "", idSejour = "", patient = "", facture = "", organisme = "Autre", montant = 0;
         let dateRef = null; let motif = "", nature = "";
         let datePEC = null; let dateEntree = null; let respPEC = ""; 
-        let service = "", totPatient = 0, totPaiement = 0, reste = 0, chqImpaye = "", chqCaution = "", etatDossier = "", noteDossier = "";
+        let service = "", totPatient = 0, totPaiement = 0, reste = 0, chqImpaye = 0, chqCaution = 0, etatDossier = "", noteDossier = "";
         
         if (type === 'RECOUVREMENT') {
             dossier = r[2]; patient = r[3]; facture = r[4];
@@ -161,7 +161,9 @@ function processBackendData(rawData, type) {
             dateRef = parseDate(r[9], r[10], r[11]); 
         } 
         else if (type === 'NON_SOLDES') {
-            dossier = r[1]; patient = r[3];
+            dossier = r[1];
+            idSejour = r[2]; // Extraction ID Séjour
+            patient = r[3];
             service = r[4];
             dateRef = parseDate(r[5], r[6], r[7]);
             organisme = String(r[8] || "Autre").trim();
@@ -179,8 +181,8 @@ function processBackendData(rawData, type) {
             totPatient = parseMnt(r[10]);
             totPaiement = parseMnt(r[11]);
             reste = parseMnt(r[12]);
-            chqImpaye = r[13];
-            chqCaution = r[14];
+            chqImpaye = parseMnt(r[13]); // Nettoyage montant
+            chqCaution = parseMnt(r[14]); // Nettoyage montant
             etatDossier = r[15];
             noteDossier = r[16];
             montant = reste; 
@@ -224,9 +226,33 @@ function processBackendData(rawData, type) {
             if (!isHospitalise && nature === "Suivi PEC vide") isAlertPEC = true;
         }
 
+        // Création du lien Extranet
+        let extranetLink = "";
+        if (idSejour) {
+            let domainExt = "";
+            let eUp = entite.toUpperCase();
+            if (eUp.includes("HIA") || eUp.includes("CIOA")) domainExt = "hia";
+            else if (eUp.includes("CIT")) domainExt = "cit";
+            else if (eUp.includes("CID")) domainExt = "cid";
+            else if (eUp.includes("HPG")) domainExt = "hpg";
+            else if (eUp.includes("PIL")) domainExt = "pil";
+            else if (eUp.includes("HIKMA") || eUp.includes("CAH")) domainExt = "cah";
+            if (domainExt) extranetLink = `http://visionhis.${domainExt}/visionhis/index.php?m=dPfact&tab=vw_cotation&fact_sejour_id=${idSejour}`;
+        }
+        
+        // Classification des Organismes
+        let typeOrganisme = "Prise en charge"; 
+        let orgNameUpper = organisme.toUpperCase();
+        if (orgNameUpper === "PAYANT") typeOrganisme = "Payant";
+        else if (orgNameUpper.includes("PAYANT")) typeOrganisme = "Payant affilié";
+        else if ((orgNameUpper === "AT" || orgNameUpper.startsWith("AT ") || orgNameUpper.endsWith(" AT") || orgNameUpper.includes(" ACCIDENT ")) && !orgNameUpper.includes("ATLANTA") && !orgNameUpper.includes("MSH") && !orgNameUpper.includes("MAROC ASSISTANCE")) {
+            typeOrganisme = "Accident de travail";
+        }
+        else if (orgNameUpper.includes("DAKHLA")) { typeOrganisme = "Région"; }
+
         return {
-            entite: entite, dossier: dossier, patient: patient, facture: facture,
-            organisme: organisme, montant: montant,
+            entite: entite, dossier: dossier, idSejour: idSejour, extranetLink: extranetLink, patient: patient, facture: facture,
+            organisme: organisme, typeOrganisme: typeOrganisme, montant: montant,
             dateRefDisplay: (dateRef && !isNaN(dateRef.getTime())) ? formatDateFR(dateRef) : null,
             dateRefObj: dateRef, anneeRef: anneeRef, moisRef: moisRef,
             retard: retard, isEchue: isEchue,
@@ -557,13 +583,13 @@ function toggleFilters(mode) {
         if (rowAlertsRecouv) {
             const nonSoldesHtml = `
             <div id="rowAlertsNonSoldes" class="export-section" data-export-title="Recouv. - Alertes Chèques" style="display:none; gap:20px; margin-bottom:25px;">
-                <div class="stat-card" style="flex:1; border-top: 4px solid #c0392b; background:#fff5f5; padding:20px; cursor:pointer;" onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>String(d.chqImpaye).toUpperCase()!=='NON'&&d.chqImpaye!==''), 'Chèques Impayés')">
+                <div class="stat-card" style="flex:1; border-top: 4px solid #c0392b; background:#fff5f5; padding:20px; cursor:pointer;" onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>d.chqImpaye > 0), 'Chèques Impayés')">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <div><div class="stat-title" style="color:#c0392b;">CHÈQUES IMPAYÉS</div><div id="kpiChqImpayeCount" class="stat-value" style="color:#c0392b; font-size:1.8em;">--</div></div>
                         <div style="font-size:3em; opacity:0.1; color:#c0392b;">⚠️</div>
                     </div>
                 </div>
-                <div class="stat-card" style="flex:1; border-top: 4px solid #f39c12; background:#fdf8e4; padding:20px; cursor:pointer;" onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>String(d.chqCaution).toUpperCase()!=='NON'&&d.chqCaution!==''), 'Chèques Caution')">
+                <div class="stat-card" style="flex:1; border-top: 4px solid #f39c12; background:#fdf8e4; padding:20px; cursor:pointer;" onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>d.chqCaution > 0), 'Chèques Caution')">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <div><div class="stat-title" style="color:#f39c12;">CHÈQUES CAUTION</div><div id="kpiChqCautionCount" class="stat-value" style="color:#f39c12; font-size:1.8em;">--</div></div>
                         <div style="font-size:3em; opacity:0.1; color:#f39c12;">🔒</div>
@@ -1169,7 +1195,6 @@ window.renderDetailTable = function(dataset) {
         let delaiLabel = "Délais Dossier";
         if(fPatient === 'HOSPITALISE') delaiLabel += " (Entrée)"; else if(fPatient === 'SORTANT') delaiLabel += " (Sortie)";
         
-        // AJOUT DE LA COLONNE NATURE ICI
         hCols = `
             <th style="text-align:left; padding:10px;">Entité</th>
             <th style="text-align:left; padding:10px;">Dossier / Patient</th>
@@ -1199,6 +1224,7 @@ window.renderDetailTable = function(dataset) {
             <th style="text-align:left; padding:10px;">Service</th>
             <th style="text-align:center; padding:10px;">Date Sortie</th>
             <th style="text-align:left; padding:10px;">Organisme</th>
+            <th style="text-align:left; padding:10px;">Type Org</th>
             <th style="text-align:right; padding:10px;">Tot. Patient</th>
             <th style="text-align:right; padding:10px;">Payé</th>
             <th style="text-align:right; padding:10px;">Reste</th>
@@ -1232,7 +1258,6 @@ window.renderDetailTable = function(dataset) {
              if(!d.dateRefObj) stat = "Hosp.";
              let styleAlert = (d.isAlertPEC || d.nature === "Suivi PEC vide") ? "background-color: #fff0f0; color: #c0392b;" : "";
              
-             // AJOUT DE LA LIGNE NATURE ICI
              rowHtml = `
                 <td style="text-align:left; ${styleAlert}">${d.entite}</td>
                 <td style="text-align:left; ${styleAlert}"><b>${d.dossier}</b><br>${d.patient}</td>
@@ -1253,19 +1278,21 @@ window.renderDetailTable = function(dataset) {
                 <td style="text-align:center;">${d.facture||'-'}</td>
                 <td style="text-align:left;">${d.organisme}</td>
                 <td style="text-align:right;">${formatMoney(d.montant)}</td>
-                <td style="text-align:left;">${d.motifStd}</td>
+                <td style="text-align:left;">${d.motifStd || d.motif}</td>
                 <td style="text-align:left;">${d.etatDossier}</td>
-                <td style="text-align:left;">${d.natureDossier}</td>`;
+                <td style="text-align:left;">${d.natureDossier || d.nature}</td>`;
         } 
         else if (currentFamily === 'Recouvrement' && currentSubFamily === 'Dossiers non soldés') {
-             let alertIcon = (d.chqImpaye && d.chqImpaye !== "NON" && d.chqImpaye !== "0") ? ' <i class="fas fa-exclamation-triangle" style="color:#c0392b;"></i>' : '';
-             let cautionIcon = (d.chqCaution && d.chqCaution !== "NON" && d.chqCaution !== "0") ? ' <i class="fas fa-lock" style="color:#f39c12;"></i>' : '';
+             let linkHtml = d.extranetLink ? `<a href="${d.extranetLink}" target="_blank" style="color:#3498db; margin-left:5px;" title="Consulter dans l'extranet" onclick="event.stopPropagation()"><i class="fas fa-external-link-alt"></i></a>` : "";
+             let alertIcon = (d.chqImpaye > 0) ? ` <i class="fas fa-exclamation-triangle" style="color:#c0392b;" title="Chèque Impayé: ${formatMoney(d.chqImpaye)}"></i>` : '';
+             let cautionIcon = (d.chqCaution > 0) ? ` <i class="fas fa-lock" style="color:#f39c12;" title="Chèque Caution: ${formatMoney(d.chqCaution)}"></i>` : '';
              rowHtml = `
                 <td style="text-align:left;">${d.entite}</td>
-                <td style="text-align:left;"><b>${d.dossier}</b>${alertIcon}${cautionIcon}<br>${d.patient}</td>
+                <td style="text-align:left;"><b>${d.dossier}</b>${linkHtml}${alertIcon}${cautionIcon}<br>${d.patient}</td>
                 <td style="text-align:left;">${d.service}</td>
                 <td style="text-align:center;">${d.dateRefDisplay || '-'}</td>
                 <td style="text-align:left;">${d.organisme}</td>
+                <td style="text-align:left;">${d.typeOrganisme}</td>
                 <td style="text-align:right;">${formatMoney(d.totPatient)}</td>
                 <td style="text-align:right; color:#27ae60;">${formatMoney(d.totPaiement)}</td>
                 <td style="text-align:right; font-weight:bold; color:#c0392b;">${formatMoney(d.reste)}</td>
@@ -1335,9 +1362,9 @@ window.exportTop25Excel = function() {
             } else if (currentSubFamily === 'Dossiers non soldés') {
                 return {
                     "Entité": d.entite, "Dossier": d.dossier, "Patient": d.patient, "Service": d.service,
-                    "Date Sortie": d.dateRefDisplay, "Organisme": d.organisme, "Tot. Patient": d.totPatient,
+                    "Date Sortie": d.dateRefDisplay, "Organisme": d.organisme, "Type Org": d.typeOrganisme, "Tot. Patient": d.totPatient,
                     "Payé": d.totPaiement, "Reste": d.reste, "État": d.etatDossier,
-                    "Chq Impayé": d.chqImpaye, "Chq Caution": d.chqCaution
+                    "Chq Impayé": d.chqImpaye || 0, "Chq Caution": d.chqCaution || 0
                 };
             } else {
                 return {
@@ -1411,8 +1438,9 @@ window.exportRecouvExcel = function() {
     } else if (currentFamily === 'Recouvrement' && currentSubFamily === 'Dossiers non soldés') {
         exportData = currentDetailDataset.map(d => ({
             "Entité": d.entite, "Dossier": d.dossier, "Patient": d.patient, "Service": d.service,
-            "Date Sortie": d.dateRefDisplay, "Organisme": d.organisme, "Tot. Patient": d.totPatient,
-            "Payé": d.totPaiement, "Reste": d.reste, "État": d.etatDossier
+            "Date Sortie": d.dateRefDisplay, "Organisme": d.organisme, "Type Org": d.typeOrganisme, "Tot. Patient": d.totPatient,
+            "Payé": d.totPaiement, "Reste": d.reste, "État": d.etatDossier,
+            "Chq Impayé": d.chqImpaye || 0, "Chq Caution": d.chqCaution || 0
         }));
     } else {
         exportData = currentDetailDataset.map(d => ({
@@ -1767,136 +1795,6 @@ window.closeRecouvModal = function() {
     if(modal) modal.style.display='none'; 
 };
 
-// Rendu du tableau dans la modale
-window.renderDetailTable = function(dataset) {
-    const body = document.getElementById('recouvTableBody'); 
-    if(!body) return;
-    body.innerHTML = '';
-    
-    const tableExport = document.getElementById('recouvExportTable');
-    
-    // --- 1. HEADER DYNAMIQUE ---
-    let hCols = "";
-    if (currentFamily === 'Expédition') {
-        const fPatient = document.getElementById('expedFilterPatient') ? document.getElementById('expedFilterPatient').value : '';
-        let delaiLabel = "Délais Dossier";
-        if(fPatient === 'HOSPITALISE') delaiLabel += " (Entrée)"; else if(fPatient === 'SORTANT') delaiLabel += " (Sortie)";
-        
-        hCols = `
-            <th style="text-align:left; padding:10px;">Entité</th>
-            <th style="text-align:left; padding:10px;">Dossier / Patient</th>
-            <th style="text-align:center; padding:10px;">N° Facture</th>
-            <th style="text-align:left; padding:10px;">Organisme</th>
-            <th style="text-align:left; padding:10px;">Motif / Resp. PEC</th>
-            <th style="text-align:right; padding:10px;">Montant</th>
-            <th style="text-align:center; padding:10px;">Date Entrée</th>
-            <th style="text-align:center; padding:10px;">Date Sortie</th>
-            <th style="text-align:center; padding:10px;">${delaiLabel}</th>
-            <th style="text-align:center; padding:10px;">Statut</th>`;
-    } else if (currentFamily === 'Recouvrement' && currentSubFamily === 'Suivi des retours') {
-        hCols = `
-            <th style="text-align:left; padding:10px;">Entité</th>
-            <th style="text-align:left; padding:10px;">Patient</th>
-            <th style="text-align:center; padding:10px;">Facture</th>
-            <th style="text-align:left; padding:10px;">Organisme</th>
-            <th style="text-align:right; padding:10px;">Montant PEC</th>
-            <th style="text-align:left; padding:10px;">Motif Std</th>
-            <th style="text-align:left; padding:10px;">Etat Dossier</th>
-            <th style="text-align:left; padding:10px;">Nature</th>`;
-    } else if (currentFamily === 'Recouvrement' && currentSubFamily === 'Dossiers non soldés') {
-        hCols = `
-            <th style="text-align:left; padding:10px;">Entité</th>
-            <th style="text-align:left; padding:10px;">Dossier / Patient</th>
-            <th style="text-align:left; padding:10px;">Service</th>
-            <th style="text-align:center; padding:10px;">Date Sortie</th>
-            <th style="text-align:left; padding:10px;">Organisme</th>
-            <th style="text-align:right; padding:10px;">Tot. Patient</th>
-            <th style="text-align:right; padding:10px;">Payé</th>
-            <th style="text-align:right; padding:10px;">Reste</th>
-            <th style="text-align:center; padding:10px;">État</th>`;
-    } else {
-        hCols = `
-            <th style="text-align:left; padding:10px;">Entité</th>
-            <th style="text-align:left; padding:10px;">Dossier / Patient</th>
-            <th style="text-align:center; padding:10px;">N° Facture</th>
-            <th style="text-align:left; padding:10px;">Organisme</th>
-            <th style="text-align:right; padding:10px;">Montant</th>
-            <th style="text-align:center; padding:10px;">Date Exp</th>
-            <th style="text-align:center; padding:10px;">Retard</th>
-            <th style="text-align:center; padding:10px;">Statut</th>`;
-    }
-    
-    if(tableExport) {
-        let thead = tableExport.querySelector('thead');
-        if(!thead) { thead = document.createElement('thead'); tableExport.prepend(thead); }
-        thead.innerHTML = `<tr style="background:#f0f0f0; border-bottom:2px solid #ccc;">${hCols}</tr>`;
-    }
-
-    // --- 2. DONNÉES ---
-    dataset.slice(0, 1000).forEach(d => {
-        let rowHtml = "";
-        
-        if (currentFamily === 'Expédition') {
-             const fPatient = document.getElementById('expedFilterPatient') ? document.getElementById('expedFilterPatient').value : '';
-             let valDelai = (fPatient === 'HOSPITALISE' || !d.dateRefObj) ? d.ancienneteEntree : d.ancienneteSortie;
-             let stat = (valDelai < 30) ? "<30j" : (valDelai < 60 ? "30-60j" : (valDelai < 90 ? "60-90j" : ">90j"));
-             if(!d.dateRefObj) stat = "Hosp.";
-             let styleAlert = (d.isAlertPEC || d.nature === "Suivi PEC vide") ? "background-color: #fff0f0; color: #c0392b;" : "";
-             
-             rowHtml = `
-                <td style="text-align:left; ${styleAlert}">${d.entite}</td>
-                <td style="text-align:left; ${styleAlert}"><b>${d.dossier}</b><br>${d.patient}</td>
-                <td style="text-align:center;">${d.facture||'-'}</td>
-                <td style="text-align:left;">${d.organisme}</td>
-                <td style="text-align:left;">${d.motif||'-'} ${(d.respPEC ? '<br>Resp: '+d.respPEC : '')}</td>
-                <td style="text-align:right;">${formatMoney(d.montant)}</td>
-                <td style="text-align:center;">${d.dateEntreeDisplay || '-'}</td>
-                <td style="text-align:center;">${d.dateRefDisplay||'-'}</td>
-                <td style="text-align:center;">${valDelai}</td>
-                <td style="text-align:center;">${stat}</td>`;
-        } 
-        else if (currentFamily === 'Recouvrement' && currentSubFamily === 'Suivi des retours') {
-             rowHtml = `
-                <td style="text-align:left;">${d.entite}</td>
-                <td style="text-align:left;">${d.patient}</td>
-                <td style="text-align:center;">${d.facture||'-'}</td>
-                <td style="text-align:left;">${d.organisme}</td>
-                <td style="text-align:right;">${formatMoney(d.montant)}</td>
-                <td style="text-align:left;">${d.motif}</td>
-                <td style="text-align:left;">${d.etatDossier}</td>
-                <td style="text-align:left;">${d.nature}</td>`;
-        } 
-        else if (currentFamily === 'Recouvrement' && currentSubFamily === 'Dossiers non soldés') {
-             let alertIcon = (d.chqImpaye && d.chqImpaye !== "NON" && d.chqImpaye !== "0") ? ' <i class="fas fa-exclamation-triangle" style="color:#c0392b;"></i>' : '';
-             let cautionIcon = (d.chqCaution && d.chqCaution !== "NON" && d.chqCaution !== "0") ? ' <i class="fas fa-lock" style="color:#f39c12;"></i>' : '';
-             rowHtml = `
-                <td style="text-align:left;">${d.entite}</td>
-                <td style="text-align:left;"><b>${d.dossier}</b>${alertIcon}${cautionIcon}<br>${d.patient}</td>
-                <td style="text-align:left;">${d.service}</td>
-                <td style="text-align:center;">${d.dateRefDisplay || '-'}</td>
-                <td style="text-align:left;">${d.organisme}</td>
-                <td style="text-align:right;">${formatMoney(d.totPatient)}</td>
-                <td style="text-align:right; color:#27ae60;">${formatMoney(d.totPaiement)}</td>
-                <td style="text-align:right; font-weight:bold; color:#c0392b;">${formatMoney(d.reste)}</td>
-                <td style="text-align:center;">${d.etatDossier || '-'}</td>`;
-        }
-        else {
-             let stat = d.isEchue ? "Échue" : "Non Échue";
-             let color = d.isEchue ? "#c0392b" : "#27ae60";
-             rowHtml = `
-                <td style="text-align:left;">${d.entite}</td>
-                <td style="text-align:left;"><b>${d.dossier}</b><br>${d.patient}</td>
-                <td style="text-align:center;">${d.facture||'-'}</td>
-                <td style="text-align:left;">${d.organisme}</td>
-                <td style="text-align:right;">${formatMoney(d.montant)}</td>
-                <td style="text-align:center;">${d.dateRefDisplay}</td>
-                <td style="text-align:center;">${d.retard} j</td>
-                <td style="text-align:center; color:${color}; font-weight:bold;">${stat}</td>`;
-        }
-        
-        body.insertAdjacentHTML('beforeend', `<tr style="border-bottom:1px solid #eee;">${rowHtml}</tr>`);
-    });
-};
 
 window.updateRecouvTopN = function(val) { 
     // Mise à jour de la variable globale
@@ -1928,7 +1826,7 @@ function parseNonSoldesImportData(rows, entityName) {
         return parseFloat(String(val).replace(/[^0-9.,-]/g, '').replace(',', '.')) || 0;
     };
 
-const parseRobustDate = (val) => {
+    const parseRobustDate = (val) => {
         if(!val) return ["", "", ""];
         let jsDate = null;
         if (typeof val === 'number') { jsDate = new Date(Math.round((val - 25569) * 86400 * 1000)); } 
@@ -1967,9 +1865,9 @@ const parseRobustDate = (val) => {
         const totPaiement = parseMnt(row[12]); // Colonne M
         const reste = parseMnt(row[13]); // Colonne N (Reste assumé)
         
-        const chqImpaye = String(row[16] || ""); // Colonne Q
-        const chqCaution = String(row[17] || ""); // Colonne R
-        const etatDossier = String(row[19] || ""); // Colonne T
+        const chqImpaye = parseMnt(row[16]); // Colonne Q - Nettoyage en nombre
+        const chqCaution = parseMnt(row[17]); // Colonne R - Nettoyage en nombre
+        const etatDossier = String(row[15] || ""); // Colonne P au lieu de T
         const noteDossier = String(row[21] || ""); // Colonne V
 
         result.push([
@@ -1981,6 +1879,5 @@ const parseRobustDate = (val) => {
     }
     return result;
 }
-
 
 </script>
