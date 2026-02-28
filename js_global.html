@@ -1251,4 +1251,55 @@ function populateEntiteFilter(selectedFamille) {
       elementSelect.value = (currentSelection && elementSet.has(currentSelection)) ? currentSelection : ''; 
       drawCharts(); 
   }
+
+  // --- GESTION DES FILTRES MOBILE ---
+window.toggleMobileFilters = function() {
+    const sheet = document.getElementById('mobileFilterSheet');
+    const overlay = document.getElementById('mobileFilterOverlay');
+    
+    if (sheet.classList.contains('open')) {
+        sheet.classList.remove('open');
+        overlay.classList.remove('open');
+    } else {
+        sheet.classList.add('open');
+        overlay.classList.add('open');
+    }
+};
+
+// --- GESTION ACCORDÉON SIDEBAR ---
+window.toggleAccordion = function(subId) {
+    // Ferme les autres sous-menus (optionnel)
+    document.querySelectorAll('.menu-sub').forEach(el => {
+        if (el.id !== subId) {
+            el.style.display = 'none';
+            el.parentElement.classList.remove('open');
+        }
+    });
+
+    // Bascule le menu cliqué
+    const subMenu = document.getElementById(subId);
+    const parentItem = subMenu.parentElement;
+    
+    if (subMenu.style.display === 'block') {
+        subMenu.style.display = 'none';
+        parentItem.classList.remove('open');
+    } else {
+        subMenu.style.display = 'block';
+        parentItem.classList.add('open');
+    }
+};
+
+// Fonction pour fermer la sidebar sur mobile après avoir cliqué sur un lien
+window.toggleSidebarMobile = function() {
+    if (window.innerWidth <= 850) {
+        document.body.classList.remove('sidebar-open');
+    }
+};
+
+// Modification de la fonction selectFamily (pour Flash) pour qu'elle ajoute la classe sur le bon bouton et ferme la sidebar
+const originalSelectFamily = window.selectFamily;
+window.selectFamily = function(family) {
+    if(originalSelectFamily) originalSelectFamily(family);
+    toggleSidebarMobile(); // Cache le menu après sélection sur mobile
+};
 </script>
