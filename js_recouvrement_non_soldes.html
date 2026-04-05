@@ -5,6 +5,10 @@ window.setNonSoldesMode = function(mode) {
     updateRecouvDashboard();
 };
 
+// =======================================================
+// A REMPLACER DANS js_recouvrement_non_soldes.html
+// =======================================================
+
 window.renderNonSoldesView = function(dataSet) {
     currentFilteredDataGlobal = dataSet;
 
@@ -14,8 +18,8 @@ window.renderNonSoldesView = function(dataSet) {
     let n1 = 0, n2 = 0, n3 = 0, n4 = 0;
 
     dataSet.forEach(d => {
-        let r = nonSoldesMode === 'REEL' ? d.currentReste : d.reste;
-        r = r || 0;
+        let r = (nonSoldesMode === 'REEL' || nonSoldesMode === 'AVOIR') ? d.currentReste : d.reste;
+        r = Math.abs(r || 0); // Positif pour des stats propres
         totalReste += r;
         
         let imp = d.chqImpaye; let cau = d.chqCaution;
@@ -36,78 +40,119 @@ window.renderNonSoldesView = function(dataSet) {
     let p3 = totalReste ? ((int3/totalReste)*100).toFixed(1) : 0;
     let p4 = totalReste ? ((int4/totalReste)*100).toFixed(1) : 0;
 
-    // ====================================================================
-    // PLACEMENT EXACT DE L'EN-TÊTE EN DESSOUS DES KPIs PRINCIPAUX
-    // ====================================================================
     let headerContainer = document.getElementById('nonSoldesDynamicHeader');
     if (!headerContainer) {
         headerContainer = document.createElement('div');
         headerContainer.id = 'nonSoldesDynamicHeader';
-        
         let kpiRow = document.getElementById('recouvKPIs');
-        if (kpiRow && kpiRow.parentNode) {
-            kpiRow.parentNode.insertBefore(headerContainer, kpiRow.nextSibling);
-        }
+        if (kpiRow && kpiRow.parentNode) kpiRow.parentNode.insertBefore(headerContainer, kpiRow.nextSibling);
     }
     
     if (headerContainer) {
         headerContainer.style.display = 'block';
-        headerContainer.style.marginTop = '20px';
+        headerContainer.style.marginTop = '15px';
     }
 
-    let bgG = nonSoldesMode === 'GLOBALE' ? '#27ae60' : '#ecf0f1'; let cG = nonSoldesMode === 'GLOBALE' ? 'white' : '#7f8c8d';
-    let bgR = nonSoldesMode === 'REEL' ? '#363795' : '#ecf0f1'; let cR = nonSoldesMode === 'REEL' ? 'white' : '#7f8c8d';
-    let bgT1 = nonSoldesMode === 'TRANSFERT_N1' ? '#e67e22' : '#ecf0f1'; let cT1 = nonSoldesMode === 'TRANSFERT_N1' ? 'white' : '#7f8c8d';
-    let bgT2 = nonSoldesMode === 'TRANSFERT_N2' ? '#8e44ad' : '#ecf0f1'; let cT2 = nonSoldesMode === 'TRANSFERT_N2' ? 'white' : '#7f8c8d';
+    let bgR = nonSoldesMode === 'REEL' ? '#363795' : '#fff'; let cR = nonSoldesMode === 'REEL' ? 'white' : '#1e293b';
+    let bgA = nonSoldesMode === 'AVOIR' ? '#f59e0b' : '#fff'; let cA = nonSoldesMode === 'AVOIR' ? 'white' : '#1e293b';
+    let bgT1 = nonSoldesMode === 'TRANSFERT_N1' ? '#0ea5e9' : '#fff'; let cT1 = nonSoldesMode === 'TRANSFERT_N1' ? 'white' : '#1e293b';
+    let bgT2 = nonSoldesMode === 'TRANSFERT_N2' ? '#8b5cf6' : '#fff'; let cT2 = nonSoldesMode === 'TRANSFERT_N2' ? 'white' : '#1e293b';
 
-    let htmlHeader = '<div style="display:flex; justify-content:center; gap:15px; margin-bottom:20px;">';
-    htmlHeader += '<button onclick="setNonSoldesMode(\'GLOBALE\')" style="padding:10px 20px; border:none; border-radius:30px; font-weight:bold; cursor:pointer; transition:0.3s; box-shadow:0 2px 5px rgba(0,0,0,0.1); background:' + bgG + '; color:' + cG + ';">SITUATION GLOBALE</button>';
-    htmlHeader += '<button onclick="setNonSoldesMode(\'REEL\')" style="padding:10px 20px; border:none; border-radius:30px; font-weight:bold; cursor:pointer; transition:0.3s; box-shadow:0 2px 5px rgba(0,0,0,0.1); background:' + bgR + '; color:' + cR + ';">SITUATION RÉELLE</button>';
-    htmlHeader += '<button onclick="setNonSoldesMode(\'TRANSFERT_N1\')" style="padding:10px 20px; border:none; border-radius:30px; font-weight:bold; cursor:pointer; transition:0.3s; box-shadow:0 2px 5px rgba(0,0,0,0.1); background:' + bgT1 + '; color:' + cT1 + ';">TRANSFERTS NIVEAU 1</button>';
-    htmlHeader += '<button onclick="setNonSoldesMode(\'TRANSFERT_N2\')" style="padding:10px 20px; border:none; border-radius:30px; font-weight:bold; cursor:pointer; transition:0.3s; box-shadow:0 2px 5px rgba(0,0,0,0.1); background:' + bgT2 + '; color:' + cT2 + ';">TRANSFERTS NIVEAU 2</button>';
+    let btnStyle = "padding:8px 15px; border:1px solid #e2e8f0; border-radius:6px; font-weight:600; cursor:pointer; transition:all 0.2s ease; box-shadow:0 1px 3px rgba(0,0,0,0.02); font-size:0.8em; display:flex; align-items:center; gap:6px;";
+
+    let htmlHeader = '<div style="display:flex; justify-content:center; gap:10px; margin-bottom:20px; flex-wrap:wrap;">';
+    // Bouton SITUATION GLOBALE retiré définitivement
+    htmlHeader += `<button onclick="setNonSoldesMode('REEL')" style="${btnStyle} background:${bgR}; color:${cR};"><i class="fas fa-chart-line"></i> SITUATION RÉELLE</button>`;
+    htmlHeader += `<button onclick="setNonSoldesMode('AVOIR')" style="${btnStyle} background:${bgA}; color:${cA};"><i class="fas fa-hand-holding-usd"></i> AVOIR PATIENT</button>`;
+    htmlHeader += `<button onclick="setNonSoldesMode('TRANSFERT_N1')" style="${btnStyle} background:${bgT1}; color:${cT1};"><i class="fas fa-exchange-alt"></i> TRANSFERTS N1</button>`;
+    htmlHeader += `<button onclick="setNonSoldesMode('TRANSFERT_N2')" style="${btnStyle} background:${bgT2}; color:${cT2};"><i class="fas fa-random"></i> TRANSFERTS N2</button>`;
     htmlHeader += '</div>';
 
-    htmlHeader += '<div style="display:flex; gap:15px; margin-bottom:25px; flex-wrap:wrap;">';
-    htmlHeader += '<div class="stat-card" style="flex:1; min-width:180px; border-top:4px solid #3498db; padding:15px; text-align:center; background:#fff; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.05);"><div style="font-size:0.8em; color:#7f8c8d; font-weight:bold;">MOINS DE 1 000 DH</div><div style="font-size:1.5em; color:#3498db; font-weight:900; margin:8px 0;">' + formatMoney(int1) + '</div><div style="font-size:0.9em; color:#95a5a6; font-weight:bold;">' + n1 + ' dossiers (' + p1 + '%)</div></div>';
-    htmlHeader += '<div class="stat-card" style="flex:1; min-width:180px; border-top:4px solid #2ecc71; padding:15px; text-align:center; background:#fff; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.05);"><div style="font-size:0.8em; color:#7f8c8d; font-weight:bold;">1 000 à 5 000 DH</div><div style="font-size:1.5em; color:#2ecc71; font-weight:900; margin:8px 0;">' + formatMoney(int2) + '</div><div style="font-size:0.9em; color:#95a5a6; font-weight:bold;">' + n2 + ' dossiers (' + p2 + '%)</div></div>';
-    htmlHeader += '<div class="stat-card" style="flex:1; min-width:180px; border-top:4px solid #f1c40f; padding:15px; text-align:center; background:#fff; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.05);"><div style="font-size:0.8em; color:#7f8c8d; font-weight:bold;">5 000 à 10 000 DH</div><div style="font-size:1.5em; color:#f1c40f; font-weight:900; margin:8px 0;">' + formatMoney(int3) + '</div><div style="font-size:0.9em; color:#95a5a6; font-weight:bold;">' + n3 + ' dossiers (' + p3 + '%)</div></div>';
-    htmlHeader += '<div class="stat-card" style="flex:1; min-width:180px; border-top:4px solid #e74c3c; padding:15px; text-align:center; background:#fff; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.05);"><div style="font-size:0.8em; color:#7f8c8d; font-weight:bold;">PLUS DE 10 000 DH</div><div style="font-size:1.5em; color:#e74c3c; font-weight:900; margin:8px 0;">' + formatMoney(int4) + '</div><div style="font-size:0.9em; color:#95a5a6; font-weight:bold;">' + n4 + ' dossiers (' + p4 + '%)</div></div>';
+    // STYLE RÉDUIT ET PRO (INSPIRÉ DES OBJECTIFS)
+    const hoverStyle = `style="cursor:pointer; flex:1; min-width:160px; padding:15px; background:#fff; border-radius:8px; border:1px solid #e2e8f0; box-shadow:0 2px 4px rgba(0,0,0,0.02); transition:all 0.2s; position:relative; overflow:hidden;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 10px rgba(0,0,0,0.05)'; this.style.borderColor='#cbd5e1';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.02)'; this.style.borderColor='#e2e8f0';"`;
+
+    htmlHeader += '<div style="display:flex; gap:15px; margin-bottom:20px; flex-wrap:wrap;">';
+
+    htmlHeader += `<div class="stat-card" onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d => Math.abs((nonSoldesMode==='REEL'||nonSoldesMode==='AVOIR')?d.currentReste:d.reste) <= 1000), 'Détail Moins de 1000 DH')" ${hoverStyle}>
+        <div style="position:absolute; top:0; left:0; width:4px; height:100%; background:#3b82f6;"></div>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+            <div>
+                <div style="font-size:0.7em; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Moins de 1 000 DH</div>
+                <div style="font-size:1.4em; color:#1e293b; font-weight:800; margin:6px 0;">+ ${formatMoney(int1)}</div>
+                <div style="font-size:0.75em; color:#94a3b8; font-weight:500;"><i class="fas fa-folder-open" style="color:#cbd5e1;"></i> ${n1} dossiers (${p1}%)</div>
+            </div>
+            <div style="width:32px; height:32px; border-radius:6px; background:#eff6ff; color:#3b82f6; display:flex; align-items:center; justify-content:center; font-size:1em;"><i class="fas fa-coins"></i></div>
+        </div>
+    </div>`;
+
+    htmlHeader += `<div class="stat-card" onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d => { let r=Math.abs((nonSoldesMode==='REEL'||nonSoldesMode==='AVOIR')?d.currentReste:d.reste); return r>1000 && r<=5000; }), 'Détail 1000 à 5000 DH')" ${hoverStyle}>
+        <div style="position:absolute; top:0; left:0; width:4px; height:100%; background:#10b981;"></div>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+            <div>
+                <div style="font-size:0.7em; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">1 000 à 5 000 DH</div>
+                <div style="font-size:1.4em; color:#1e293b; font-weight:800; margin:6px 0;">+ ${formatMoney(int2)}</div>
+                <div style="font-size:0.75em; color:#94a3b8; font-weight:500;"><i class="fas fa-folder-open" style="color:#cbd5e1;"></i> ${n2} dossiers (${p2}%)</div>
+            </div>
+            <div style="width:32px; height:32px; border-radius:6px; background:#ecfdf5; color:#10b981; display:flex; align-items:center; justify-content:center; font-size:1em;"><i class="fas fa-wallet"></i></div>
+        </div>
+    </div>`;
+
+    htmlHeader += `<div class="stat-card" onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d => { let r=Math.abs((nonSoldesMode==='REEL'||nonSoldesMode==='AVOIR')?d.currentReste:d.reste); return r>5000 && r<=10000; }), 'Détail 5000 à 10000 DH')" ${hoverStyle}>
+        <div style="position:absolute; top:0; left:0; width:4px; height:100%; background:#f59e0b;"></div>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+            <div>
+                <div style="font-size:0.7em; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">5 000 à 10 000 DH</div>
+                <div style="font-size:1.4em; color:#1e293b; font-weight:800; margin:6px 0;">+ ${formatMoney(int3)}</div>
+                <div style="font-size:0.75em; color:#94a3b8; font-weight:500;"><i class="fas fa-folder-open" style="color:#cbd5e1;"></i> ${n3} dossiers (${p3}%)</div>
+            </div>
+            <div style="width:32px; height:32px; border-radius:6px; background:#fffbeb; color:#f59e0b; display:flex; align-items:center; justify-content:center; font-size:1em;"><i class="fas fa-money-bill-wave"></i></div>
+        </div>
+    </div>`;
+
+    htmlHeader += `<div class="stat-card" onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d => Math.abs((nonSoldesMode==='REEL'||nonSoldesMode==='AVOIR')?d.currentReste:d.reste) > 10000), 'Détail Plus de 10000 DH')" ${hoverStyle}>
+        <div style="position:absolute; top:0; left:0; width:4px; height:100%; background:#ef4444;"></div>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+            <div>
+                <div style="font-size:0.7em; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">PLUS DE 10 000 DH</div>
+                <div style="font-size:1.4em; color:#1e293b; font-weight:800; margin:6px 0;">+ ${formatMoney(int4)}</div>
+                <div style="font-size:0.75em; color:#94a3b8; font-weight:500;"><i class="fas fa-folder-open" style="color:#cbd5e1;"></i> ${n4} dossiers (${p4}%)</div>
+            </div>
+            <div style="width:32px; height:32px; border-radius:6px; background:#fef2f2; color:#ef4444; display:flex; align-items:center; justify-content:center; font-size:1em;"><i class="fas fa-chart-pie"></i></div>
+        </div>
+    </div>`;
+
     htmlHeader += '</div>';
 
     if (headerContainer) headerContainer.innerHTML = htmlHeader;
 
-    // ====================================================================
-    // PANNEAU CHÈQUES À DROITE (Dans la carte `#cardVariable` des KPIs existants)
-    // ====================================================================
+    // DESIGN PRO POUR L'ALERTE CHÈQUE (Hérite du même style que les cartes Objectifs)
     const cardVar = document.getElementById('cardVariable');
     if(cardVar) {
-        cardVar.style.display = 'block';
-        cardVar.style.borderTop = '4px solid #8e44ad';
-        cardVar.style.background = '#f9ebff';
-        cardVar.style.cursor = 'pointer';
+        cardVar.style.cssText = "display:flex; align-items:center; justify-content:space-between; cursor:pointer; background:#fff; border-radius:8px; border:1px solid #e2e8f0; border-left:4px solid #ef4444; padding:15px; box-shadow:0 2px 4px rgba(0,0,0,0.02); transition:all 0.2s;";
+        cardVar.onmouseover = function() { this.style.transform = 'translateY(-2px)'; this.style.boxShadow = '0 4px 10px rgba(0,0,0,0.05)'; this.style.borderColor = '#cbd5e1'; };
+        cardVar.onmouseout = function() { this.style.transform = 'translateY(0)'; this.style.boxShadow = '0 2px 4px rgba(0,0,0,0.02)'; this.style.borderColor = '#e2e8f0'; };
         cardVar.onclick = function() { openRecouvDetailCustom(currentFilteredDataGlobal.filter(d => d.chqImpaye != 0 || d.chqCaution != 0), 'Détails des Chèques'); };
         
-        cardVar.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center;">' +
-            '<div>' +
-                '<div class="stat-title" style="color:#8e44ad; margin-bottom:10px; font-weight:bold;">ALERTE CHÈQUES</div>' +
-                '<div style="color:#c0392b; font-size:1.1em; font-weight:bold;">Impayés: ' + countChequeImpaye + ' (' + formatMoney(mntImpaye) + ' DH)</div>' +
-                '<div style="color:#f39c12; font-size:1.1em; font-weight:bold; margin-top:5px;">Caution: ' + countChequeCaution + ' (' + formatMoney(mntCaution) + ' DH)</div>' +
+        cardVar.innerHTML = '<div style="display:flex; flex-direction:column; justify-content:center;">' +
+            '<div style="font-size:0.7em; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;"><i class="fas fa-exclamation-triangle" style="color:#ef4444;"></i> Alertes Chèques</div>' +
+            '<div style="font-size:0.95em; color:#1e293b; font-weight:700; margin-bottom:3px;">Impayés : <span style="font-size:1.1em; color:#ef4444;">' + countChequeImpaye + '</span> <span style="font-size:0.8em; color:#94a3b8; font-weight:500;">(' + formatMoney(mntImpaye) + ' DH)</span></div>' +
+            '<div style="font-size:0.95em; color:#1e293b; font-weight:700;">Cautions : <span style="font-size:1.1em; color:#f59e0b;">' + countChequeCaution + '</span> <span style="font-size:0.8em; color:#94a3b8; font-weight:500;">(' + formatMoney(mntCaution) + ' DH)</span></div>' +
             '</div>' +
-            '<div style="font-size:3.5em; opacity:0.1; color:#8e44ad;">💳</div>' +
-        '</div>';
+            '<div style="font-size:2em; color:#f1f5f9;"><i class="fas fa-money-check-alt"></i></div>';
     }
 
     const tTitle = document.getElementById('tableMainTitle');
     if (tTitle) {
         if(nonSoldesMode === 'TRANSFERT_N1') tTitle.textContent = 'TRANSFERTS NIVEAU 1 (PRINCIPAL / SOUS-DOSSIER)';
         else if (nonSoldesMode === 'TRANSFERT_N2') tTitle.textContent = 'TRANSFERTS NIVEAU 2 (INTER-ADMISSIONS)';
-        else if (nonSoldesMode === 'GLOBALE') tTitle.textContent = 'SITUATION GLOBALE (TOUS DOSSIERS)';
-        else tTitle.textContent = 'SITUATION RÉELLE (SANS LES TRANSFERTS)';
+        else if (nonSoldesMode === 'AVOIR') tTitle.textContent = 'AVOIR PATIENT (SUR-ENCAISSEMENTS)';
+        else tTitle.textContent = 'SITUATION RÉELLE (SOUS-ENCAISSEMENTS UNIQUEMENT)';
     }
 
     safeSetText('kpiRecouvMontant', formatMoney(totalReste) + ' DH');
     safeSetText('kpiRecouvCount', dataSet.length);
 
+    // Top 3 (Non cliquables, affichage neutre)
     const sortEnt = Object.entries(aggEnt).sort((a,b)=>b[1]-a[1]).slice(0,3);
     safeSetHTML('kpiRecouvTopEntities', sortEnt.map(i => '<div style="display:flex; justify-content:space-between; margin-bottom:5px;"><span>' + i[0] + '</span><strong>' + formatMoney(i[1]) + '</strong></div>').join('') || 'Aucune donnée');
     const sortOrg = Object.entries(aggOrg).sort((a,b)=>b[1]-a[1]).slice(0,3);
@@ -132,40 +177,63 @@ window.renderClassificationService = function(dataSet) {
     document.querySelector('#recouvPieBlock h4').textContent = "Répartition par Service";
 
     const counts = {}; const amounts = {};
+    let isReel = nonSoldesMode === 'REEL';
+    let isAvoir = nonSoldesMode === 'AVOIR';
+
     dataSet.forEach(d => {
         let srv = d.service || "Non défini";
-        counts[srv] = (counts[srv]||0)+1; amounts[srv] = (amounts[srv]||0)+(d.reste||0);
+        // Valeur absolue garantie
+        let val = Math.abs(d.currentReste || 0);
+        counts[srv] = (counts[srv]||0)+1; 
+        amounts[srv] = (amounts[srv]||0)+val;
     });
     
-    const total = dataSet.reduce((s,d)=>s+(d.reste||0),0);
+    const total = Object.values(amounts).reduce((s,v)=>s+v,0);
     Object.entries(amounts).sort((a,b) => b[1] - a[1]).forEach(i => { 
         const p = total > 0 ? (i[1]/total*100).toFixed(0) : 0; 
-        tbody.insertAdjacentHTML('beforeend', `<tr onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>d.service==='${i[0].replace(/'/g, "\\'")}'), 'Service ${i[0].replace(/'/g, "\\'")}')" style="cursor:pointer;"><td style="text-align:left;">${i[0]}</td><td style="text-align:center;">${counts[i[0]]}</td><td style="text-align:right; font-weight:bold;">${formatMoney(i[1])}</td><td style="text-align:right;">${p}%</td></tr>`); 
+        tbody.insertAdjacentHTML('beforeend', `<tr onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>d.service==='${i[0].replace(/'/g, "\\'")}'), 'Service ${i[0].replace(/'/g, "\\'")}')" style="cursor:pointer; transition: background 0.2s;" onmouseover="this.style.background='#f4f6f7'" onmouseout="this.style.background='transparent'"><td style="text-align:left;">${i[0]}</td><td style="text-align:center;">${counts[i[0]]}</td><td style="text-align:right; font-weight:bold;">${formatMoney(i[1])}</td><td style="text-align:right;">${p}%</td></tr>`); 
     });
 };
 
 window.renderClassificationEtat = function(dataSet) {
     const tbody = document.querySelector('#tableRecouvNature tbody'); 
-    if(!tbody) return; tbody.innerHTML = '';
+    if(!tbody) return; 
+    tbody.innerHTML = ''; 
     
     const h4Nat = document.querySelector('#blockClassifNature h4');
     if(h4Nat) h4Nat.textContent = "Analyse par État de Dossier";
     
-    // CORRECTION ICI : On cible l'intérieur du conteneur du graphique, plus le "nextElementSibling"
     const h4NatPie = document.querySelector('#blockClassifNature .chart-container h4');
     if(h4NatPie) h4NatPie.textContent = "Répartition par État";
 
     const counts = {}; const amounts = {};
+
     dataSet.forEach(d => {
-        let etat = d.etatDossier || "Non défini";
-        counts[etat] = (counts[etat]||0)+1; amounts[etat] = (amounts[etat]||0)+(d.reste||0);
+        let etat = d.etatDossier || "Etat dossier vide";
+        let val = Math.abs(d.currentReste || 0);
+        
+        counts[etat] = (counts[etat]||0)+1; 
+        amounts[etat] = (amounts[etat]||0)+val;
     });
     
-    const total = dataSet.reduce((s,d)=>s+(d.reste||0),0);
+    const total = Object.values(amounts).reduce((s,v)=>s+v,0);
     Object.entries(amounts).sort((a,b) => b[1] - a[1]).forEach(i => { 
         const p = total > 0 ? (i[1]/total*100).toFixed(0) : 0; 
-        tbody.insertAdjacentHTML('beforeend', `<tr onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>d.etatDossier==='${i[0].replace(/'/g, "\\'")}'), 'État ${i[0].replace(/'/g, "\\'")}')" style="cursor:pointer;"><td style="text-align:left;">${i[0]}</td><td style="text-align:center;">${counts[i[0]]}</td><td style="text-align:right; font-weight:bold;">${formatMoney(i[1])}</td><td style="text-align:right;">${p}%</td></tr>`); 
+        
+        let displayVal = "" + formatMoney(i[1]);
+        
+        // NOUVEAU : Formatage en Rouge spécifique pour le non-traitement
+        let rowStyle = (i[0] === 'Etat dossier vide') ? 'color:#ef4444; font-weight:bold;' : 'color:#1e293b;';
+        let valStyle = (i[0] === 'Etat dossier vide') ? 'color:#ef4444;' : 'color:#27ae60;';
+        
+        tbody.insertAdjacentHTML('beforeend', `<tr onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>d.etatDossier==='${i[0].replace(/'/g, "\\'")}'), 'État ${i[0].replace(/'/g, "\\'")}')" style="cursor:pointer; transition: background 0.2s; ${rowStyle}" onmouseover="this.style.background='#f4f6f7'" onmouseout="this.style.background='transparent'">
+            <td style="text-align:left;">${i[0]}</td>
+            <td style="text-align:center;">${counts[i[0]]}</td>
+            <td style="text-align:right; font-weight:bold; ${valStyle}">${displayVal}</td>
+            <td style="text-align:right;">${p}%</td>
+        </tr>`); 
     });
+    
     if(typeof drawNatureChart === 'function') drawNatureChart(amounts);
 };
 
@@ -205,6 +273,10 @@ window.renderNonSoldesListTable = function(dataSet) {
     if(!tbody || !thead) return;
 
     let isTransf = nonSoldesMode.indexOf('TRANSFERT') > -1;
+    let isReel = nonSoldesMode === 'REEL';
+    let isAvoir = nonSoldesMode === 'AVOIR';
+    
+    let labelReste = isReel ? 'Solde Final' : (isAvoir ? 'Avoir Patient' : 'Reste'); 
 
     if (isTransf) {
         thead.innerHTML = '<th style="text-align:left; padding:12px;">Entité</th>' +
@@ -227,7 +299,7 @@ window.renderNonSoldesListTable = function(dataSet) {
             '<th style="text-align:center; padding:12px;">État</th>' +
             '<th style="text-align:right; padding:12px;">Tot. Patient</th>' +
             '<th style="text-align:right; padding:12px;">Payé</th>' +
-            '<th style="text-align:right; color:#c0392b; padding:12px;">Reste</th>' +
+            '<th style="text-align:right; color:#c0392b; padding:12px;">' + labelReste + '</th>' +
             '<th style="text-align:right; padding:12px;">% Reste</th>' +
             '<th style="text-align:center; padding:12px;">Action</th>';
     }
@@ -237,9 +309,9 @@ window.renderNonSoldesListTable = function(dataSet) {
     let sortedData = [...dataSet];
     if (recouvSortMode === 'MONTANT') {
         sortedData.sort((a,b) => {
-            let valA = nonSoldesMode === 'REEL' ? a.currentReste : a.reste;
-            let valB = nonSoldesMode === 'REEL' ? b.currentReste : b.reste;
-            return (valB||0) - (valA||0);
+            let valA = (isReel || isAvoir) ? a.currentReste : a.reste;
+            let valB = (isReel || isAvoir) ? b.currentReste : b.reste;
+            return Math.abs(valB||0) - Math.abs(valA||0);
         });
     }
     const limit = (recouvTopN === 1000) ? sortedData.length : recouvTopN;
@@ -249,8 +321,16 @@ window.renderNonSoldesListTable = function(dataSet) {
         let cautionIcon = (d.chqCaution != 0) ? ' <i class="fas fa-lock" style="color:#f39c12;"></i>' : '';
         let multiAlertHtml = d.isMultiEntity ? ' <i class="fas fa-exclamation-circle" style="color:#e74c3c; font-size:1.1em; vertical-align:middle;"></i>' : '';
         
-        let displayReste = nonSoldesMode === 'REEL' ? d.currentReste : d.reste;
-        let pctReste = d.totPatient ? ((displayReste / d.totPatient) * 100).toFixed(1) + '%' : '0.0%';
+        let displayReste = (isReel || isAvoir) ? d.currentReste : d.reste;
+        let displayPaiement = d.totPaiement;
+        
+        // Ajuste le montant payé en Situation Réelle
+        if (isReel) displayPaiement += (d.currentReste - d.reste);
+
+        // Analyse clean (signes positifs forcés)
+        displayReste = Math.abs(displayReste);
+        let colorReste = isAvoir ? '#2980b9' : '#c0392b';
+        let pctReste = d.totPatient ? ((displayReste / d.totPatient) * 100).toFixed(1) + '%' : '0%';
         
         let btnHis = d.extranetLink ? '<a href="' + d.extranetLink + '" target="_blank" style="background:#3498db; color:white; padding:5px 8px; border-radius:4px; font-size:0.85em; text-decoration:none; display:inline-block;" onclick="event.stopPropagation()">HIS</a>' : "";
         let btnInfo = '<button style="background:#2c3e50; color:white; border:none; padding:5px 8px; border-radius:4px; font-size:0.85em; cursor:pointer; margin-left:5px;" onclick="event.stopPropagation(); showPatientInfoModal(\'' + d.dossier + '\')">Plus d\'info</button>';
@@ -260,11 +340,11 @@ window.renderNonSoldesListTable = function(dataSet) {
         
         if (isTransf) {
             let tList = nonSoldesMode === 'TRANSFERT_N1' ? d.transferListN1 : d.transferListN2;
-            let rAvant = nonSoldesMode === 'TRANSFERT_N1' ? d.reste : d.resteApresTransfertN1;
-            let rApres = nonSoldesMode === 'TRANSFERT_N1' ? d.resteApresTransfertN1 : d.resteApresTransfertN2;
+            let rAvant = Math.abs(nonSoldesMode === 'TRANSFERT_N1' ? d.reste : d.resteApresTransfertN1);
+            let rApres = Math.abs(nonSoldesMode === 'TRANSFERT_N1' ? d.resteApresTransfertN1 : d.resteApresTransfertN2);
             let eApres = nonSoldesMode === 'TRANSFERT_N1' ? d.etatApresTransfertN1 : d.etatApresTransfertN2;
             
-            let trMnt = tList && tList.length > 0 ? tList.map(t => formatMoney(t.montant)).join('<br><hr style="margin:2px 0; border-top:1px solid #eee;">') : '-';
+            let trMnt = tList && tList.length > 0 ? tList.map(t => formatMoney(Math.abs(t.montant))).join('<br><hr style="margin:2px 0; border-top:1px solid #eee;">') : '-';
             let trMod = tList && tList.length > 0 ? tList.map(t => t.modalite).join('<br><hr style="margin:2px 0; border-top:1px solid #eee;">') : '-';
             let trDos = tList && tList.length > 0 ? tList.map(t => t.dossierConcerne).join('<br><hr style="margin:2px 0; border-top:1px solid #eee;">') : '-';
             let etatBadge = eApres === 'Soldé Totalement' ? '<span style="background:#2ecc71; color:white; padding:3px 6px; border-radius:3px; font-size:0.85em;">Totalement</span>' : '<span style="background:#f39c12; color:white; padding:3px 6px; border-radius:3px; font-size:0.85em;">Partiellement</span>';
@@ -277,7 +357,7 @@ window.renderNonSoldesListTable = function(dataSet) {
                 '<td style="text-align:left; font-size:0.9em; color:#e67e22; line-height:1.4;">' + trMod + '</td>' +
                 '<td style="text-align:left; font-size:0.9em; color:#e67e22; line-height:1.4;">' + trDos + '</td>' +
                 '<td style="text-align:center;">' + etatBadge + '</td>' +
-                '<td style="text-align:right; font-weight:bold; color:' + (Math.abs(rApres)>0.01?'#c0392b':'#27ae60') + ';">' + formatMoney(rApres) + '</td>' + actionCell;
+                '<td style="text-align:right; font-weight:bold; color:' + (rApres>0.01?'#c0392b':'#27ae60') + ';">' + formatMoney(rApres) + '</td>' + actionCell;
         } else {
             rowHtml = '<td style="text-align:left;">' + d.entite + '</td>' +
                 '<td style="text-align:left;"><b>' + d.dossier + '</b>' + alertIcon + cautionIcon + '<br>' + d.patient + multiAlertHtml + '</td>' +
@@ -287,15 +367,14 @@ window.renderNonSoldesListTable = function(dataSet) {
                 '<td style="text-align:left; font-size:0.9em;">' + d.service + '</td>' +
                 '<td style="text-align:center; font-size:0.85em;">' + (d.etatDossier || '-') + '</td>' +
                 '<td style="text-align:right;">' + formatMoney(d.totPatient) + '</td>' +
-                '<td style="text-align:right; color:#27ae60;">' + formatMoney(d.totPaiement) + '</td>' +
-                '<td style="text-align:right; font-weight:bold; color:#c0392b;">' + formatMoney(displayReste) + '</td>' +
+                '<td style="text-align:right; color:#27ae60;">' + formatMoney(displayPaiement) + '</td>' +
+                '<td style="text-align:right; font-weight:bold; color:' + colorReste + ';">' + formatMoney(displayReste) + '</td>' +
                 '<td style="text-align:right; font-weight:bold; color:#34495e;">' + pctReste + '</td>' + actionCell;
         }
             
         tbody.insertAdjacentHTML('beforeend', '<tr style="border-bottom:1px solid #eee;">' + rowHtml + '</tr>');
     });
 
-    // On relance le filtre automatiquement si une recherche était en cours lors d'un tri
     if(typeof filterRecouvTable === 'function') setTimeout(filterRecouvTable, 50);
 };
 

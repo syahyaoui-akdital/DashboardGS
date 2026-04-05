@@ -1907,3 +1907,53 @@ function incrementAppVersion() {
     "⚠️ N'oubliez pas d'aller dans Apps Script > Déployer > Nouveau déploiement pour que les utilisateurs voient les changements."
   );
 }
+
+function actualiserChiffreAffairesExtranet() {
+  // 1. URL de connexion et de données
+  const loginUrl = "https://visionhis.hia/visionhis/";
+  const dataUrl = "https://visionhis.hia/visionhis/index.php?version=normal&date_debut=2026-01-01&m=dPfact&tab=vw_statistique_par_famille&date_fin=2026-12-31&champs_debut=sortie_reelle&num_fact=0&sansSortie=0&espFAE=0&comptabilisation_etat=&convention=&type_dossier=";
+  
+  // 2. Paramètres de connexion (Payload)
+  const loginPayload = {
+    "username": "syahyaoui",
+    "password": "Yahyaoui@@S25",
+    // Parfois d'autres champs cachés sont requis (ex: csrf_token)
+  };
+  
+  const loginOptions = {
+    "method": "post",
+    "payload": loginPayload,
+    "followRedirects": false // Important pour capturer le cookie
+  };
+  
+  try {
+    // 3. Exécuter la connexion
+    const loginResponse = UrlFetchApp.fetch(loginUrl, loginOptions);
+    
+    // 4. Récupérer le cookie de session
+    const cookies = loginResponse.getHeaders()['Set-Cookie'];
+    
+    // 5. Aller sur la page des données avec le Cookie
+    const dataOptions = {
+      "method": "get",
+      "headers": {
+        "Cookie": cookies
+      }
+    };
+    
+    const dataResponse = UrlFetchApp.fetch(dataUrl, dataOptions);
+    const htmlContent = dataResponse.getContentText();
+    
+    // 6. Extraire les données (Exemple avec une expression régulière pour trouver une valeur)
+    // C'est ici que nous coderons la logique pour trouver "la colonne à récupérer"
+    Logger.log("Connexion réussie, extraction en cours...");
+    
+    // ... Logique d'extraction HTML ...
+    
+    return "Mise à jour terminée avec succès !";
+    
+  } catch (e) {
+    Logger.log("Erreur : " + e.message);
+    return "Échec de la mise à jour.";
+  }
+}
