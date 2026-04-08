@@ -447,44 +447,48 @@ function attemptLogin() {
               { name: "7.2 Comparaison vs Budget", action: () => { if(typeof setBudgetMode === 'function') setBudgetMode('comparison'); }, captureId: "view-ca-budget" }
           ]
       },
-      "DEPENSES_GROUP": {
+"DEPENSES_GROUP": {
           title: "8. DÉPENSES",
           targetId: "view-depenses",
           items: [ 
-              { name: "8.1 Vue Globale Dépenses", action: () => { if(typeof updateExpensesView === 'function') updateExpensesView(); }, captureId: "view-depenses", hideIds: ["depenseTable"] },
-              { name: "8.2 Top Bénéficiaires (Tableau)", action: () => { if(typeof updateExpensesView === 'function') updateExpensesView(); }, captureId: "depenseTable" }
+              { name: "8.1 Vue Globale Dépenses (KPIs & Top Bénéficiaires)", action: () => { if(typeof updateExpensesView === 'function') updateExpensesView(); }, captureId: "view-depenses" }
           ]
       },
       "RECOUV_GROUP": {
           title: "9. RECOUVREMENT",
           targetId: "view-recouvrement",
           items: [
-              { name: "9.1 Synthèse & KPIs", action: () => forceSwitchFamily('Recouvrement', 'Dossiers non réglés'), captureId: "view-recouvrement", hideIds: ["recouvTopTable", "blockClassifOrg", "blockClassifNature", "recouvPieBlock", "rowAlertsRecouv", "rowAlertsExped"] },
-              { name: "9.2 Répartition Organisme", action: () => forceSwitchFamily('Recouvrement', 'Dossiers non réglés'), captureId: "view-recouvrement", hideIds: ["recouvChartBlock", "recouvTopTable", "rowAlertsRecouv", "rowAlertsExped"] },
-              { name: "9.3 Top Factures", action: () => { forceSwitchFamily('Recouvrement', 'Dossiers non réglés'); if(typeof renderTopFacturesTable==='function') renderTopFacturesTable('MONTANT'); }, captureId: "recouvTopTable" },
-              { name: "9.4 Dossiers non soldés", action: () => forceSwitchFamily('Recouvrement', 'Dossiers non soldés') },
-              { name: "9.5 Suivi des retours", action: () => forceSwitchFamily('Recouvrement', 'Suivi des retours') },
-              { name: "9.6 Objectif vs Réalisation", action: () => forceSwitchFamily('Recouvrement', 'Objectif vs Réalisation') }
+              { name: "9.1 Dossiers Non Réglés - Synthèse", action: () => forceSwitchFamily('Recouvrement', 'Dossiers non réglés'), captureId: "view-recouvrement", hideIds: ["recouvTopTable", "blockClassifNature", "rowAlertsNonSoldes", "rowAlertsExped"] },
+              { name: "9.2 Dossiers Non Réglés - Top 25 Factures", action: () => { forceSwitchFamily('Recouvrement', 'Dossiers non réglés'); setTimeout(()=>{updateRecouvViewMode('LIST'); const sel=document.getElementById('recouvTopN'); if(sel)sel.value='25'; updateRecouvTopN(25);}, 300); }, captureId: "recouvTopTable" },
+              { name: "9.3 Dossiers Non Réglés - Balance (Top 25)", action: () => { forceSwitchFamily('Recouvrement', 'Dossiers non réglés'); setTimeout(()=>{updateRecouvViewMode('BALANCE'); const sel=document.getElementById('recouvTopN'); if(sel)sel.value='25'; updateRecouvTopN(25);}, 300); }, captureId: "recouvTopTable" },
+              
+              { name: "9.4 Dossiers Non Soldés - Synthèse (Situation Réelle)", action: () => forceSwitchFamily('Recouvrement', 'Dossiers non soldés'), captureId: "view-recouvrement", hideIds: ["recouvTopTable", "recouvPieBlock", "rowAlertsRecouv", "rowAlertsExped"] },
+              { name: "9.5 Dossiers Non Soldés - Top 25 Factures", action: () => { forceSwitchFamily('Recouvrement', 'Dossiers non soldés'); setTimeout(()=>{updateRecouvViewMode('LIST'); const sel=document.getElementById('recouvTopN'); if(sel)sel.value='25'; updateRecouvTopN(25);}, 300); }, captureId: "recouvTopTable" },
+              { name: "9.6 Dossiers Non Soldés - Balance (Top 25)", action: () => { forceSwitchFamily('Recouvrement', 'Dossiers non soldés'); setTimeout(()=>{updateRecouvViewMode('BALANCE'); const sel=document.getElementById('recouvTopN'); if(sel)sel.value='25'; updateRecouvTopN(25);}, 300); }, captureId: "recouvTopTable" },
+              
+              { name: "9.7 Objectifs vs Réalisation", action: () => { forceSwitchFamily('Recouvrement', 'Objectif vs Réalisation'); setTimeout(()=>setObjTableMode('PERIOD'), 300); }, captureId: "view-recouvrement", hideIds: ["recouvDataContent"] }
           ]
       },
       "EXPED_GROUP": {
           title: "10. EXPÉDITION",
           targetId: "view-recouvrement",
           items: [
-              { name: "10.1 Synthèse & KPIs", action: () => forceSwitchFamily('Expédition', 'Dossiers non expédiés'), captureId: "view-recouvrement", hideIds: ["recouvTopTable", "blockClassifOrg", "blockClassifNature", "recouvPieBlock"] },
-              { name: "10.2 Répartition par Nature", action: () => forceSwitchFamily('Expédition', 'Dossiers non expédiés'), captureId: "view-recouvrement", hideIds: ["recouvChartBlock", "recouvTopTable", "rowAlertsRecouv", "rowAlertsExped"] },
-              { name: "10.3 Top Dossiers", action: () => forceSwitchFamily('Expédition', 'Dossiers non expédiés'), captureId: "recouvTopTable" },
-              { name: "10.4 Objectif vs Réalisation", action: () => forceSwitchFamily('Expédition', 'Objectif vs Réalisation') }
+              { name: "10.1 Dossiers Non Expédiés - KPIs & Évolution", action: () => forceSwitchFamily('Expédition', 'Dossiers non expédiés'), captureId: "view-recouvrement", hideIds: ["recouvTopTable", "blockClassifOrg", "blockClassifNature", "recouvPieBlock", "rowAlertsRecouv", "rowAlertsNonSoldes"] },
+              { name: "10.2 Dossiers Non Expédiés - Répartition Org. & Nature", action: () => forceSwitchFamily('Expédition', 'Dossiers non expédiés'), captureId: "view-recouvrement", hideIds: ["recouvKPIs", "rowAlertsExped", "rowAlertsRecouv", "rowAlertsNonSoldes", "recouvChartBlock", "recouvTopTable"] },
+              { name: "10.3 Dossiers Non Expédiés - Top 25 Factures", action: () => { forceSwitchFamily('Expédition', 'Dossiers non expédiés'); setTimeout(()=>{updateRecouvViewMode('LIST'); const sel=document.getElementById('recouvTopN'); if(sel)sel.value='25'; updateRecouvTopN(25);}, 300); }, captureId: "recouvTopTable" },
+              { name: "10.4 Dossiers Non Expédiés - Balance (Top 25)", action: () => { forceSwitchFamily('Expédition', 'Dossiers non expédiés'); setTimeout(()=>{updateRecouvViewMode('BALANCE'); const sel=document.getElementById('recouvTopN'); if(sel)sel.value='25'; updateRecouvTopN(25);}, 300); }, captureId: "recouvTopTable" },
+              
+              { name: "10.5 Objectifs vs Réalisation", action: () => { forceSwitchFamily('Expédition', 'Objectif vs Réalisation'); setTimeout(()=>setObjTableMode('PERIOD'), 300); }, captureId: "view-recouvrement", hideIds: ["recouvDataContent"] }
           ]
       },
       "HONORAIRES_GROUP": {
           title: "11. HONORAIRES",
           targetId: "view-honoraires",
           items: [ 
-              { name: "11.1 Vue Globale Honoraires", action: () => { if(typeof updateHonorairesView === 'function') updateHonorairesView('INIT'); }, captureId: "view-honoraires", hideIds: ["honoMainTable"] },
-              { name: "11.2 Analyse TOP 10 Médecins", action: () => { if(typeof updateHonoViewMode==='function') updateHonoViewMode('MEDECIN'); }, captureId: "honoMainTable" },
-              { name: "11.3 TOP 10 Spécialités", action: () => { if(typeof updateHonoViewMode==='function') updateHonoViewMode('SPECIALITE'); }, captureId: "honoMainTable" },
-              { name: "11.4 Balance Âgée", action: () => { if(typeof updateHonoViewMode==='function') updateHonoViewMode('AGEING'); }, captureId: "honoMainTable" }
+              { name: "11.1 Vue Globale Honoraires (KPIs & Graphes)", action: () => { if(typeof updateHonorairesView === 'function') updateHonorairesView('INIT'); }, captureId: "view-honoraires", hideIds: ["honoMainTable"] },
+              { name: "11.2 Analyse Médecins (Top 20)", action: () => { if(typeof updateHonoViewMode==='function') { updateHonoViewMode('MEDECIN'); const sel=document.getElementById('honoTopN'); if(sel)sel.value='20'; updateHonoTopN(20); } }, captureId: "honoMainTable" },
+              { name: "11.3 Analyse Spécialités (Top 20)", action: () => { if(typeof updateHonoViewMode==='function') { updateHonoViewMode('SPECIALITE'); const sel=document.getElementById('honoTopN'); if(sel)sel.value='20'; updateHonoTopN(20); } }, captureId: "honoMainTable" },
+              { name: "11.4 Balance Âgée (Top 20)", action: () => { if(typeof updateHonoViewMode==='function') { updateHonoViewMode('AGEING'); const sel=document.getElementById('honoTopN'); if(sel)sel.value='20'; updateHonoTopN(20); } }, captureId: "honoMainTable" }
           ]
       },
       "RH_GROUP": {
@@ -541,42 +545,63 @@ window.toggleDarkMode = function() {
       });
   }
 // --- NAVIGATION ENTRE LES ONGLETS ---
-  function switchTab(tabId) {
-    // 1. Gestion des boutons (Votre code)
+function switchTab(tabId) {
+    // 1. Gestion des boutons d'onglets
     document.querySelectorAll('.nav-tab-btn').forEach(btn => btn.classList.remove('active'));
     const activeBtn = Array.from(document.querySelectorAll('.nav-tab-btn')).find(b => b.textContent.toLowerCase().includes(tabId.split('-')[0]));
     if(activeBtn) activeBtn.classList.add('active');
 
-    // 2. Gestion de l'affichage (Votre code)
-    // Assurez-vous que vos DIVs dans l'HTML ont bien des IDs comme "view-flash", "view-recouvrement", etc.
+    // 2. Gestion de l'affichage des sections
     document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
     const target = document.getElementById('view-' + tabId);
     if (target) target.classList.add('active');
 
     const sidebar = document.getElementById('sidebar');
+    const mainContent = document.getElementById('mainContent');
     const globalFilters = document.getElementById('globalFilters');
     
-    // 3. Logique spécifique par onglet (Votre code)
+    // 3. LOGIQUE DE MASQUAGE DE LA BARRE LATÉRALE
+    // On l'affiche uniquement pour 'flash'. Pour les autres, on la masque pour gagner de l'espace.
     if(tabId === 'flash') { 
-        sidebar.style.display = 'flex'; globalFilters.style.visibility = 'visible';
+        sidebar.style.display = 'flex'; 
+        if(mainContent) mainContent.style.width = "calc(100% - 280px)"; // Ajuste la largeur si nécessaire
+        globalFilters.style.visibility = 'visible';
+        
         if(window.kpiChartInstance) window.kpiChartInstance.resize(); 
         if(typeof drawCharts === "function") drawCharts(); 
-    } else if(tabId === 'ca-budget') {
-        sidebar.style.display = 'none'; globalFilters.style.visibility = 'visible';
-        if(window.caChartInstance) window.caChartInstance.resize();
-        if(typeof updateCaBudgetView === "function") updateCaBudgetView();
-    } else if(tabId === 'honoraires') {
-        sidebar.style.display = 'none'; globalFilters.style.visibility = 'visible';
-        if (!window.isHonorairesLoaded && typeof loadHonorairesData === "function") { loadHonorairesData(); window.isHonorairesLoaded = true; }
-    } else { 
-        sidebar.style.display = 'none'; globalFilters.style.visibility = 'visible';
+    } 
+    else if(tabId === 'ca-budget' || tabId === 'recouvrement') {
+        sidebar.style.display = 'none'; 
+        if(mainContent) mainContent.style.width = "100%"; // Prend toute la largeur
+        globalFilters.style.visibility = 'visible';
+        
+        if(tabId === 'ca-budget') {
+            if(window.caChartInstance) window.caChartInstance.resize();
+            if(typeof updateCaBudgetView === "function") updateCaBudgetView();
+        } else {
+            if(typeof updateRecouvDashboard === "function") updateRecouvDashboard();
+        }
+    } 
+    else { 
+        // Par défaut pour Dépenses, Honoraires, RH
+        sidebar.style.display = 'none'; 
+        if(mainContent) mainContent.style.width = "100%";
+        globalFilters.style.visibility = 'visible';
+        
         if(tabId === 'depenses' && typeof updateExpensesView === "function") updateExpensesView();
-        if(tabId === 'recouvrement' && typeof updateRecouvDashboard === "function") updateRecouvDashboard();
+        if(tabId === 'honoraires') {
+             if (!window.isHonorairesLoaded && typeof loadHonorairesData === "function") { 
+                 loadHonorairesData(); window.isHonorairesLoaded = true; 
+             }
+        }
     }
 
-    // 4. === AJOUT POUR GRISER L'ENTITÉ ===
-    // On force la ré-application des règles de sécurité après un court délai
-    // pour s'assurer que les filtres chargés par les fonctions ci-dessus sont bien verrouillés.
+    // Forcer le redimensionnement des graphiques pour qu'ils occupent le nouvel espace
+    setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+    }, 100);
+
+    // 4. Ré-application des permissions (verrouillage entité)
     setTimeout(() => {
         if (typeof applyUserPermissions === 'function') {
             applyUserPermissions(); 
@@ -737,7 +762,20 @@ if (updateStatusEl) {
   }
 
 function syncFilters(src) {
+  checkSousEntiteVisibility();
       const he = document.getElementById('entite');
+      const hse = document.getElementById('sousEntite');
+      const lblHse = document.getElementById('lblSousEntite');
+      
+      // Afficher/Cacher sous-entité global selon HIA CIOA
+      if (he && he.value === 'HIA CIOA') {
+          if (hse) hse.style.display = 'inline-block';
+          if (lblHse) lblHse.style.display = 'inline-block';
+      } else {
+          if (hse) { hse.style.display = 'none'; hse.value = ''; }
+          if (lblHse) lblHse.style.display = 'none';
+      }
+
       const ht = document.getElementById('trimestre');
       const hm = document.getElementById('mois');
       const ha = document.getElementById('annee');
@@ -748,59 +786,67 @@ function syncFilters(src) {
       const la = document.getElementById('localAnnee');
 
       const lbe = document.getElementById('localBudgetEntite');
+      const lbse = document.getElementById('localSubFilter');
       const lba = document.getElementById('localBudgetAnnee');
       const lbt = document.getElementById('localBudgetTrimestre');
       const lbm = document.getElementById('localBudgetMois');
 
       const re = document.getElementById('recouvFilterEntite');
+      const rse = document.getElementById('recouvFilterSubEntity');
       const ra = document.getElementById('recouvFilterAnnee');
       const rt = document.getElementById('recouvFilterTrim');
       const rm = document.getElementById('recouvFilterMois');
 
       const de = document.getElementById('depenseFilterEntite');
+      const dse = document.getElementById('depenseFilterSubEntity');
       const da = document.getElementById('depenseFilterAnnee'); 
       const dt = document.getElementById('depenseFilterTrim');
       const dm = document.getElementById('depenseFilterMois');
 
       const hoe = document.getElementById('honoFilterEntite');
+      const hose = document.getElementById('honoFilterSubEntity');
       const hoa = document.getElementById('honoFilterAnnee');
       const hot = document.getElementById('honoFilterTrim');
       const hom = document.getElementById('honoFilterMois');
       
-      // AJOUT POUR LE MODULE RH
       const rhe = document.getElementById('rhEntite');
+      const rhse = document.getElementById('rhSousEntite');
       const rha = document.getElementById('rhAnnee');
       const rht = document.getElementById('rhTrimestre');
       const rhm = document.getElementById('rhMois');
       
-      if(src === 'entite' || src === 'trimestre' || src === 'mois' || src === 'annee') { 
+      if(src === 'entite' || src === 'sousEntite' || src === 'trimestre' || src === 'mois' || src === 'annee') { 
           if(le && he) le.value = he.value; 
           if(la && ha) la.value = ha.value; 
           if(lt && ht) { lt.value = ht.value; updateMonthOptions(); } 
           if(lm && hm) lm.value = hm.value; 
 
           if(lbe && he) lbe.value = he.value;
+          if(lbse && hse) lbse.value = hse.value;
           if(lba && ha) lba.value = ha.value;
           if(lbt && ht) lbt.value = ht.value;
           if(lbm && hm) lbm.value = hm.value;
 
           if(re && he) { re.value = he.value; if(re.onchange) re.onchange(); } 
+          if(rse && hse) { rse.value = hse.value; if(rse.onchange) rse.onchange(); }
           if(ra && ha) { ra.value = ha.value; }
           if(rt && ht) { rt.value = ht.value; if(rt.onchange) rt.onchange(); } 
           if(rm && hm) { rm.value = hm.value; }
 
           if(de && he) { de.value = he.value; if(de.onchange) de.onchange(); }
+          if(dse && hse) { dse.value = hse.value; if(dse.onchange) dse.onchange(); }
           if(dt && ht) { dt.value = ht.value; if(dt.onchange) dt.onchange(); }
           if(dm && hm) { dm.value = hm.value; }
           if(src === 'annee' && ha && da) { da.value = ha.value; if(da.onchange) da.onchange(); }
 
           if(hoe && he) { hoe.value = he.value; if(hoe.onchange) hoe.onchange(); }
+          if(hose && hse) { hose.value = hse.value; if(hose.onchange) hose.onchange(); }
           if(hoa && ha) { hoa.value = ha.value; }
           if(hot && ht) { hot.value = ht.value; if(hot.onchange) hot.onchange(); }
           if(hom && hm) { hom.value = hm.value; }
           
-          // SYNCHRONISATION RH
           if(rhe && he) { rhe.value = he.value; if(rhe.onchange) rhe.onchange(); }
+          if(rhse && hse) { rhse.value = hse.value; if(rhse.onchange) rhse.onchange(); }
           if(rha && ha) { rha.value = ha.value; if(rha.onchange) rha.onchange(); }
           if(rht && ht) { rht.value = ht.value; if(rht.onchange) rht.onchange(); }
           if(rhm && hm) { rhm.value = hm.value; if(rhm.onchange) rhm.onchange(); }
@@ -821,7 +867,6 @@ function syncFilters(src) {
           else if (at.id === 'view-honoraires' && typeof updateHonorairesView === "function") updateHonorairesView();
           else if (at.id === 'view-flash' && typeof drawCharts === "function") drawCharts(); 
           else if (at.id === 'view-rh' && typeof drawCharts === "function") drawCharts();
-          // RH est géré par ses propres listeners (onchange)
       }
   }
 
@@ -829,11 +874,21 @@ function syncFilters(src) {
   //  MOTEUR D'EXPORTATION AVANCÉ
   // =======================================================================
 
-  function applyGlobalFiltersToView(viewId) {
+function applyGlobalFiltersToView(viewId, applyTimeFilter = true) {
       const gEntite = document.getElementById('entite').value;
-      const gTrim = document.getElementById('trimestre').value;
-      const gMois = document.getElementById('mois').value;
-      const gAnnee = document.getElementById('annee').value;
+      const subEntiteEl = document.getElementById('sousEntite');
+      const gSubEntite = subEntiteEl ? subEntiteEl.value : '';
+
+      let gTrim = document.getElementById('trimestre').value;
+      let gMois = document.getElementById('mois').value;
+      let gAnnee = document.getElementById('annee').value;
+
+      // NOUVEAU : Si la case Chrono de la ligne a été décochée, on vide les filtres temporels
+      if (!applyTimeFilter) {
+          gTrim = "";
+          gMois = "";
+          gAnnee = "";
+      }
 
       const setVal = (id, val) => { 
           const el = document.getElementById(id); 
@@ -841,12 +896,24 @@ function syncFilters(src) {
       };
       
       try {
-          if (viewId === 'view-flash') { setVal('localEntite', gEntite); setVal('localAnnee', gAnnee); setVal('localTrimestre', gTrim); setVal('localMois', gMois); } 
-          else if (viewId === 'view-ca-budget') { setVal('localBudgetEntite', gEntite); setVal('localBudgetTrimestre', gTrim); setVal('localBudgetMois', gMois); } 
-          else if (viewId === 'view-recouvrement') { setVal('recouvFilterEntite', gEntite); setVal('recouvFilterTrim', gTrim); setVal('recouvFilterMois', gMois); setVal('recouvFilterAnnee', gAnnee); } 
-          else if (viewId === 'view-depenses') { setVal('depenseFilterEntite', gEntite); setVal('depenseFilterTrim', gTrim); setVal('depenseFilterMois', gMois); } 
-          else if (viewId === 'view-honoraires') { setVal('honoFilterEntite', gEntite); setVal('honoFilterTrim', gTrim); setVal('honoFilterMois', gMois); setVal('honoFilterAnnee', gAnnee); }
-          else if (viewId === 'view-rh') { setVal('rhEntite', gEntite); setVal('rhTrimestre', gTrim); setVal('rhMois', gMois); setVal('rhAnnee', gAnnee); }
+          if (viewId === 'view-flash') { 
+              setVal('localEntite', gEntite); setVal('localAnnee', gAnnee); setVal('localTrimestre', gTrim); setVal('localMois', gMois); 
+          } 
+          else if (viewId === 'view-ca-budget') { 
+              setVal('localBudgetEntite', gEntite); setVal('localSubFilter', gSubEntite); setVal('localBudgetTrimestre', gTrim); setVal('localBudgetMois', gMois); setVal('localBudgetAnnee', gAnnee);
+          } 
+          else if (viewId === 'view-recouvrement') { 
+              setVal('recouvFilterEntite', gEntite); setVal('recouvFilterSubEntity', gSubEntite); setVal('recouvFilterTrim', gTrim); setVal('recouvFilterMois', gMois); setVal('recouvFilterAnnee', gAnnee); 
+          } 
+          else if (viewId === 'view-depenses') { 
+              setVal('depenseFilterEntite', gEntite); setVal('depenseFilterSubEntity', gSubEntite); setVal('depenseFilterTrim', gTrim); setVal('depenseFilterMois', gMois); setVal('depenseFilterAnnee', gAnnee);
+          } 
+          else if (viewId === 'view-honoraires') { 
+              setVal('honoFilterEntite', gEntite); setVal('honoFilterSubEntity', gSubEntite); setVal('honoFilterTrim', gTrim); setVal('honoFilterMois', gMois); setVal('honoFilterAnnee', gAnnee); 
+          }
+          else if (viewId === 'view-rh') { 
+              setVal('rhEntite', gEntite); setVal('rhSousEntite', gSubEntite); setVal('rhTrimestre', gTrim); setVal('rhMois', gMois); setVal('rhAnnee', gAnnee); 
+          }
       } catch(e) { console.error(e); }
   }
 
@@ -868,11 +935,70 @@ function syncFilters(src) {
       else { const group = btn.closest('.export-group'); if (group && group.nextElementSibling) group.parentNode.insertBefore(group.nextElementSibling, group); }
   }
 
+  function updateModalMonthOptions() {
+      const trim = document.getElementById('modTrimestre').value;
+      const ms = document.getElementById('modMois'); const cur = ms.value; 
+      ms.innerHTML = '<option value="">TOUT</option>';
+      let list = window.monthOrder; if (trim && window.quarters[trim]) list = window.quarters[trim];
+      list.forEach(m => ms.add(new Option(m, m)));
+      ms.value = list.includes(cur) ? cur : '';
+  }
+
+function syncModalFilters() {
+      const mE = document.getElementById('modEntite').value;
+      const modSE = document.getElementById('modSousEntite');
+      const modWrapSE = document.getElementById('modSubEntiteWrap');
+      
+      if (mE === 'HIA CIOA') {
+          if (modWrapSE) modWrapSE.style.display = 'flex';
+      } else {
+          if (modWrapSE) modWrapSE.style.display = 'none';
+          if (modSE) modSE.value = '';
+      }
+
+      const setVal = (id, val) => { const el = document.getElementById(id); if(el) { el.value = val; el.dispatchEvent(new Event('change')); } };
+      
+      setVal('entite', mE);
+      setVal('sousEntite', modSE ? modSE.value : '');
+      setVal('annee', document.getElementById('modAnnee').value);
+      setVal('trimestre', document.getElementById('modTrimestre').value);
+      setVal('mois', document.getElementById('modMois').value);
+  }
+
+  // NOUVEAU : Fonction pour cocher/décocher tous les sous-titres d'un groupe Chrono
+  function toggleGroupChrono(master) {
+      const groupContainer = master.closest('.export-group');
+      const inputs = groupContainer.querySelectorAll('.time-filter-check');
+      inputs.forEach(inp => inp.checked = master.checked);
+  }
+
   function openGlobalExportModal() {
       const modal = document.getElementById('exportModal');
       const container = document.getElementById('exportCheckboxesArea');
       container.innerHTML = ''; 
 
+      // 1. Clonage des listes
+      ['Entite', 'Annee', 'Trimestre', 'Mois'].forEach(id => {
+          const modEl = document.getElementById('mod' + id);
+          const globEl = document.getElementById(id.toLowerCase());
+          if(modEl && globEl) { modEl.innerHTML = globEl.innerHTML; modEl.value = globEl.value; }
+      });
+      const globSE = document.getElementById('sousEntite');
+      if(globSE && document.getElementById('modSousEntite')) document.getElementById('modSousEntite').value = globSE.value;
+      
+      // NOUVEAU : Figer l'entité si le rôle est VIEWER_ENTITY
+      const modEntite = document.getElementById('modEntite');
+      if (modEntite && window.currentUserContext && window.currentUserContext.role === 'VIEWER_ENTITY') {
+          modEntite.disabled = true;
+          modEntite.style.backgroundColor = "#e2e8f0";
+          modEntite.style.color = "#64748b";
+          modEntite.style.cursor = "not-allowed";
+          modEntite.style.opacity = "0.9";
+      }
+
+      syncModalFilters();
+
+      // 2. Génération des lignes avec Chrono global ET par ligne
       Object.keys(EXPORT_CONFIG).forEach(key => {
           const config = EXPORT_CONFIG[key];
           const availableItems = config.items.filter(item => !item.condition || item.condition());
@@ -884,11 +1010,18 @@ function syncFilters(src) {
           
           const headerDiv = document.createElement('div');
           headerDiv.className = 'export-group-header';
+          
           headerDiv.innerHTML = `
               <i class="fas fa-chevron-right toggle-icon" onclick="toggleGroupList(this.parentNode)"></i>
               <div class="export-group-title">
                   <input type="checkbox" class="export-checkbox group-master" data-group="${key}" checked onclick="toggleGroup(this); event.stopPropagation();">
                   <span onclick="toggleGroupList(this.parentNode.parentNode)">${config.title}</span>
+              </div>
+              <div style="display:flex; align-items:center; gap: 15px; margin-right: 15px;">
+                  <label style="font-size: 0.8em; color: #363795; cursor: pointer; display: flex; align-items: center; gap: 5px; border: 1px solid #c7d2fe; padding: 4px 8px; border-radius: 5px; background: #e0e7ff; font-weight:700;" title="Appliquer le Chrono à tout ce groupe">
+                      <input type="checkbox" class="group-time-filter-check" checked style="margin:0; cursor:pointer;" onclick="toggleGroupChrono(this); event.stopPropagation();"> 
+                      <i class="far fa-clock"></i> Chrono Global
+                  </label>
               </div>
               <div class="export-group-controls">
                   <div class="sort-btn" onclick="moveUp(this)" title="Monter Groupe"><i class="fas fa-arrow-up"></i></div>
@@ -912,9 +1045,15 @@ function syncFilters(src) {
                       <input type="checkbox" class="export-checkbox item-check" value="${key}|${originalIndex}" data-title="${item.name}" data-group-ref="${key}" checked>
                       <span>${item.name}</span>
                   </div>
-                  <div class="export-group-controls" style="opacity:0.5; transform:scale(0.8);">
-                      <div class="sort-btn" onclick="moveUp(this)"><i class="fas fa-arrow-up"></i></div>
-                      <div class="sort-btn" onclick="moveDown(this)"><i class="fas fa-arrow-down"></i></div>
+                  <div style="display:flex; align-items:center; gap: 15px;">
+                      <label style="font-size: 0.75em; color: #64748b; cursor: pointer; display: flex; align-items: center; gap: 4px; border: 1px solid #e2e8f0; padding: 2px 6px; border-radius: 4px; background: #f8fafc;" title="Appliquer le filtre chronologique pour cette sous-partie">
+                          <input type="checkbox" class="time-filter-check" checked style="margin:0; cursor:pointer;"> 
+                          <i class="far fa-clock"></i> Chrono
+                      </label>
+                      <div class="export-group-controls" style="opacity:0.5; transform:scale(0.8);">
+                          <div class="sort-btn" onclick="moveUp(this)"><i class="fas fa-arrow-up"></i></div>
+                          <div class="sort-btn" onclick="moveDown(this)"><i class="fas fa-arrow-down"></i></div>
+                      </div>
                   </div>
               `;
               bodyDiv.appendChild(itemDiv);
@@ -939,7 +1078,7 @@ function syncFilters(src) {
           chk.checked = isChecked;
       });
   };
-  async function processDynamicExport(format) {
+async function processDynamicExport(format) {
       const container = document.getElementById('exportCheckboxesArea');
       const checkboxes = Array.from(container.querySelectorAll('.item-check:checked'));
       if (checkboxes.length === 0) { alert("Sélectionnez au moins un élément."); return; }
@@ -949,14 +1088,15 @@ function syncFilters(src) {
       const modal = document.getElementById('exportModal');
       const loadingHeader = modal.querySelector('h3');
       const originalText = loadingHeader.innerHTML;
-      loadingHeader.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Génération...`;
+      
+      loadingHeader.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Traitement Pro en cours...`;
 
       let pptx, pdf;
       const entiteVal = document.getElementById('entite').value;
       const entiteName = entiteVal === "" ? "REGION GRAND SUD" : entiteVal; 
       
       let respName = "", dirMedName = "";
-      if (entiteVal && window.extraContactData[entiteVal]) {
+      if (entiteVal && window.extraContactData && window.extraContactData[entiteVal]) {
           respName = window.extraContactData[entiteVal].respExploit || "";
           dirMedName = window.extraContactData[entiteVal].dirMedical || "";
       }
@@ -964,101 +1104,128 @@ function syncFilters(src) {
       const periodName = (document.getElementById('mois').value ? document.getElementById('mois').value : (document.getElementById('trimestre').value || "Année")) + " " + new Date().getFullYear();
       const dateGen = new Date().toLocaleDateString('fr-FR');
 
+      // ==========================================
+      // CONFIGURATION PPTX
+      // ==========================================
       if (format === 'ppt') {
           pptx = new PptxGenJS();
           pptx.layout = 'LAYOUT_16x9';
-          pptx.title = `Rapport - ${entiteName}`;
+          pptx.title = `Rapport d'Activité - ${entiteName}`;
+          
           if(includeCover) {
-              let slide = pptx.addSlide(); slide.background = { color: "F8FAFF" };
-              slide.addShape(pptx.ShapeType.rect, { x:0, y:0, w:3, h:'100%', fill:'363795' }); 
-              slide.addText("RAPPORT D'ACTIVITÉ", { x:3.5, y:2.0, fontSize:40, color:'363795', bold:true });
-              slide.addText(entiteName, { x:3.5, y:3.0, fontSize:28, color:'E67E22', bold:true });
-              slide.addText(periodName, { x:3.5, y:3.7, fontSize:20, color:'666666' });
+              let slide = pptx.addSlide(); 
+              slide.background = { color: "F8FAFF" };
+              slide.addShape(pptx.ShapeType.rect, { x:0, y:0, w:0.5, h:'100%', fill:'363795' }); 
+              slide.addShape(pptx.ShapeType.rect, { x:0.5, y:0, w:0.1, h:'100%', fill:'E67E22' }); 
               
-              if(respName || dirMedName) {
-                  slide.addText("MANAGEMENT", { x:3.5, y:5.0, fontSize:14, color:'363795', bold:true });
-                  if(respName) slide.addText("Resp. Exploitation : " + respName, { x:3.5, y:5.4, fontSize:12, color:'555555' });
-                  if(dirMedName) slide.addText("Dir. Médical : " + dirMedName, { x:3.5, y:5.8, fontSize:12, color:'555555' });
-              }
-              slide.addText(`Généré le ${dateGen}`, { x:0.5, y:7, fontSize:12, color:'FFFFFF' });
+              slide.addText("RAPPORT D'ACTIVITÉ", { x:1.5, y:2.0, fontSize:44, color:'363795', bold:true, fontFace:'Arial' });
+              slide.addText(entiteName, { x:1.5, y:3.0, fontSize:32, color:'E67E22', bold:true, fontFace:'Arial' });
+              slide.addText(periodName, { x:1.5, y:3.8, fontSize:22, color:'64748B', fontFace:'Arial' });
+              
+              slide.addShape(pptx.ShapeType.line, { x:1.5, y:4.5, w:6, h:0, line:{color:'E2E8F0', width:2} });
+              
+              slide.addText("MANAGEMENT", { x:1.5, y:5.0, fontSize:14, color:'363795', bold:true, fontFace:'Arial' });
+              let yMgt = 5.5;
+              slide.addText("Directrice Régionale : Mme ELBOUAMI Aicha", { x:1.5, y:yMgt, fontSize:12, color:'475569', fontFace:'Arial' });
+              yMgt += 0.4;
+              if(respName) { slide.addText("Resp. Exploitation : " + respName, { x:1.5, y:yMgt, fontSize:12, color:'475569', fontFace:'Arial' }); yMgt += 0.4; }
+              if(dirMedName) { slide.addText("Dir. Médical : " + dirMedName, { x:1.5, y:yMgt, fontSize:12, color:'475569', fontFace:'Arial' }); }
+
+              slide.addText(`Généré le ${dateGen}`, { x:'50%', y:8.5, w:'50%', align:'right', fontSize:10, color:'94A3B8', fontFace:'Arial' });
               
               let summarySlide = pptx.addSlide();
-              summarySlide.addText("SOMMAIRE DÉTAILLÉ", { x:0.5, y:0.5, fontSize:24, color:'363795', bold:true, underline:true });
-              let yPos = 1.5; let currentSection = "";
+              summarySlide.background = { color: "FFFFFF" };
+              summarySlide.addText("PLAN", { x:0.8, y:0.8, fontSize:28, color:'363795', bold:true, fontFace:'Arial' });
+              summarySlide.addShape(pptx.ShapeType.line, { x:0.8, y:1.5, w:8, h:0, line:{color:'E67E22', width:2} });
+              
+              let yPos = 2.0; let currentSection = "";
               checkboxes.forEach(cb => {
                   let groupKey = cb.getAttribute('data-group-ref');
                   let sectionTitle = EXPORT_CONFIG[groupKey].title;
                   if (sectionTitle !== currentSection) {
-                      summarySlide.addText(sectionTitle.toUpperCase(), { x:0.5, y:yPos, fontSize:16, color:'E67E22', bold:true });
+                      summarySlide.addText(sectionTitle.toUpperCase(), { x:0.8, y:yPos, fontSize:16, color:'1E293B', bold:true, fontFace:'Arial' });
                       yPos += 0.5; currentSection = sectionTitle;
                   }
                   let subTitle = cb.getAttribute('data-title');
-                  summarySlide.addText("   • " + subTitle, { x:1, y:yPos, fontSize:14, color:'333' });
+                  summarySlide.addText("•  " + subTitle, { x:1.2, y:yPos, fontSize:14, color:'64748B', fontFace:'Arial' });
                   yPos += 0.4;
-                  if(yPos > 6.5) { summarySlide = pptx.addSlide(); yPos = 1.0; }
+                  if(yPos > 6.8) { summarySlide = pptx.addSlide(); yPos = 1.0; }
               });
           }
-      } else {
+      } 
+      // ==========================================
+      // CONFIGURATION PDF
+      // ==========================================
+      else {
           window.jsPDF = window.jspdf.jsPDF;
           pdf = new jsPDF('l', 'mm', 'a4');
           const w = pdf.internal.pageSize.getWidth(); const h = pdf.internal.pageSize.getHeight();
 
           if (includeCover) {
-              pdf.setFillColor(245, 247, 250); pdf.rect(0, 0, w, h, 'F');
-              pdf.setFillColor(54, 55, 149); pdf.rect(0, 0, 15, h, 'F');
-              pdf.setFillColor(230, 126, 34); pdf.rect(15, 60, 5, 40, 'F');
+              pdf.setFillColor(248, 250, 252); pdf.rect(0, 0, w, h, 'F'); 
+              pdf.setFillColor(54, 55, 149); pdf.rect(0, 0, 20, h, 'F'); 
+              pdf.setFillColor(230, 126, 34); pdf.rect(20, 60, 5, h-120, 'F'); 
 
-              pdf.setTextColor(54, 55, 149); pdf.setFontSize(40); pdf.setFont("helvetica", "bold");
-              pdf.text("RAPPORT", 30, 75); pdf.text("D'ACTIVITÉ", 30, 90);
+              pdf.setTextColor(30, 41, 59); pdf.setFontSize(44); pdf.setFont("helvetica", "bold");
+              pdf.text("RAPPORT", 35, 80); pdf.text("D'ACTIVITÉ", 35, 98);
               
-              pdf.setTextColor(230, 126, 34); pdf.setFontSize(28);
-              pdf.text(entiteName.toUpperCase(), 30, 115);
+              pdf.setTextColor(230, 126, 34); pdf.setFontSize(30);
+              pdf.text(entiteName.toUpperCase(), 35, 125);
               
-              pdf.setTextColor(100, 100, 100); pdf.setFontSize(18); pdf.setFont("helvetica", "normal");
-              pdf.text(periodName, 30, 130);
+              pdf.setTextColor(100, 116, 139); pdf.setFontSize(20); pdf.setFont("helvetica", "normal");
+              pdf.text(periodName, 35, 140);
               
-              if(respName || dirMedName) {
-                  pdf.setFontSize(12); pdf.setTextColor(54, 55, 149); pdf.setFont("helvetica", "bold");
-                  pdf.text("MANAGEMENT", 30, 160);
-                  pdf.setFontSize(11); pdf.setTextColor(80, 80, 80); pdf.setFont("helvetica", "normal");
-                  let yC = 168;
-                  if(respName) { pdf.text("Responsable Exploitation : " + respName, 30, yC); yC+=7; }
-                  if(dirMedName) { pdf.text("Directeur Médical : " + dirMedName, 30, yC); }
-              }
+              pdf.setDrawColor(226, 232, 240); pdf.setLineWidth(0.5);
+              pdf.line(35, 150, 150, 150);
 
-              pdf.setTextColor(255, 255, 255); pdf.setFontSize(10);
-              pdf.text(`Généré le ${dateGen}`, 10, h - 10);
+              pdf.setFontSize(13); pdf.setTextColor(54, 55, 149); pdf.setFont("helvetica", "bold");
+              pdf.text("MANAGEMENT", 35, 165);
+              pdf.setFontSize(11); pdf.setTextColor(71, 85, 105); pdf.setFont("helvetica", "normal");
+              let yC = 173;
+              pdf.text("Directrice Régionale : Mme ELBOUAMI Aicha", 35, yC); yC += 7;
+              if(respName) { pdf.text("Responsable Exploitation : " + respName, 35, yC); yC+=7; }
+              if(dirMedName) { pdf.text("Directeur Médical : " + dirMedName, 35, yC); }
+
+              pdf.setTextColor(148, 163, 184); pdf.setFontSize(10);
+              pdf.text(`Edité le ${dateGen}`, w - 15, h - 10, { align: 'right' });
 
               pdf.addPage();
-              pdf.setFillColor(54, 55, 149); pdf.rect(0, 0, w, 20, 'F');
-              pdf.setTextColor(255, 255, 255); pdf.setFontSize(16); pdf.setFont("helvetica", "bold");
-              pdf.text("SOMMAIRE DÉTAILLÉ", 10, 14);
+              pdf.setFillColor(54, 55, 149); pdf.rect(0, 0, w, 22, 'F');
+              pdf.setTextColor(255, 255, 255); pdf.setFontSize(18); pdf.setFont("helvetica", "bold");
+              pdf.text("PLAN", 15, 15);
 
               let yPos = 40; let pageCounter = 3; 
               let lastGroup = "";
               
-              pdf.setTextColor(60, 60, 60); pdf.setFontSize(12);
               checkboxes.forEach(cb => {
                   let groupKey = cb.getAttribute('data-group-ref');
                   let sectionTitle = EXPORT_CONFIG[groupKey].title;
                   
-                  if (yPos > 180) { pdf.addPage(); yPos = 30; }
+                  if (yPos > 185) { pdf.addPage(); yPos = 30; }
                   
                   if(groupKey !== lastGroup) {
-                      yPos += 8;
-                      pdf.setTextColor(230, 126, 34); pdf.setFontSize(13); pdf.setFont("helvetica", "bold");
+                      yPos += 6;
+                      pdf.setTextColor(30, 41, 59); pdf.setFontSize(14); pdf.setFont("helvetica", "bold");
                       pdf.text(sectionTitle.toUpperCase(), 20, yPos);
                       yPos += 8;
                       lastGroup = groupKey;
-                      pdf.setTextColor(60, 60, 60); pdf.setFontSize(11); pdf.setFont("helvetica", "normal");
                       if(includeSeparators) pageCounter++;
                   }
 
                   let title = cb.getAttribute('data-title');
+                  pdf.setTextColor(100, 116, 139); pdf.setFontSize(11); pdf.setFont("helvetica", "normal");
                   pdf.text(title, 30, yPos);
-                  pdf.setDrawColor(200, 200, 200); pdf.setLineDash([1, 1], 0);
-                  pdf.line(35 + pdf.getStringUnitWidth(title)*4, yPos, w-30, yPos);
-                  pdf.text(String(pageCounter), w-25, yPos);
+                  
+                  const textW = pdf.getStringUnitWidth(title) * 11 / pdf.internal.scaleFactor;
+                  let lineStartX = 35 + textW;
+                  if(lineStartX < w - 30) {
+                      pdf.setDrawColor(226, 232, 240); pdf.setLineDash([1, 1.5], 0);
+                      pdf.line(lineStartX, yPos, w - 25, yPos);
+                      pdf.setLineDash([]); 
+                  }
+                  
+                  pdf.setFont("helvetica", "bold"); pdf.setTextColor(54, 55, 149);
+                  pdf.text(String(pageCounter), w - 20, yPos, { align: 'right' });
                   yPos += 7; pageCounter++; 
               });
           }
@@ -1068,23 +1235,36 @@ function syncFilters(src) {
       let processedCount = 0;
       let currentPageNum = includeCover ? 3 : 1;
 
+      // ==========================================
+      // CAPTURES DYNAMIQUES
+      // ==========================================
       for (let cb of checkboxes) {
           const [groupKey, itemIndex] = cb.value.split('|');
           const config = EXPORT_CONFIG[groupKey];
           const item = config.items[itemIndex];
           const targetEl = document.getElementById(item.captureId || config.targetId);
 
+          const timeFilterCb = cb.closest('.export-item').querySelector('.time-filter-check');
+          const applyTimeFilter = timeFilterCb ? timeFilterCb.checked : true;
+
+          // VÉRIFICATION CHRONO AFFICHEE DANS L'EN-TÊTE DU PDF !
+          let dynamicPeriodText = periodName;
+          if (!applyTimeFilter) {
+              dynamicPeriodText = "";
+          }
+
           if (includeSeparators && groupKey !== lastGroupKey) {
               if (format === 'pdf') {
-                  pdf.addPage();
-                  pdf.setFillColor(54, 55, 149); pdf.rect(0, 0, pdf.internal.pageSize.getWidth(), pdf.internal.pageSize.getHeight(), 'F');
-                  pdf.setTextColor(255, 255, 255); pdf.setFontSize(36); pdf.setFont("helvetica", "bold");
-                  pdf.text(config.title.toUpperCase(), pdf.internal.pageSize.getWidth()/2, pdf.internal.pageSize.getHeight()/2, { align: 'center' });
-                  pdf.setFontSize(10); pdf.text("Page " + currentPageNum, pdf.internal.pageSize.getWidth()-20, pdf.internal.pageSize.getHeight()-10);
+                  pdf.addPage([297, 210], 'l');
+                  pdf.setFillColor(54, 55, 149); pdf.rect(0, 0, 297, 210, 'F');
+                  pdf.setTextColor(255, 255, 255); pdf.setFontSize(40); pdf.setFont("helvetica", "bold");
+                  pdf.text(config.title.toUpperCase(), 297/2, 210/2, { align: 'center' });
+                  pdf.setFontSize(10); pdf.setFont("helvetica", "normal");
+                  pdf.text(`Page ${currentPageNum}`, 297-15, 210-10, { align: 'right' });
                   currentPageNum++;
               } else {
-                  let s = pptx.addSlide(); s.background = { color: "EEEEEE" };
-                  s.addText(config.title.toUpperCase(), { x:0, y:'45%', w:'100%', align:'center', fontSize:30, color:'363795', bold:true });
+                  let s = pptx.addSlide(); s.background = { color: "363795" };
+                  s.addText(config.title.toUpperCase(), { x:0, y:'45%', w:'100%', align:'center', fontSize:36, color:'FFFFFF', bold:true, fontFace:'Arial' });
               }
               lastGroupKey = groupKey;
           }
@@ -1093,8 +1273,14 @@ function syncFilters(src) {
           const parentView = targetEl.closest('.view-section') || targetEl;
           parentView.classList.add('active'); parentView.style.display = 'block';
           
-          applyGlobalFiltersToView(config.targetId);
+          // 🔴 1. Appliquer les filtres AVANT le changement de vue
+          applyGlobalFiltersToView(config.targetId, applyTimeFilter);
+          
+          // Action (ex: switchFamily qui peut parfois réinitialiser certaines variables)
           if (item.action) item.action();
+          
+          // 🔴 2. FORCER les filtres APRÈS l'action pour garantir le respect de la règle chrono !
+          applyGlobalFiltersToView(config.targetId, applyTimeFilter);
 
           const elsToHide = [];
           if(item.hideIds) {
@@ -1108,69 +1294,180 @@ function syncFilters(src) {
               });
           }
 
-          await new Promise(r => setTimeout(r, 2000)); // Attente rendu augmentée
+          const chkShowKpiFlash = document.getElementById('chkShowKpiFlash');
+          if (chkShowKpiFlash && !chkShowKpiFlash.checked && config.targetId === 'view-flash') {
+              const kpiPanel = document.getElementById('kpiPanel');
+              if (kpiPanel && kpiPanel.style.display !== 'none') {
+                  kpiPanel.setAttribute('data-original-display', kpiPanel.style.display);
+                  kpiPanel.style.display = 'none';
+                  elsToHide.push(kpiPanel);
+              }
+          }
+
+          let styleBackups = [];
+          
+          styleBackups.push({
+              element: targetEl,
+              width: targetEl.style.width,
+              minWidth: targetEl.style.minWidth,
+              minHeight: targetEl.style.minHeight,
+              background: targetEl.style.background
+          });
+          
+          targetEl.style.minWidth = '1600px'; 
+          targetEl.style.width = 'max-content'; 
+          targetEl.style.minHeight = 'auto'; 
+          targetEl.style.background = '#ffffff'; 
+          
+          const mainContent = document.getElementById('mainContent');
+          const appLayout = document.querySelector('.app-layout');
+          [mainContent, appLayout].forEach(el => {
+              if (el) {
+                  styleBackups.push({ element: el, height: el.style.height, overflowY: el.style.overflowY, width: el.style.width, overflowX: el.style.overflowX });
+                  el.style.height = 'max-content';
+                  el.style.overflowY = 'visible';
+                  el.style.width = 'max-content'; 
+                  el.style.overflowX = 'visible'; 
+              }
+          });
+
+          let elsToExpand = [targetEl, ...targetEl.querySelectorAll('*')];
+          elsToExpand.forEach(el => {
+              
+              // 🔴 CORRECTION MAJEURE : On ignore totalement les conteneurs de graphiques pour éviter l'effet "écrasé"
+              const isChartElement = el.id === 'chartContainer' || 
+                                     el.id === 'mainChartWrapper' || 
+                                     el.id === 'pieChartWrapper' || 
+                                     el.classList.contains('chart-container') || 
+                                     el.tagName.toLowerCase() === 'canvas';
+                                     
+              if (isChartElement) {
+                  return; // On passe au suivant sans écraser sa hauteur
+              }
+
+              const comp = window.getComputedStyle(el);
+              if (comp.overflowY === 'auto' || comp.overflowY === 'scroll' || el.style.height.includes('vh') || el.classList.contains('table-container') || el.id.includes('Container')) {
+                  styleBackups.push({
+                      element: el,
+                      height: el.style.height,
+                      maxHeight: el.style.maxHeight,
+                      minHeight: el.style.minHeight,
+                      overflow: el.style.overflow,
+                      overflowY: el.style.overflowY
+                  });
+                  el.style.height = 'max-content';
+                  el.style.maxHeight = 'none';
+                  el.style.minHeight = 'max-content';
+                  el.style.overflow = 'visible';
+                  el.style.overflowY = 'visible';
+              }
+          });
+
+          await new Promise(r => setTimeout(r, 2200));
 
           try {
-              // ZOOM MAXIMAL ET MARGES RÉDUITES
-              const canvas = await html2canvas(targetEl, { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff', scrollX:0, scrollY:0 });
-              const imgData = canvas.toDataURL('image/png');
+              let captureWidth = Math.max(1600, targetEl.scrollWidth);
+
+              const canvas = await html2canvas(targetEl, { 
+                  scale: 2, 
+                  useCORS: true, 
+                  logging: false, 
+                  backgroundColor: '#ffffff', 
+                  scrollX: 0, 
+                  scrollY: 0,
+                  width: captureWidth,         
+                  windowWidth: captureWidth    
+              });
+              const imgData = canvas.toDataURL('image/jpeg', 0.85);
 
               if (format === 'pdf') {
-                  pdf.addPage();
-                  const w = pdf.internal.pageSize.getWidth(); const h = pdf.internal.pageSize.getHeight();
-                  
-                  pdf.setFillColor(240, 240, 240); pdf.rect(0, 0, w, 12, 'F');
-                  pdf.setTextColor(54, 55, 149); pdf.setFontSize(10); pdf.setFont("helvetica", "bold");
-                  pdf.text(`${config.title} > ${item.name}`, 10, 8);
-                  pdf.setTextColor(100, 100, 100); pdf.setFontSize(10); pdf.setFont("helvetica", "normal");
-                  pdf.text(`${entiteName} | ${periodName}`, w - 60, 8);
+                  const pdfPageW = 297; 
+                  const minPdfPageH = 210; 
 
                   const imgProps = pdf.getImageProperties(imgData);
                   
-                  // OPTIMISATION IMAGE (Marges réduites à 5mm)
-                  let margin = 5; 
-                  let availW = w - (margin * 2);
-                  let availH = h - 20; 
+                  let marginX = 12; 
+                  let marginY = 8; 
+                  let headerHeight = 14;
+                  let footerHeight = 10;
                   
-                  let finalW = availW; 
-                  let finalH = (imgProps.height * finalW) / imgProps.width;
+                  let availW = pdfPageW - (marginX * 2);
+                  let naturalH = (imgProps.height * availW) / imgProps.width;
                   
-                  if(finalH > availH) { 
-                      finalH = availH; 
-                      finalW = (imgProps.width * finalH) / imgProps.height; 
-                  }
-                  
-                  // Centrage vertical
-                  let xPos = (w - finalW) / 2;
-                  let yPos = 12 + ((availH - finalH) / 2); 
-                  
-                  pdf.addImage(imgData, 'PNG', xPos, yPos, finalW, finalH);
+                  let requiredH = naturalH + headerHeight + footerHeight + (marginY * 2);
+                  let finalPageH = requiredH > minPdfPageH ? requiredH : minPdfPageH;
 
-                  pdf.setFontSize(9); pdf.setTextColor(150, 150, 150);
-                  pdf.text(`Page ${currentPageNum}`, w - 20, h - 5);
+                  let orientation = finalPageH > pdfPageW ? 'p' : 'l';
+                  pdf.addPage([pdfPageW, finalPageH], orientation);
+                  
+                  pdf.setFillColor(248, 250, 252); pdf.rect(0, 0, pdfPageW, headerHeight, 'F');
+                  pdf.setFillColor(54, 55, 149); pdf.rect(0, headerHeight - 0.5, pdfPageW, 0.5, 'F');
+                  pdf.setTextColor(30, 41, 59); pdf.setFontSize(11); pdf.setFont("helvetica", "bold");
+                  pdf.text(`${config.title} > ${item.name}`, marginX, headerHeight - 5);
+                  pdf.setTextColor(100, 116, 139); pdf.setFontSize(10); pdf.setFont("helvetica", "normal");
+                  
+                  // AFFICHAGE DU TEXTE DYNAMIQUE DU CHRONO
+                  pdf.text(`${entiteName} | ${dynamicPeriodText}`, pdfPageW - marginX, headerHeight - 5, { align: 'right' });
+
+                  let xPos = marginX;
+                  let yPos = headerHeight + marginY;
+                  if (finalPageH === minPdfPageH && naturalH < (minPdfPageH - headerHeight - footerHeight - marginY*2)) {
+                      yPos += ((minPdfPageH - headerHeight - footerHeight - marginY*2) - naturalH) / 2;
+                  }
+                  pdf.addImage(imgData, 'JPEG', xPos, yPos, availW, naturalH);
+                  
+                  pdf.setDrawColor(226, 232, 240); pdf.setLineWidth(0.5);
+                  pdf.line(10, finalPageH - footerHeight, pdfPageW - 10, finalPageH - footerHeight);
+                  pdf.setFontSize(8); pdf.setTextColor(148, 163, 184);
+                  pdf.text(`Edité par Sami YAHYAOUI le ${dateGen} via Dashboard Akdital`, marginX, finalPageH - 4);
+                  pdf.setFont("helvetica", "bold");
+                  pdf.text(`Page ${currentPageNum}`, pdfPageW - marginX, finalPageH - 4, { align: 'right' });
+                  
                   currentPageNum++;
               } else {
                   let slide = pptx.addSlide();
-                  slide.addText(item.name, { x:0.2, y:0.2, fontSize:18, color:'363795', bold:true });
-                  slide.addImage({ data: imgData, x:0.2, y:0.8, w:'95%', h:'85%', sizing: { type: 'contain', w: '95%', h: '85%' } });
+                  slide.background = { color: "FFFFFF" };
+                  slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 0.5, fill: 'F8FAFC' });
+                  slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0.5, w: '100%', h: 0.03, fill: '363795' });
+                  slide.addText(`${config.title} > ${item.name}`, { x: 0.3, y: 0.1, fontSize: 13, color: '1E293B', bold: true, fontFace:'Arial' });
+                  slide.addText(`${entiteName} | ${dynamicPeriodText}`, { x: '30%', y: 0.1, w: '68%', align: 'right', fontSize: 11, color: '64748B', fontFace:'Arial' });
+                  slide.addImage({ data: imgData, x: 0.2, y: 0.7, w: '96%', h: '85%', sizing: { type: 'contain', w: '96%', h: '85%' } });
               }
-          } catch(e) { console.error(e); } 
-          finally {
+          } catch(e) { 
+              console.error(e); 
+          } finally {
+              styleBackups.forEach(itemInfo => {
+                  if (itemInfo.element) {
+                      itemInfo.element.style.width = itemInfo.width !== undefined ? itemInfo.width : '';
+                      itemInfo.element.style.height = itemInfo.height !== undefined ? itemInfo.height : '';
+                      if(itemInfo.maxHeight !== undefined) itemInfo.element.style.maxHeight = itemInfo.maxHeight;
+                      if(itemInfo.minWidth !== undefined) itemInfo.element.style.minWidth = itemInfo.minWidth;
+                      if(itemInfo.minHeight !== undefined) itemInfo.element.style.minHeight = itemInfo.minHeight;
+                      itemInfo.element.style.overflow = itemInfo.overflow !== undefined ? itemInfo.overflow : '';
+                      itemInfo.element.style.overflowY = itemInfo.overflowY !== undefined ? itemInfo.overflowY : '';
+                      itemInfo.element.style.overflowX = itemInfo.overflowX !== undefined ? itemInfo.overflowX : '';
+                      if(itemInfo.background !== undefined) itemInfo.element.style.background = itemInfo.background;
+                  }
+              });
+
               elsToHide.forEach(el => el.style.display = el.getAttribute('data-original-display') || 'block');
           }
 
           processedCount++;
-          loadingHeader.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Export... ${Math.round(processedCount / checkboxes.length * 100)}%`;
-      }
+          loadingHeader.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Export Haute Qualité... ${Math.round(processedCount / checkboxes.length * 100)}%`;
+      } 
 
-      const fileName = `Rapport_${entiteName.replace(/\s+/g,'_')}_${dateGen.replace(/\//g,'-')}`;
+      const fileName = `Rapport_Pro_${entiteName.replace(/\s+/g,'_')}_${dateGen.replace(/\//g,'-')}`;
       if (format === 'pdf') pdf.save(fileName + ".pdf"); else pptx.writeFile({ fileName: fileName + ".pptx" });
 
       loadingHeader.innerHTML = originalText;
-      if(container) container.style.display = 'block'; // Pas sûr de ce sélecteur, mais sécurité
+      if(container) container.style.display = 'block'; 
       modal.style.display = 'none';
-  }
 
+      syncFilters('entite');
+      syncFilters('annee');
+  }
+  
   function selectFamily(family) { 
       document.querySelectorAll('#familyButtons button').forEach(btn => { 
           btn.classList.toggle('active', btn.getAttribute('data-family') === family); 
@@ -1203,6 +1500,19 @@ function syncFilters(src) {
       if(lTrim) { lTrim.innerHTML = trimSelect.innerHTML; lTrim.value = trimSelect.value; }
   }
 
+function checkSousEntiteVisibility() {
+    const he = document.getElementById('entite');
+    const hse = document.getElementById('sousEntite');
+    const lblHse = document.getElementById('lblSousEntite');
+    
+    if (he && he.value === 'HIA CIOA') {
+        if (hse) hse.style.display = 'inline-block';
+        if (lblHse) lblHse.style.display = 'inline-block';
+    } else {
+        if (hse) { hse.style.display = 'none'; hse.value = ''; }
+        if (lblHse) lblHse.style.display = 'none';
+    }
+}
 
 // --- GESTION FILTRE ENTITÉ (FLASH) ---
 function populateEntiteFilter(selectedFamille) { 

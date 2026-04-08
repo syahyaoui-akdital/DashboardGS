@@ -1486,7 +1486,7 @@ function buildKpisFromCnd_(rows, ent, mois) {
     effectifFin,
     nbRecrutements,
     nbDeparts,
-    turnover: effectifTotal > 0 ? (nbDeparts / effectifTotal) : 0,
+    turnover: effectifTotal > 0 ? ((nbRecrutements + nbDeparts) / 2 / effectifTotal) : 0,
     absentisme: joursTheo > 0 ? (joursAbs / joursTheo) : 0,
     joursAbs,
     joursTheo,

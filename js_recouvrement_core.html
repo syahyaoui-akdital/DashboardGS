@@ -508,7 +508,15 @@ function initRecouvFilters() {
     const annees = [...new Set(currentData.map(d => d.anneeRef).filter(x => x))].sort().reverse();
     const selAn = document.getElementById('recouvFilterAnnee');
     if(selAn) {
-        const curVal = selAn.value || (document.getElementById('annee') ? document.getElementById('annee').value : "");
+        const globalAnnee = document.getElementById('annee') ? document.getElementById('annee').value : "";
+        const curVal = selAn.value || globalAnnee;
+        
+        // 🔴 CORRECTION FILTRE CHRONO : Ajout forcé de l'année globale pour garantir le filtrage
+        if (globalAnnee && !annees.includes(globalAnnee)) {
+            annees.push(globalAnnee);
+            annees.sort().reverse();
+        }
+
         selAn.innerHTML = '<option value="">TOUTES</option>';
         annees.forEach(a => selAn.add(new Option(a, a)));
         if (curVal && annees.includes(curVal)) selAn.value = curVal;
@@ -876,9 +884,10 @@ window.drawRecouvCharts = function(dataSet) {
         const ctxPie = canvasPie.getContext('2d');
         if (recouvChartPieInstance) recouvChartPieInstance.destroy();
         
-        const aggPie = {}; 
+const aggPie = {}; 
         dataSet.forEach(d => {
-            let key = (currentSubFamily === 'Dossiers non soldés') ? (d.service || "Non défini") : (d.organisme || "Autre");
+            // NOUVEAU : On regroupe par État de dossier pour les Non Soldés
+            let key = (currentSubFamily === 'Dossiers non soldés') ? (d.etatDossier || "Non défini") : (d.organisme || "Autre");
             aggPie[key] = (aggPie[key]||0) + getVal(d);
         });
         
@@ -1568,33 +1577,53 @@ window.toggleProcheFilterFunc = function(e) {
     updateRecouvDashboard();
 };
 
-// --- Tableau Classification : Par Organisme ---
+// --- Tableau Classification : Par Organisme ou Par État (Non Soldés) ---
 window.renderClassificationTable = function(dataSet) {
     const tbody = document.querySelector('#tableRecouvOrg tbody'); 
     if(!tbody) return; 
     tbody.innerHTML = '';
     
-    // --- CORRECTION : RESET DES TITRES ---
+    // NOUVEAU : Titres dynamiques selon la sous-famille
+    let isNonSoldes = (currentSubFamily === 'Dossiers non soldés');
+    let titleMain = isNonSoldes ? "Par État de Dossier" : "Par Organisme";
+    let titlePie = isNonSoldes ? "Répartition par État" : "Répartition par Organisme";
+    
     const h4Org = document.querySelector('#blockClassifOrg h4');
-    if(h4Org) h4Org.textContent = "Par Organisme";
+    if(h4Org) h4Org.textContent = titleMain;
     const h4Pie = document.querySelector('#recouvPieBlock h4');
-    if(h4Pie) h4Pie.textContent = "Répartition par Organisme";
+    if(h4Pie) h4Pie.textContent = titlePie;
     
     const counts = {}; 
     const amounts = {};
     
+    // NOUVEAU : Fonction pour récupérer la bonne valeur de montant
+    const getVal = (d) => {
+        if (isNonSoldes) {
+            let isReel = typeof nonSoldesMode !== 'undefined' && nonSoldesMode === 'REEL';
+            let isAvoir = typeof nonSoldesMode !== 'undefined' && nonSoldesMode === 'AVOIR';
+            return Math.abs((isReel || isAvoir) ? (d.currentReste||0) : (d.reste||0));
+        }
+        return d.montant || 0;
+    };
+
     dataSet.forEach(d => {
-        counts[d.organisme] = (counts[d.organisme]||0)+1;
-        amounts[d.organisme] = (amounts[d.organisme]||0)+d.montant;
+        // NOUVEAU : Regroupement par État de dossier ou par Organisme
+        let key = isNonSoldes ? (d.etatDossier || "Non défini") : d.organisme;
+        counts[key] = (counts[key]||0) + 1;
+        amounts[key] = (amounts[key]||0) + getVal(d);
     });
     
-    const total = dataSet.reduce((s,d)=>s+d.montant,0);
+    const total = Object.values(amounts).reduce((s, val) => s + val, 0);
     let sorted = Object.entries(amounts).sort((a,b) => b[1] - a[1]);
     
     sorted.forEach(i => { 
         const p = total > 0 ? (i[1]/total*100).toFixed(0) : 0; 
+        
+        // Propriété de filtre dynamique pour le modal détaillé (Clic sur la ligne)
+        let filterProp = isNonSoldes ? "etatDossier" : "organisme";
+        
         tbody.insertAdjacentHTML('beforeend', `
-            <tr onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>d.organisme==='${i[0].replace(/'/g, "\\'")}'), 'Détail ${i[0].replace(/'/g, "\\'")}')" style="cursor:pointer;">
+            <tr onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>d.${filterProp}==='${i[0].replace(/'/g, "\\'")}'), 'Détail ${i[0].replace(/'/g, "\\'")}')" style="cursor:pointer;">
                 <td style="text-align:left;">${i[0]}</td>
                 <td style="text-align:center;">${counts[i[0]]}</td>
                 <td style="text-align:right; font-weight:bold;">${formatMoney(i[1])}</td>
@@ -1723,7 +1752,7 @@ window.renderBalanceTable = function(data) {
     thead.innerHTML = '';
 
     const isExpedition = (currentFamily === 'Expédition');
-    const fAn = document.getElementById('recouvFilterAnnee').value;
+    const fAn = document.getElementById('recouvFilterAnnee') ? document.getElementById('recouvFilterAnnee').value : "";
     const isPeriodMode = (isExpedition && recouvBalanceMode === 'PERIOD');
 
     let columns = [];
@@ -1766,7 +1795,6 @@ window.renderBalanceTable = function(data) {
             columns.forEach(c => agg[org].cols[c] = 0);
         }
 
-        // NOUVEAU: Valeur toujours positive dans la balance
         let valToAdd = d.montant;
         if (currentSubFamily === 'Dossiers non soldés') {
             let isReel = typeof nonSoldesMode !== 'undefined' && nonSoldesMode === 'REEL';
@@ -1819,7 +1847,13 @@ window.renderBalanceTable = function(data) {
         return;
     }
 
-    sortedAgg.forEach(([org, v]) => {
+    // CORRECTION ICI : Limiter à 25 éléments (ou selon le filtre actif)
+    let limit = 25;
+    if (typeof recouvTopN !== 'undefined') {
+        limit = (recouvTopN === 1000) ? sortedAgg.length : recouvTopN;
+    }
+
+    sortedAgg.slice(0, limit).forEach(([org, v]) => {
         let rowHTML = `
             <tr onclick="openRecouvDetailCustom(currentFilteredDataGlobal.filter(d=>d.organisme==='${org.replace(/'/g, "\\'")}'), 'Balance - ${org.replace(/'/g, "\\'")}')" style="cursor:pointer; border-bottom:1px solid #eee; transition:background 0.2s;">
                 <td style="text-align:left; font-weight:600; padding:10px; color:#444;">${org}</td>`;
@@ -1838,7 +1872,6 @@ window.renderBalanceTable = function(data) {
         tbody.insertAdjacentHTML('beforeend', rowHTML);
     });
 };
-
 // =========================================================
 // GESTION DES MODALES DE DÉTAIL (Fonctions manquantes)
 // =========================================================
