@@ -490,7 +490,8 @@
                       username: res.username,
                       email: res.email,
                       poste: res.poste,
-                      photo: res.photo
+                      photo: res.photo,
+                      modules: res.modules // <-- NOUVELLE LIGNE
                   };
 
                   const nameEl = document.getElementById('connectedUserName');
@@ -506,7 +507,7 @@
                   }
 
                   if(typeof applyUserPermissions === 'function') {
-                      applyUserPermissions(res.role, res.entity);
+                      applyUserPermissions(res.role, res.entity, res.modules);
                   }
 
                   const overlay = document.getElementById('loginOverlay');

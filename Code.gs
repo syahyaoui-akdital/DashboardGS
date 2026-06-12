@@ -32,11 +32,12 @@ function getUserContext() {
   // Recherche de l'utilisateur par Email dans le Sheet
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][2]).toLowerCase() === email) {
-      userConfig = { 
+userConfig = { 
         role: data[i][3], 
         entity: data[i][4],
         poste: data[i][5] || 'Utilisateur',
-        photo: data[i][6] || '' 
+        photo: data[i][6] || '',
+        modules: data[i][7] || 'ALL' // <-- NOUVELLE LIGNE
       };
       break; // Ce break est maintenant bien à l'intérieur de la boucle for
     }
@@ -52,7 +53,8 @@ function getUserContext() {
     role: userConfig.role,
     entity: userConfig.entity,
     poste: userConfig.poste,
-    photo: userConfig.photo
+    photo: userConfig.photo,
+    modules: userConfig.modules // <-- NOUVELLE LIGNE
   };
 }
 
@@ -78,7 +80,8 @@ function verifyCustomLogin(username, password, clientIp) {
         role: data[i][3], 
         entity: data[i][4],
         poste: data[i][5] || 'Utilisateur',
-        photo: data[i][6] || ''
+        photo: data[i][6] || '',
+        modules: data[i][7] || 'ALL' // <-- NOUVELLE LIGNE
       };
       break; // Ce break est également bien protégé dans sa boucle
     }
@@ -116,7 +119,8 @@ function verifyCustomLogin(username, password, clientIp) {
     username: username, 
     email: activeEmail,
     poste: userData.poste,
-    photo: userData.photo
+    photo: userData.photo,
+    modules: userData.modules // <-- NOUVELLE LIGNE
   };
 }
 

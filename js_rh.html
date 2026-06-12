@@ -261,7 +261,7 @@ function loadRhData_(init) {
 
         if(base.includes("HIA") || base.includes("CIOA")) options.push({ value:"HIA CIOA", label:"HIA CIOA" });
         
-        const preferred = ["ALL","HIA CIOA","CIT","CID","HPG","PIL","ALHIKMA"];
+        const preferred = ["ALL","HIA CIOA","CIT","CID","HPG","PIL","ALHIKMA","CII"];
         const seen = new Set(options.map(o=>o.value));
 
         preferred.forEach(v=>{

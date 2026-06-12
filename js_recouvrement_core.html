@@ -34,7 +34,7 @@ let nonSoldesMode = 'REEL'; // 'GLOBALE', 'REEL', 'TRANSFERT_N1', 'TRANSFERT_N2'
 const REC_MS_DAY = 1000 * 60 * 60 * 24;
 const REC_COLORS = ['#363795', '#e67e22', '#2ecc71', '#9b59b6', '#34495e', '#f1c40f', '#e74c3c'];
 const REC_MONTHS = ["JAN", "FEV", "MAR", "AVR", "MAI", "JUIN", "JUIL", "AOU", "SEP", "OCT", "NOV", "DEC"];
-const REC_ENTITY_ORDER = ['HIA CIOA', 'CIT', 'CID', 'HPG', 'PIL', 'AL HIKMA'];
+const REC_ENTITY_ORDER = ['HIA CIOA', 'CIT', 'CID', 'HPG', 'PIL', 'AL HIKMA','CII'];
 
 // --- CHARGEMENT ---
 document.addEventListener('DOMContentLoaded', () => { loadRecouvData(); });
@@ -233,6 +233,7 @@ function processBackendData(rawData, type) {
             else if (eUp.includes("CID")) domainExt = ".cid";
             else if (eUp.includes("HPG")) domainExt = ".hpg";
             else if (eUp.includes("PIL")) domainExt = ".pil";
+            else if (eUp.includes("CII")) domainExt = ".pil";
             else if (eUp.includes("HIKMA") || eUp.includes("CAH")) domainExt = ".cah";
             if (domainExt) extranetLink = "http://visionhis" + domainExt + "/visionhis/index.php?m=dPfact&tab=vw_cotation&fact_sejour_id=" + idSejour;
         }
@@ -937,6 +938,7 @@ function processRecouvFile(file) {
         else if (n.includes("CIOA") && !n.includes("HIA")) detectedEntity = "CIOA"; 
         else if (n.includes("HPG")) detectedEntity = "HPG"; 
         else if (n.includes("CIT")) detectedEntity = "CIT"; 
+        else if (n.includes("CII")) detectedEntity = "CII"; 
         else if (n.includes("ALHIKMA") || n.includes("HIKMA") || n.includes("CAH")) detectedEntity = "ALHIKMA"; 
         else if (n.includes("CID")) detectedEntity = "CID";
 
