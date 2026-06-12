@@ -274,7 +274,13 @@ function getDashboardData() {
     // On laisse rawData.capacity tel quel pour que les calculs fonctionnent.
   }
 
-  return { ...rawData, userContext: user };
+// --- NOUVEAU : Récupération de la date d'actualisation du CA ---
+  let dateMajCA = "--/--/----";
+  try {
+      dateMajCA = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("CA").getRange("AA2").getDisplayValue();
+  } catch(e) {}
+
+  return { ...rawData, userContext: user, dateMajCA: dateMajCA };
 }
 
 // ... (Fonctions utilitaires d'import standard inchangées ci-dessous) ...

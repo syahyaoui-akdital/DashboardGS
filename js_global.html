@@ -27,7 +27,7 @@
   window.monthOrder = ["JAN", "FEV", "MAR", "AVR", "MAI", "JUIN", "JUIL", "AOU", "SEP", "OCT", "NOV", "DEC"];
   window.quarters = { "T1": ["JAN", "FEV", "MAR"], "T2": ["AVR", "MAI", "JUIN"], "T3": ["JUIL", "AOU", "SEP"], "T4": ["OCT", "NOV", "DEC"] };
   window.monthToQuarterMap = { "JAN":"T1", "FEV":"T1", "MAR":"T1", "AVR":"T2", "MAI":"T2", "JUIN":"T2", "JUIL":"T3", "AOU":"T3", "SEP":"T3", "OCT":"T4", "NOV":"T4", "DEC":"T4" };
-  window.ENTITY_ORDER = ["HIA CIOA", "CIT", "CID", "PIL", "HPG", "ALHIKMA"];
+  window.ENTITY_ORDER = ["HIA CIOA", "CIT", "CID", "PIL", "HPG", "ALHIKMA","CII"];
   const FAMILIES_ORDER = ["Hospitalisation", "Bloc", "Salle de cathé et rythmologie", "Radiothérapie", "Chimiothérapie", "Médecine nucléaire", "Dialyse", "Hôpital du jour", "Radiologie", "Laboratoire", "Consultation", "Urgence", "Centre de rééducation", "Curiethérapie et CHIP"];
   const DEFAULT_FAMILY = "Hospitalisation";
   const TOTAL_REGION_LABEL = "Région Grand-Sud";
@@ -382,16 +382,16 @@ function attemptLogin() {
           title: "1. HOSPITALISATION",
           targetId: "view-flash",
           items: [
-              { name: "1.1 Vue Globale Hospitalisation", condition: () => hasDataFor('Hospitalisation'), action: () => setFlashFilters('Hospitalisation', '', '') },
-              { name: "1.2 Réanimation (Globale)", condition: () => hasDataFor('Hospitalisation', 'RÉANIMATION'), action: () => setFlashFilters('Hospitalisation', 'RÉANIMATION', '') },
+              { name: "1.1 Hospitalisation", condition: () => hasDataFor('Hospitalisation'), action: () => setFlashFilters('Hospitalisation', '', '') },
+              { name: "1.2 Réanimation", condition: () => hasDataFor('Hospitalisation', 'RÉANIMATION'), action: () => setFlashFilters('Hospitalisation', 'RÉANIMATION', '') },
               { name: "1.2.1 Réanimation Polyvalente", condition: () => hasDataFor('Hospitalisation', 'POLY'), action: () => setFlashFilters('Hospitalisation', 'RÉANIMATION', 'Poly') },
               { name: "1.2.2 Réanimation CCV", condition: () => hasDataFor('Hospitalisation', 'CCV'), action: () => setFlashFilters('Hospitalisation', 'RÉANIMATION', 'CCV') },
               { name: "1.2.3 Réanimation Néo-natale", condition: () => hasDataFor('Hospitalisation', 'NEO') || hasDataFor('Hospitalisation', 'NÉO'), action: () => setFlashFilters('Hospitalisation', 'RÉANIMATION', 'Néo') },            
-              { name: "1.3 Soins Intensifs (Global)", condition: () => hasDataFor('Hospitalisation', 'SOINS INTENSIFS'), action: () => setFlashFilters('Hospitalisation', 'SOINS INTENSIFS', '') },
+              { name: "1.3 Soins Intensifs", condition: () => hasDataFor('Hospitalisation', 'SOINS INTENSIFS'), action: () => setFlashFilters('Hospitalisation', 'SOINS INTENSIFS', '') },
               { name: "1.3.1 USI Polyvalente", condition: () => hasDataFor('Hospitalisation', 'USI') && (hasDataFor('Hospitalisation', 'POLY') || hasDataFor('Hospitalisation', 'USIP')), action: () => setFlashFilters('Hospitalisation', 'SOINS INTENSIFS', 'Poly') },
               { name: "1.3.2 USI Oncologie", condition: () => hasDataFor('Hospitalisation', 'USI') && (hasDataFor('Hospitalisation', 'ONCO') || hasDataFor('Hospitalisation', 'USIO')), action: () => setFlashFilters('Hospitalisation', 'SOINS INTENSIFS', 'Onco') },
-              { name: "1.3.3 USI CCV (Cardio)", condition: () => hasDataFor('Hospitalisation', 'USI') && (hasDataFor('Hospitalisation', 'CCV') || hasDataFor('Hospitalisation', 'USIC')), action: () => setFlashFilters('Hospitalisation', 'SOINS INTENSIFS', 'CCV') },
-              { name: "1.4 Maternité", condition: () => hasDataFor('Hospitalisation', 'MATERNIT'), action: () => setFlashFilters('Hospitalisation', 'MATERNITE', '') },
+              { name: "1.3.3 USI CCV", condition: () => hasDataFor('Hospitalisation', 'USI') && (hasDataFor('Hospitalisation', 'CCV') || hasDataFor('Hospitalisation', 'USIC')), action: () => setFlashFilters('Hospitalisation', 'SOINS INTENSIFS', 'CCV') },
+              { name: "1.4 Maternité", condition: () => hasDataFor('Hospitalisation', 'Maternité'), action: () => setFlashFilters('Hospitalisation', 'Maternité', '') },
               { name: "1.5 HMC", condition: () => hasDataFor('Hospitalisation', 'HMC'), action: () => setFlashFilters('Hospitalisation', 'HMC', '') }
           ]
       },
@@ -400,16 +400,16 @@ function attemptLogin() {
           targetId: "view-flash",
           items: [
               { name: "2.1 Bloc Opératoire", condition: () => hasDataFor('Bloc'), action: () => setFlashFilters('Bloc', '', '') },
-              { name: "2.2 Cathétérisme", condition: () => hasDataFor('cathé'), action: () => setFlashFilters('Salle de cathé et rythmologie', '', '') }
+              { name: "2.2 Salle de cathétérisme", condition: () => hasDataFor('cathé'), action: () => setFlashFilters('Salle de cathé et rythmologie', '', '') }
           ]
       },
       "FLASH_3": {
           title: "3. RADIOTHÉRAPIE & CHIMIOTHÉRAPIE",
           targetId: "view-flash",
           items: [
-              { name: "3.1 Radiothérapie (Passage)", condition: () => hasDataFor('Radiothérapie', 'Passage'), action: () => setFlashFilters('Radiothérapie', 'Passage sur la machine') },
+              { name: "3.1 Radiothérapie (Passage)", condition: () => hasDataFor('Radiothérapie'), action: () => setFlashFilters('Radiothérapie', '','') },
               { name: "3.2 Radiothérapie (Technique)", condition: () => hasDataFor('Radiothérapie', 'Technique'), action: () => setFlashFilters('Radiothérapie', 'technique') },
-              { name: "3.3 Chimiothérapie (Séances)", condition: () => hasDataFor('Chimiothérapie', 'Passage'), action: () => setFlashFilters('Chimiothérapie', "Passage au niveau de l'HDJ") },
+              { name: "3.3 Chimiothérapie (Passage)", condition: () => hasDataFor('Chimiothérapie'), action: () => setFlashFilters('Chimiothérapie','','') },
               { name: "3.4 Chimiothérapie (Nouveaux Cas)", condition: () => hasDataFor('Chimiothérapie', 'Nouveaux cas'), action: () => setFlashFilters('Chimiothérapie', 'Nouveaux cas') }
           ]
       },
@@ -417,7 +417,7 @@ function attemptLogin() {
           title: "4. RADIOLOGIE & LABORATOIRE",
           targetId: "view-flash",
           items: [
-              { name: "4.1 Imagerie (Radio)", condition: () => hasDataFor('Radiologie'), action: () => setFlashFilters('Radiologie', '', '') },
+              { name: "4.1 Radiologie", condition: () => hasDataFor('Radiologie'), action: () => setFlashFilters('Radiologie', '', '') },
               { name: "4.2 Laboratoire", condition: () => hasDataFor('Laboratoire'), action: () => setFlashFilters('Laboratoire', '', '') }
           ]
       },
@@ -435,7 +435,7 @@ function attemptLogin() {
           targetId: "view-flash",
           items: [
               { name: "6.1 Médecine Nucléaire", condition: () => hasDataFor('Médecine nucléaire'), action: () => setFlashFilters('Médecine nucléaire', '', '') },
-              { name: "6.2 Dialyse - Séances", condition: () => hasDataFor('Dialyse', 'Passage'), action: () => setFlashFilters('Dialyse', '', "Passage au niveau de l'HDJ") },
+              { name: "6.2 Dialyse - Passage", condition: () => hasDataFor('Dialyse', 'Passage'), action: () => setFlashFilters('Dialyse', '','') },
               { name: "6.3 Dialyse - Nouveaux Cas", condition: () => hasDataFor('Dialyse', 'Nouveaux cas'), action: () => setFlashFilters('Dialyse', '', "Nouveaux cas") }
           ]
       },
@@ -451,18 +451,18 @@ function attemptLogin() {
           title: "8. DÉPENSES",
           targetId: "view-depenses",
           items: [ 
-              { name: "8.1 Vue Globale Dépenses (KPIs & Top Bénéficiaires)", action: () => { if(typeof updateExpensesView === 'function') updateExpensesView(); }, captureId: "view-depenses" }
+              { name: "8.1 Vue Globale Dépenses", action: () => { if(typeof updateExpensesView === 'function') updateExpensesView(); }, captureId: "view-depenses" }
           ]
       },
       "RECOUV_GROUP": {
           title: "9. RECOUVREMENT",
           targetId: "view-recouvrement",
           items: [
-              { name: "9.1 Dossiers Non Réglés - Synthèse", action: () => forceSwitchFamily('Recouvrement', 'Dossiers non réglés'), captureId: "view-recouvrement", hideIds: ["recouvTopTable", "blockClassifNature", "rowAlertsNonSoldes", "rowAlertsExped"] },
+              { name: "9.1 Dossiers Non Réglés", action: () => forceSwitchFamily('Recouvrement', 'Dossiers non réglés'), captureId: "view-recouvrement", hideIds: ["recouvTopTable", "blockClassifNature", "rowAlertsNonSoldes", "rowAlertsExped"] },
               { name: "9.2 Dossiers Non Réglés - Top 25 Factures", action: () => { forceSwitchFamily('Recouvrement', 'Dossiers non réglés'); setTimeout(()=>{updateRecouvViewMode('LIST'); const sel=document.getElementById('recouvTopN'); if(sel)sel.value='25'; updateRecouvTopN(25);}, 300); }, captureId: "recouvTopTable" },
               { name: "9.3 Dossiers Non Réglés - Balance (Top 25)", action: () => { forceSwitchFamily('Recouvrement', 'Dossiers non réglés'); setTimeout(()=>{updateRecouvViewMode('BALANCE'); const sel=document.getElementById('recouvTopN'); if(sel)sel.value='25'; updateRecouvTopN(25);}, 300); }, captureId: "recouvTopTable" },
               
-              { name: "9.4 Dossiers Non Soldés - Synthèse (Situation Réelle)", action: () => forceSwitchFamily('Recouvrement', 'Dossiers non soldés'), captureId: "view-recouvrement", hideIds: ["recouvTopTable", "recouvPieBlock", "rowAlertsRecouv", "rowAlertsExped"] },
+              { name: "9.4 Dossiers Non Soldés", action: () => forceSwitchFamily('Recouvrement', 'Dossiers non soldés'), captureId: "view-recouvrement", hideIds: ["recouvTopTable", "recouvPieBlock", "rowAlertsRecouv", "rowAlertsExped"] },
               { name: "9.5 Dossiers Non Soldés - Top 25 Factures", action: () => { forceSwitchFamily('Recouvrement', 'Dossiers non soldés'); setTimeout(()=>{updateRecouvViewMode('LIST'); const sel=document.getElementById('recouvTopN'); if(sel)sel.value='25'; updateRecouvTopN(25);}, 300); }, captureId: "recouvTopTable" },
               { name: "9.6 Dossiers Non Soldés - Balance (Top 25)", action: () => { forceSwitchFamily('Recouvrement', 'Dossiers non soldés'); setTimeout(()=>{updateRecouvViewMode('BALANCE'); const sel=document.getElementById('recouvTopN'); if(sel)sel.value='25'; updateRecouvTopN(25);}, 300); }, captureId: "recouvTopTable" },
               
@@ -473,7 +473,7 @@ function attemptLogin() {
           title: "10. EXPÉDITION",
           targetId: "view-recouvrement",
           items: [
-              { name: "10.1 Dossiers Non Expédiés - KPIs & Évolution", action: () => forceSwitchFamily('Expédition', 'Dossiers non expédiés'), captureId: "view-recouvrement", hideIds: ["recouvTopTable", "blockClassifOrg", "blockClassifNature", "recouvPieBlock", "rowAlertsRecouv", "rowAlertsNonSoldes"] },
+              { name: "10.1 Dossiers Non Expédiés", action: () => forceSwitchFamily('Expédition', 'Dossiers non expédiés'), captureId: "view-recouvrement", hideIds: ["recouvTopTable", "blockClassifOrg", "blockClassifNature", "recouvPieBlock", "rowAlertsRecouv", "rowAlertsNonSoldes"] },
               { name: "10.2 Dossiers Non Expédiés - Répartition Org. & Nature", action: () => forceSwitchFamily('Expédition', 'Dossiers non expédiés'), captureId: "view-recouvrement", hideIds: ["recouvKPIs", "rowAlertsExped", "rowAlertsRecouv", "rowAlertsNonSoldes", "recouvChartBlock", "recouvTopTable"] },
               { name: "10.3 Dossiers Non Expédiés - Top 25 Factures", action: () => { forceSwitchFamily('Expédition', 'Dossiers non expédiés'); setTimeout(()=>{updateRecouvViewMode('LIST'); const sel=document.getElementById('recouvTopN'); if(sel)sel.value='25'; updateRecouvTopN(25);}, 300); }, captureId: "recouvTopTable" },
               { name: "10.4 Dossiers Non Expédiés - Balance (Top 25)", action: () => { forceSwitchFamily('Expédition', 'Dossiers non expédiés'); setTimeout(()=>{updateRecouvViewMode('BALANCE'); const sel=document.getElementById('recouvTopN'); if(sel)sel.value='25'; updateRecouvTopN(25);}, 300); }, captureId: "recouvTopTable" },
@@ -485,9 +485,9 @@ function attemptLogin() {
           title: "11. HONORAIRES",
           targetId: "view-honoraires",
           items: [ 
-              { name: "11.1 Vue Globale Honoraires (KPIs & Graphes)", action: () => { if(typeof updateHonorairesView === 'function') updateHonorairesView('INIT'); }, captureId: "view-honoraires", hideIds: ["honoMainTable"] },
-              { name: "11.2 Analyse Médecins (Top 20)", action: () => { if(typeof updateHonoViewMode==='function') { updateHonoViewMode('MEDECIN'); const sel=document.getElementById('honoTopN'); if(sel)sel.value='20'; updateHonoTopN(20); } }, captureId: "honoMainTable" },
-              { name: "11.3 Analyse Spécialités (Top 20)", action: () => { if(typeof updateHonoViewMode==='function') { updateHonoViewMode('SPECIALITE'); const sel=document.getElementById('honoTopN'); if(sel)sel.value='20'; updateHonoTopN(20); } }, captureId: "honoMainTable" },
+              { name: "11.1 Vue Globale Honoraires", action: () => { if(typeof updateHonorairesView === 'function') updateHonorairesView('INIT'); }, captureId: "view-honoraires", hideIds: ["honoMainTable"] },
+              { name: "11.2 Analyse par médecin (Top 20)", action: () => { if(typeof updateHonoViewMode==='function') { updateHonoViewMode('MEDECIN'); const sel=document.getElementById('honoTopN'); if(sel)sel.value='20'; updateHonoTopN(20); } }, captureId: "honoMainTable" },
+              { name: "11.3 Analyse par spécialité (Top 20)", action: () => { if(typeof updateHonoViewMode==='function') { updateHonoViewMode('SPECIALITE'); const sel=document.getElementById('honoTopN'); if(sel)sel.value='20'; updateHonoTopN(20); } }, captureId: "honoMainTable" },
               { name: "11.4 Balance Âgée (Top 20)", action: () => { if(typeof updateHonoViewMode==='function') { updateHonoViewMode('AGEING'); const sel=document.getElementById('honoTopN'); if(sel)sel.value='20'; updateHonoTopN(20); } }, captureId: "honoMainTable" }
           ]
       },
@@ -673,9 +673,12 @@ function initializeDashboard(data) {
       const overlay = document.getElementById('loadingOverlay');
       if(overlay) overlay.style.display = 'none'; 
       
-      // 2. Stockage des données
+// 2. Stockage des données
       window.rawData = data; 
       if(data.userContext) currentUserContext = data.userContext;
+      
+      // NOUVEAU : Sauvegarde de la date du CA
+      if(data.dateMajCA) window.dateMajCA = data.dateMajCA;
 
       // --- SÉCURITÉ RADICALE : On masque TOUS les contenus immédiatement ---
       // Cela évite que le Flash ne "saute" aux yeux avant la redirection
@@ -1089,7 +1092,7 @@ async function processDynamicExport(format) {
       const loadingHeader = modal.querySelector('h3');
       const originalText = loadingHeader.innerHTML;
       
-      loadingHeader.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Traitement Pro en cours...`;
+      loadingHeader.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Traitement en cours...`;
 
       let pptx, pdf;
       const entiteVal = document.getElementById('entite').value;
@@ -1110,7 +1113,7 @@ async function processDynamicExport(format) {
       if (format === 'ppt') {
           pptx = new PptxGenJS();
           pptx.layout = 'LAYOUT_16x9';
-          pptx.title = `Rapport d'Activité - ${entiteName}`;
+          pptx.title = `Rapport d'activité - ${entiteName}`;
           
           if(includeCover) {
               let slide = pptx.addSlide(); 
@@ -1368,7 +1371,7 @@ async function processDynamicExport(format) {
           try {
               let captureWidth = Math.max(1600, targetEl.scrollWidth);
 
-              const canvas = await html2canvas(targetEl, { 
+const canvas = await html2canvas(targetEl, { 
                   scale: 2, 
                   useCORS: true, 
                   logging: false, 
@@ -1376,7 +1379,16 @@ async function processDynamicExport(format) {
                   scrollX: 0, 
                   scrollY: 0,
                   width: captureWidth,         
-                  windowWidth: captureWidth    
+                  windowWidth: captureWidth,
+                  // SÉCURITÉ : Ignorer les canvas (graphiques) avec une largeur/hauteur de 0 ou cachés
+                  ignoreElements: (node) => {
+                      if (node.tagName && node.tagName.toLowerCase() === 'canvas') {
+                          if (node.width === 0 || node.height === 0 || window.getComputedStyle(node).display === 'none') {
+                              return true; // Demande à html2canvas de l'ignorer
+                          }
+                      }
+                      return false;
+                  }
               });
               const imgData = canvas.toDataURL('image/jpeg', 0.85);
 
@@ -1419,7 +1431,7 @@ async function processDynamicExport(format) {
                   pdf.setDrawColor(226, 232, 240); pdf.setLineWidth(0.5);
                   pdf.line(10, finalPageH - footerHeight, pdfPageW - 10, finalPageH - footerHeight);
                   pdf.setFontSize(8); pdf.setTextColor(148, 163, 184);
-                  pdf.text(`Edité par Sami YAHYAOUI le ${dateGen} via Dashboard Akdital`, marginX, finalPageH - 4);
+                  pdf.text(`Edité par Sami YAHYAOUI le ${dateGen}`, marginX, finalPageH - 4);
                   pdf.setFont("helvetica", "bold");
                   pdf.text(`Page ${currentPageNum}`, pdfPageW - marginX, finalPageH - 4, { align: 'right' });
                   
@@ -1457,7 +1469,7 @@ async function processDynamicExport(format) {
           loadingHeader.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Export Haute Qualité... ${Math.round(processedCount / checkboxes.length * 100)}%`;
       } 
 
-      const fileName = `Rapport_Pro_${entiteName.replace(/\s+/g,'_')}_${dateGen.replace(/\//g,'-')}`;
+      const fileName = `Rapport_d'activité_${entiteName.replace(/\s+/g,'_')}_${dateGen.replace(/\//g,'-')}`;
       if (format === 'pdf') pdf.save(fileName + ".pdf"); else pptx.writeFile({ fileName: fileName + ".pptx" });
 
       loadingHeader.innerHTML = originalText;

@@ -217,27 +217,34 @@
       const titleDisplay = selectedEntite || "Région Grand-Sud";
       safeSetText('ctxBudgetTitle', titleDisplay + (subFilterValue ? ` (${subFilterValue})` : ""));
       safeSetText('ctxBudgetSubtitle', `Période : ${mois || trim || (isComparison ? 'Comparatif 2025/2026' : 'Année '+refYear)}`);
-      
+
+// -- NOUVEAU : Injection de la date --
+      const dateMajDiv = document.getElementById('dateMajBudget');
+      if (dateMajDiv && window.dateMajCA) {
+          dateMajDiv.textContent = "Date d'actualisation : " + window.dateMajCA;
+      }
+
       // -- CORRECTION MANAGEMENT --
       // On détermine l'entité à chercher dans contactData
-      let lookupEntite = (calcEntite === 'HIA CIOA' || calcEntite === 'HIA' || calcEntite === 'CIOA') ? 'HIA' : calcEntite;
-      if (!lookupEntite || lookupEntite === '') lookupEntite = "Région Grand-Sud"; // Fallback Global
+let lookupEntite = (calcEntite === 'HIA CIOA' || calcEntite === 'HIA' || calcEntite === 'CIOA') ? 'HIA' : calcEntite;
+      if (!lookupEntite || lookupEntite === '') lookupEntite = "Région Grand-Sud"; 
 
-      // Récupération sécurisée
       let ctInfo = { respExploit: '--', dirMedical: '--' };
       if (window.extraContactData) {
-          if (window.extraContactData[lookupEntite]) {
-              ctInfo = window.extraContactData[lookupEntite];
-          } else if (window.extraContactData[selectedEntite]) {
-              ctInfo = window.extraContactData[selectedEntite];
-          }
+          if (window.extraContactData[lookupEntite]) ctInfo = window.extraContactData[lookupEntite];
+          else if (window.extraContactData[selectedEntite]) ctInfo = window.extraContactData[selectedEntite];
       }
-                     
       safeSetText('budgetResp', ctInfo.respExploit || '--');
       safeSetText('budgetDirMed', ctInfo.dirMedical || '--');
 
-      // KPI CARDS
-      safeSetText('cardCaRealise', window.formatMoney(totalRef));
+      // -- NOUVEAU : SPLIT MULTI-ANNÉES CA VS BUDGET --
+      if (isComparison) {
+          document.getElementById('cardCaRealise').innerHTML = `<div style="display:flex; flex-direction:column; line-height:1.2;"><span style="font-size:1.1em;">${window.formatMoney(totalRef + totalPrev)}</span><span style="font-size:0.5em; color:#7f8c8d; font-weight:700; margin-top:4px;">25: <span style="color:#2c3e50;">${window.formatMoney(totalPrev)}</span> | 26: <span style="color:#363795;">${window.formatMoney(totalRef)}</span></span></div>`;
+          document.getElementById('cardBudget').innerHTML = `<div style="display:flex; flex-direction:column; line-height:1.2;"><span style="font-size:1.1em;">${window.formatMoney(totalBudget)}</span><span style="font-size:0.5em; color:#7f8c8d; font-weight:700; margin-top:4px;">26: <span style="color:#363795;">${window.formatMoney(totalBudget)}</span></span></div>`;
+      } else {
+          document.getElementById('cardCaRealise').innerHTML = `<span style="font-size:1em;">${window.formatMoney(totalRef)}</span>`;
+          document.getElementById('cardBudget').innerHTML = `<span style="font-size:1em;">${window.formatMoney(totalBudget)}</span>`;
+      }
       
       const elEvol = document.getElementById('cardCaEvol');
       if(elEvol) {

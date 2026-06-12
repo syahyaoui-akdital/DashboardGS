@@ -159,11 +159,21 @@ function updateExpensesView() {
     });
 
     // KPI
-    const total = currentFilteredData.reduce((sum, d) => sum + d.montant, 0);
+const total = currentFilteredData.reduce((sum, d) => sum + d.montant, 0);
     const countOps = currentFilteredData.length;
     
-    safeSetText('kpiDepenseTotal', formatMoney(total) + " DH");
-    safeSetText('kpiVolTotal', countOps);
+    if (!fAnnee || fAnnee === "") {
+        let tot25 = currentFilteredData.filter(d => String(d.annee) === "2025").reduce((s,d) => s + (parseFloat(d.montant)||0), 0);
+        let tot26 = currentFilteredData.filter(d => String(d.annee) === "2026").reduce((s,d) => s + (parseFloat(d.montant)||0), 0);
+        let vol25 = currentFilteredData.filter(d => String(d.annee) === "2025").length;
+        let vol26 = currentFilteredData.filter(d => String(d.annee) === "2026").length;
+
+        safeSetHTML('kpiDepenseTotal', `<div style="display:flex; flex-direction:column; line-height:1.2;"><span style="font-size:1.1em;">${formatMoney(total)}</span><span style="font-size:0.5em; color:#7f8c8d; font-weight:700; margin-top:4px;">25: <span style="color:#2c3e50;">${formatMoney(tot25)}</span> | 26: <span style="color:#363795;">${formatMoney(tot26)}</span></span></div>`);
+        safeSetHTML('kpiVolTotal', `<span>${countOps}</span> <span style="font-size:0.7em; color:#999; font-weight:normal;">(25: ${vol25} | 26: ${vol26})</span>`);
+    } else {
+        safeSetHTML('kpiDepenseTotal', `<span style="font-size:1em;">${formatMoney(total)}</span>`);
+        safeSetHTML('kpiVolTotal', `<span>${countOps}</span>`);
+    }
     
     const nbMois = targetMonths.length || 1;
     const avgTicket = countOps > 0 ? total / countOps : 0;
