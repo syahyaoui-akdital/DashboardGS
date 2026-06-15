@@ -82,11 +82,13 @@
     </div>
 
     <div id="honoKPIs" class="export-section cards-row" data-export-title="Honoraires - Indicateurs" style="align-items: stretch; grid-template-columns: repeat(4, 1fr); margin-bottom:20px;">
-        <div class="stat-card" style="border-top: 4px solid #2c3e50; position:relative; overflow:hidden;">
-            <div style="position:relative; z-index:2;">
-                <div class="stat-title">TOTAL BRUT</div>
-                <div id="kpiHonoBrut" class="stat-value" style="color: #2c3e50; font-size:1.6em;">--</div>
-            </div>
+<div class="stat-card" style="border-top: 4px solid #363795;">
+    <div class="stat-title">TOTAL HONORAIRES</div>
+    <div id="kpiHonoMontantBrut" class="stat-value">--</div>
+    <div class="stat-sub" style="margin-top: 5px; font-weight: 600; color: #e74c3c;">
+        Non réglé : <span id="kpiHonoNonRegle" style="font-weight: 800;">0 DH</span>
+    </div>
+</div>
             <i class="fas fa-coins card-bg-icon"></i>
         </div>
         <div class="stat-card" style="border-top: 4px solid #8e44ad; position:relative; overflow:hidden;">

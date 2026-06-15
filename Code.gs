@@ -1111,24 +1111,65 @@ function getNonSoldesData() {
   } catch(e) {}
 
   const sheet = ss.getSheetByName("NON_SOLDE_FOCUS");
-  if (!sheet || sheet.getLastRow() < 2) return { data: [], lastUpdate: lastUpdate };
+  if (!sheet || sheet.getLastRow() < 2) return { data: [], multiEntityPatients: [], insolvablesRegion: [], lastUpdate: lastUpdate };
   
   const rawData = sheet.getDataRange().getValues();
+  
+  // ========================================================
+  // CALCUL AVANT FILTRAGE (Multi-entité + Insolvables Région)
+  // ========================================================
+  const patientStats = {};
+  
+  rawData.slice(1).forEach(row => {
+     const ent = String(row[0]).trim();
+     const pat = String(row[3]).trim().toUpperCase(); // Colonne D : Patient
+     const resteVal = row[12]; // Colonne M : Reste à payer
+     
+     // Nettoyage de la valeur financière
+     let reste = 0;
+     if (typeof resteVal === 'number') { reste = resteVal; } 
+     else { reste = parseFloat(String(resteVal).replace(/[\s,]/g, (m) => m === ',' ? '.' : '')) || 0; }
+     
+     if (pat && reste > 0) {
+       if (!patientStats[pat]) patientStats[pat] = { entites: new Set(), totalReste: 0 };
+       patientStats[pat].entites.add(ent);
+       patientStats[pat].totalReste += reste;
+     }
+  });
+  
+  // 1. Liste des patients présents dans plus d'une entité
+  const multiEntityPatients = Object.keys(patientStats).filter(pat => patientStats[pat].entites.size > 1);
+  
+  // 2. Classement Régional Global (Top 100 insolvables)
+  const insolvablesRegion = Object.keys(patientStats)
+      .map(pat => ({ patient: pat, reste: patientStats[pat].totalReste, entites: Array.from(patientStats[pat].entites).join(' / ') }))
+      .sort((a, b) => b.reste - a.reste)
+      .slice(0, 100);
 
-  // Filtrage entité (AVEC EXCEPTION HIA CIOA)
+  // ========================================================
+  // FILTRAGE DE SÉCURITÉ SELON L'ENTITÉ DE L'UTILISATEUR
+  // ========================================================
   if (user.entity !== 'ALL') {
     const header = rawData[0];
     const filteredRows = rawData.slice(1).filter(row => {
-      // Index 0 = Entité dans NON_SOLDE_FOCUS
       const rowEnt = String(row[0]).trim();
-      // EXCEPTION HIA CIOA
       if (user.entity === 'HIA CIOA') return rowEnt === 'HIA' || rowEnt === 'CIOA';
       return rowEnt === user.entity;
     });
-    return { data: [header, ...filteredRows], lastUpdate: lastUpdate };
+    return { 
+      data: [header, ...filteredRows], 
+      multiEntityPatients: multiEntityPatients, 
+      insolvablesRegion: insolvablesRegion, 
+      lastUpdate: lastUpdate 
+    };
   }
 
-  return { data: rawData, lastUpdate: lastUpdate };
+  return { 
+    data: rawData, 
+    multiEntityPatients: multiEntityPatients, 
+    insolvablesRegion: insolvablesRegion, 
+    lastUpdate: lastUpdate 
+  };
 }
 
 // ... (Votre code existant jusqu'à la fin) ...

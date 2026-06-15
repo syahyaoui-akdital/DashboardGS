@@ -247,7 +247,8 @@ function attemptLogin() {
                       username: res.username,
                       email: res.email,
                       poste: res.poste,
-                      photo: res.photo
+                      photo: res.photo,
+                      modules: res.modules
                   };
 
                   const nameEl = document.getElementById('connectedUserName');
@@ -263,7 +264,7 @@ function attemptLogin() {
                   }
 
                   if(typeof applyUserPermissions === 'function') {
-                      applyUserPermissions(res.role, res.entity);
+                      applyUserPermissions(res.role, res.entity, res.modules);
                   }
 
                   const overlay = document.getElementById('loginOverlay');
@@ -733,22 +734,17 @@ function initializeDashboard(data) {
       const overlay = document.getElementById('loadingOverlay');
       if(overlay) overlay.style.display = 'none'; 
       
-// 2. Stockage des données
+      // 2. Stockage des données
       window.rawData = data; 
       if(data.userContext) currentUserContext = data.userContext;
-      
-      // NOUVEAU : Sauvegarde de la date du CA
       if(data.dateMajCA) window.dateMajCA = data.dateMajCA;
 
-      // --- SÉCURITÉ RADICALE : On masque TOUS les contenus immédiatement ---
-      // Cela évite que le Flash ne "saute" aux yeux avant la redirection
       const allParts = document.querySelectorAll('.dashboard-part');
       allParts.forEach(div => div.style.display = 'none');
 
       // 3. Traitement des données
       if (data && data.normalizedData) { 
           window.normalizedData = data.normalizedData.slice(1).filter(r => Array.isArray(r) && r.length>0 && r[0]); 
-          // ... (reste des données annexes)
           window.extraContactData = data.contactData || {}; 
           window.extraCAData = data.caData || {}; 
           window.extraCapacityData = data.capacity || {}; 
@@ -760,53 +756,38 @@ function initializeDashboard(data) {
       if(typeof populateFilters === "function") populateFilters(); 
       if(typeof applyUserPermissions === 'function') applyUserPermissions();
       const updateStatusEl = document.getElementById('updateStatus');
-if (updateStatusEl) {
-    updateStatusEl.textContent = 'Prêt';
-}
+      if (updateStatusEl) {
+          updateStatusEl.textContent = 'Prêt';
+      }
 
-      // =========================================================
       // 5. ROUTAGE ET REDIRECTION FORCÉE
-      // =========================================================
-      
       if (currentUserContext && currentUserContext.role === 'VIEWER_RECOUV') {
           console.log("🔒 ROLE RECOUVREMENT : Activation forcée 'Dossiers non réglés'");
-          
-          // A. On active l'onglet principal Recouvrement
-          // (Note : switchTab gère l'affichage du div, donc il va ré-afficher le bon div masqué plus haut)
           switchTab('recouvrement');
 
-          // B. On active le sous-onglet "Dossiers non réglés"
-          // On utilise setInterval pour attendre que le bouton soit bien présent dans le DOM
           const checkBtnInterval = setInterval(() => {
-              // On cherche le bouton spécifique
-              // Sélecteur qui cherche un bouton contenant le texte exact ou l'onclick
               const btnNonRegles = Array.from(document.querySelectorAll('button')).find(b => 
                   b.textContent.includes("Dossiers non réglés") || 
                   (b.getAttribute('onclick') && b.getAttribute('onclick').includes("Dossiers non réglés"))
               );
 
               if (btnNonRegles) {
-                  clearInterval(checkBtnInterval); // On arrête de chercher
-                  console.log("👉 Clic simulé sur Dossiers non réglés");
-                  btnNonRegles.click(); // On simule le clic : c'est la méthode la plus fiable
+                  clearInterval(checkBtnInterval); 
+                  btnNonRegles.click(); 
               } else if (typeof switchFamily === 'function') {
-                  // Fallback si bouton pas trouvé mais fonction dispo
                   clearInterval(checkBtnInterval);
                   switchFamily('Recouvrement', 'Dossiers non réglés');
               }
-          }, 100); // Vérifie toutes les 0.1s
-
-          // Sécurité anti-boucle infinie (arrête de chercher après 5s)
+          }, 100); 
           setTimeout(() => clearInterval(checkBtnInterval), 5000);
 
-} else {
+      } else {
           console.log("🏠 REDIRECTION ACCUEIL");
-          let firstTab = 'flash'; // Onglet par défaut
+          let firstTab = 'flash'; 
           
           if (currentUserContext && currentUserContext.modules && currentUserContext.modules !== 'ALL' && currentUserContext.role !== 'ADMIN') {
                const allowed = currentUserContext.modules.split(',').map(m => m.trim().toUpperCase());
                
-               // Si Flash n'est pas autorisé, on cherche le premier module autorisé
                if (!allowed.some(m => m === 'FLASH' || m.startsWith('FLASH_'))) {
                    const invMap = { 'BUDGET': 'ca-budget', 'RECOUVREMENT': 'recouvrement', 'EXPEDITION': 'recouvrement', 'DEPENSES': 'depenses', 'HONORAIRES': 'honoraires', 'RH': 'rh' };
                    for (const m of allowed) {
@@ -822,7 +803,6 @@ if (updateStatusEl) {
           if (firstTab === 'flash' && typeof drawCharts === "function") drawCharts();
           switchTab(firstTab);
           
-          // Cliquer sur le premier sous-onglet de recouvrement disponible si on tombe dessus
           if (firstTab === 'recouvrement') {
               setTimeout(() => {
                  const firstVisibleSubBtn = Array.from(document.querySelectorAll('.nav-sub-btn')).find(b => b.style.display !== 'none');
@@ -830,6 +810,8 @@ if (updateStatusEl) {
               }, 300);
           }
       }
+  } // <--- CETTE ACCOLADE FERME PARFAITEMENT LA FONCTION
+
   function showError(e) { document.getElementById('loadingOverlay').style.display = 'none'; alert("Erreur : " + e.message); }
   
   function updateMonthOptions() {

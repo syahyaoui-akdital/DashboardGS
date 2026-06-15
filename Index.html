@@ -410,11 +410,6 @@
     document.body.style.overflow = 'hidden';
     var clientIP = "Unknown";
 
-// --- GESTION LOGIN SECURISE + IP LOGS ---
-    
-    document.body.style.overflow = 'hidden';
-    var clientIP = "Unknown";
-
     // 1. INITIALISATION AU CHARGEMENT (Modifié)
     window.onload = function() {
         // A. Récupération IP (Service tiers)
@@ -484,14 +479,13 @@
       google.script.run
           .withSuccessHandler(function(res) {
               if (res.success) {
-                  window.currentUserContext = {
+window.currentUserContext = {
                       role: res.role,
                       entity: res.entity,
                       username: res.username,
                       email: res.email,
                       poste: res.poste,
                       photo: res.photo,
-                      modules: res.modules // <-- NOUVELLE LIGNE
                   };
 
                   const nameEl = document.getElementById('connectedUserName');
@@ -506,8 +500,8 @@
                       photoEl.src = photoUrl;
                   }
 
-                  if(typeof applyUserPermissions === 'function') {
-                      applyUserPermissions(res.role, res.entity, res.modules);
+if(typeof applyUserPermissions === 'function') {
+                      applyUserPermissions(res.role, res.entity, res.modules); // <-- AJOUT DE res.modules
                   }
 
                   const overlay = document.getElementById('loginOverlay');

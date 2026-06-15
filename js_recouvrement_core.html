@@ -101,9 +101,15 @@ function loadRecouvData() {
         }).getObjRealDashboardData();
 
         // Dossiers non soldés avec Transfert ET Date d'actualisation
+// Dossiers non soldés avec Transfert ET Date d'actualisation
         google.script.run.withSuccessHandler(response => {
             if (response && response.data) {
                 if (response.lastUpdate) lastUpdateNonSoldes = response.lastUpdate; // RÉCUPÉRATION DATE
+                
+                // NOUVEAU : Sauvegarde des listes globales pour le bouton PIP et les alertes
+                window.multiEntityPatientsList = response.multiEntityPatients || [];
+                window.insolvablesRegionList = response.insolvablesRegion || [];
+
                 let rawNonSoldes = processBackendData(response.data, 'NON_SOLDES');
                 nonSoldesData = postProcessNonSoldes(rawNonSoldes);
                 if (currentSubFamily === 'Dossiers non soldés') {
@@ -225,17 +231,21 @@ function processBackendData(rawData, type) {
         }
 
         let extranetLink = "";
-        if (idSejour) {
-            let domainExt = "";
+if (idSejour) {
+            let baseUrl = "";
             let eUp = entite.toUpperCase();
-            if (eUp.includes("HIA") || eUp.includes("CIOA")) domainExt = ".hia";
-            else if (eUp.includes("CIT")) domainExt = ".cit";
-            else if (eUp.includes("CID")) domainExt = ".cid";
-            else if (eUp.includes("HPG")) domainExt = ".hpg";
-            else if (eUp.includes("PIL")) domainExt = ".pil";
-            else if (eUp.includes("CII")) domainExt = ".pil";
-            else if (eUp.includes("HIKMA") || eUp.includes("CAH")) domainExt = ".cah";
-            if (domainExt) extranetLink = "http://visionhis" + domainExt + "/visionhis/index.php?m=dPfact&tab=vw_cotation&fact_sejour_id=" + idSejour;
+            
+            if (eUp.includes("HIA") || eUp.includes("CIOA")) baseUrl = "http://visionhis.hia";
+            else if (eUp.includes("CIT")) baseUrl = "http://visionhis.cit";
+            else if (eUp.includes("CID")) baseUrl = "http://visionhis.cid";
+            else if (eUp.includes("HPG")) baseUrl = "http://visionhis.hpg";
+            else if (eUp.includes("PIL")) baseUrl = "http://visionhis.pil";
+            else if (eUp.includes("CII")) baseUrl = "http://cii.visionhis.ma"; // <-- L'exception pour CII est ici
+            else if (eUp.includes("HIKMA") || eUp.includes("CAH")) baseUrl = "http://visionhis.cah";
+            
+            if (baseUrl) {
+                extranetLink = baseUrl + "/visionhis/index.php?m=dPfact&tab=vw_cotation&fact_sejour_id=" + idSejour;
+            }
         }
         
         let typeOrganisme = "Prise en charge"; 
@@ -425,9 +435,15 @@ window.switchFamily = function(mainFam, subFam, btn) {
         else titleEl.textContent = `FACTURES (${labelTop})`;
     }
 
-    const dynHead = document.getElementById('nonSoldesDynamicHeader');
+const dynHead = document.getElementById('nonSoldesDynamicHeader');
     if (dynHead && subFam !== 'Dossiers non soldés') {
         dynHead.style.display = 'none';
+    }
+
+    // NOUVEAU : Cacher le bouton Top Insolvables si on n'est pas dans les Non Soldés
+    const btnInsolvables = document.getElementById('btnInsolvablesContainer');
+    if (btnInsolvables) {
+        btnInsolvables.style.display = (subFam === 'Dossiers non soldés') ? 'block' : 'none';
     }
 
     const importZone = document.getElementById('recouvImportZone');
