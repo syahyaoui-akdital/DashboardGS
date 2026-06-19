@@ -455,6 +455,12 @@ window.showPatientInfoModal = function(dossierId) {
 // GESTION PRO DU TOP PATIENTS INSOLVABLES
 // =======================================================
 
+// =======================================================
+// GESTION PRO DU TOP PATIENTS INSOLVABLES
+// =======================================================
+
+let currentInsolvablesMode = 'SITE';
+
 function openInsolvablesModal() {
     document.getElementById('insolvablesModal').style.display = 'flex';
     document.getElementById('insolvablesMainPanel').style.display = 'flex';
@@ -472,7 +478,13 @@ function openInsolvablesModal() {
     showInsolvables('SITE');
 }
 
+function refreshInsolvablesList() {
+    showInsolvables(currentInsolvablesMode);
+}
+
 function showInsolvables(mode) {
+    currentInsolvablesMode = mode;
+    
     // Gestion visuelle des boutons (Onglets)
     ['SITE', 'MULTI', 'REGION'].forEach(m => {
         let btn = document.getElementById('btnInsolv' + m.charAt(0) + m.slice(1).toLowerCase());
@@ -488,6 +500,8 @@ function showInsolvables(mode) {
     });
 
     const tbody = document.getElementById('insolvablesTableBody');
+    const limit = parseInt(document.getElementById('insolvablesTopN').value) || 100;
+    
     let dataToDisplay = [];
 
     // Nom dynamique de l'entité consultée
@@ -497,19 +511,19 @@ function showInsolvables(mode) {
 
     // --- LOGIQUE DE FILTRAGE ---
     if (mode === 'REGION') {
-        // Option 1 : Région globale (Données serveur pures)
         dataToDisplay = window.insolvablesRegionList || [];
+        dataToDisplay = dataToDisplay.slice(0, limit);
     } else {
-        // Options 2 et 3 : Base de données locale de l'entité
         const patientMap = {};
-        // On utilise les données affichées actuellement (qui respectent les filtres)
+        // Utilise les données de l'entité actuellement affichées à l'écran
         const sourceData = window.currentFilteredDataGlobal || [];
 
         sourceData.forEach(row => {
-            const pat = String(row[3] || row.patient || "").trim().toUpperCase();
-            const ent = String(row[0] || row.entite || "").trim();
-            let resteVal = row[12] !== undefined ? row[12] : row.reste;
-            let reste = parseFloat(String(resteVal).replace(/[\s,]/g, m => m===','?'.':'')) || 0;
+            const pat = String(row.patient || row[3] || "").trim().toUpperCase();
+            const ent = String(row.entite || row[0] || "").trim();
+            // Récupération correcte du montant selon l'objet Javascript
+            let resteVal = row.currentReste !== undefined ? row.currentReste : (row.reste !== undefined ? row.reste : row[12]);
+            let reste = Math.abs(parseFloat(String(resteVal).replace(/[\s,]/g, m => m===','?'.':'')) || 0);
 
             if (pat && reste > 0) {
                 if (!patientMap[pat]) patientMap[pat] = { reste: 0, entites: new Set() };
@@ -525,20 +539,18 @@ function showInsolvables(mode) {
         }));
 
         if (mode === 'MULTI') {
-            // Uniquement les patients de cette entité QUI existent aussi ailleurs dans la région (Liste du serveur)
+            // Uniquement si le patient est dans la liste Multi-Entités du Backend
             dataToDisplay = siteData.filter(item => window.multiEntityPatientsList && window.multiEntityPatientsList.includes(item.patient));
         } else {
-            // Tous les patients de l'entité
             dataToDisplay = siteData;
         }
 
-        // Tri et Top 100
-        dataToDisplay = dataToDisplay.sort((a, b) => b.reste - a.reste).slice(0, 100);
+        dataToDisplay = dataToDisplay.sort((a, b) => b.reste - a.reste).slice(0, limit);
     }
 
     // --- GÉNÉRATION DU TABLEAU ---
     if (dataToDisplay.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:50px; color:#94a3b8; font-weight:600;"><i class="fas fa-check-circle" style="font-size:2em; color:#cbd5e1; display:block; margin-bottom:10px;"></i>Aucun patient insolvable trouvé pour cette sélection.</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:50px; color:#94a3b8; font-weight:600;"><i class="fas fa-check-circle" style="font-size:2em; color:#cbd5e1; display:block; margin-bottom:10px;"></i>Aucun patient insolvable trouvé dans cette catégorie.</td></tr>`;
         return;
     }
     
@@ -553,7 +565,7 @@ function showInsolvables(mode) {
             : `<span style="color:#64748b; font-weight:600; background:#f1f5f9; padding:4px 10px; border-radius:20px; font-size:0.85em;">${item.entites}</span>`;
 
         return `
-        <tr onclick="viewInsolvableDetails('${item.patient.replace(/'/g, "\\'")}', '${mode}')" style="border-bottom:1px solid #f1f5f9; cursor:pointer; transition: all 0.2s;" onmouseover="this.style.background='#f8fafc'; this.style.transform='scale(1.002)';" onmouseout="this.style.background='transparent'; this.style.transform='scale(1)';">
+        <tr onclick="viewInsolvableDetails('${item.patient.replace(/'/g, "\\'")}')" style="border-bottom:1px solid #f1f5f9; cursor:pointer; transition: all 0.2s;" onmouseover="this.style.background='#f8fafc'; this.style.transform='scale(1.002)';" onmouseout="this.style.background='transparent'; this.style.transform='scale(1)';">
             <td style="padding:15px 25px; font-weight:800; color:${rankColor}; font-size:1.05em;">
                 ${rankBadge} ${item.patient}
             </td>
@@ -569,24 +581,28 @@ function showInsolvables(mode) {
 
 // --- VUE DÉTAILLÉE DU PATIENT (PAR MOIS/ANNÉE) ---
 
-function viewInsolvableDetails(patientName, mode) {
+function viewInsolvableDetails(patientName) {
     document.getElementById('insolvablesMainPanel').style.display = 'none';
     document.getElementById('insolvablesDetailPanel').style.display = 'flex';
     document.getElementById('detailPatientName').innerText = patientName;
 
-    // On utilise `recouvNonSoldesData` qui contient TOUTES les lignes brutes (avant filtres) auxquelles l'utilisateur a droit
-    const allAllowedData = window.recouvNonSoldesData ? window.recouvNonSoldesData.slice(1) : [];
+    // Utilisation de la base complète des données en mémoire
+    const allAllowedData = window.nonSoldesData || window.currentFilteredDataGlobal || [];
 
-    let detailsMap = {}; // Format: { '2024': { total: 0, months: { 'JAN': 0, 'FEV': 0 } } }
+    let detailsMap = {}; 
     let totalReste = 0;
 
     allAllowedData.forEach(row => {
-        const pat = String(row[3]).trim().toUpperCase();
+        const pat = String(row.patient || row[3] || "").trim().toUpperCase();
+        
         if (pat === patientName) {
-            let reste = parseFloat(String(row[12]).replace(/[\s,]/g, m => m===','?'.':'')) || 0;
+            let resteVal = row.currentReste !== undefined ? row.currentReste : (row.reste !== undefined ? row.reste : row[12]);
+            let reste = Math.abs(parseFloat(String(resteVal).replace(/[\s,]/g, m => m===','?'.':'')) || 0);
+            
             if (reste > 0) {
-                let mois = String(row[6] || "Inconnu").trim().toUpperCase();
-                let annee = String(row[7] || "Inconnue").trim();
+                // Recherche DYNAMIQUE ET ROBUSTE du Mois et de l'Année
+                let mois = String(row.M_Sortie || row.moisSortie || row.mois || row.M_Recep || row[6] || "Inconnu").trim().toUpperCase();
+                let annee = String(row.A_Sortie || row.anneeSortie || row.annee || row.A_Recep || row[7] || "Inconnue").trim();
 
                 if (!detailsMap[annee]) detailsMap[annee] = { total: 0, months: {} };
                 if (!detailsMap[annee].months[mois]) detailsMap[annee].months[mois] = 0;
@@ -601,18 +617,22 @@ function viewInsolvableDetails(patientName, mode) {
     document.getElementById('detailTotalAmount').innerText = totalReste.toLocaleString('fr-FR', {minimumFractionDigits: 2}) + ' MAD';
 
     let html = '';
+    const anneesKeys = Object.keys(detailsMap).sort((a,b) => b.localeCompare(a)); // Plus récent au plus ancien
     
-    // Trier les années de la plus récente à la plus ancienne
-    Object.keys(detailsMap).sort((a,b) => b.localeCompare(a)).forEach(annee => {
+    if (anneesKeys.length === 0) {
+        document.getElementById('detailContentBody').innerHTML = '<div style="padding:40px; text-align:center; color:#94a3b8; font-size:1.1em;"><i class="fas fa-box-open" style="font-size:2em; display:block; margin-bottom:15px;"></i>Aucun détail mensuel disponible pour ce patient.</div>';
+        return;
+    }
+
+    anneesKeys.forEach(annee => {
         html += `
         <div style="margin-bottom:25px; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; box-shadow:0 4px 6px rgba(0,0,0,0.02);">
             <div style="background:#f1f5f9; padding:15px 20px; font-weight:800; color:#1e293b; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e2e8f0;">
                 <span style="font-size:1.1em;"><i class="far fa-calendar-alt" style="color:#64748b; margin-right:8px;"></i> Année ${annee}</span>
                 <span style="color:#e74c3c; font-size:1.1em; background:white; padding:4px 12px; border-radius:20px; border:1px solid #cbd5e1;">${detailsMap[annee].total.toLocaleString('fr-FR', {minimumFractionDigits: 2})} DH</span>
             </div>
-            <div style="padding:20px; display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:15px; background:white;">`;
+            <div style="padding:20px; display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:15px; background:white;">`;
 
-        // Mois standardisés pour le tri
         const moisOrder = ["JAN", "FEV", "MAR", "AVR", "MAI", "JUIN", "JUIL", "AOU", "SEP", "OCT", "NOV", "DEC"];
         const monthsList = Object.keys(detailsMap[annee].months).sort((a,b) => moisOrder.indexOf(a) - moisOrder.indexOf(b));
 
@@ -620,14 +640,14 @@ function viewInsolvableDetails(patientName, mode) {
             html += `
             <div style="background:#f8fafc; border:1px solid #e2e8f0; padding:15px; border-radius:10px; text-align:center; transition:transform 0.2s;" onmouseover="this.style.transform='translateY(-2px)'; this.style.borderColor='#cbd5e1';" onmouseout="this.style.transform='translateY(0)'; this.style.borderColor='#e2e8f0';">
                 <div style="font-size:0.85em; color:#64748b; text-transform:uppercase; font-weight:800; margin-bottom:8px; letter-spacing:1px;">${mois}</div>
-                <div style="font-weight:900; color:#334155; font-size:1.2em;">${detailsMap[annee].months[mois].toLocaleString('fr-FR', {minimumFractionDigits: 2})}</div>
+                <div style="font-weight:900; color:#334155; font-size:1.1em;">${detailsMap[annee].months[mois].toLocaleString('fr-FR', {minimumFractionDigits: 2})}</div>
             </div>`;
         });
 
         html += `</div></div>`;
     });
 
-    document.getElementById('detailContentBody').innerHTML = html || '<div style="padding:40px; text-align:center; color:#94a3b8; font-size:1.1em;"><i class="fas fa-box-open" style="font-size:2em; display:block; margin-bottom:15px;"></i>Aucun détail mensuel disponible pour ce patient.</div>';
+    document.getElementById('detailContentBody').innerHTML = html;
 }
 
 function backToInsolvablesList() {

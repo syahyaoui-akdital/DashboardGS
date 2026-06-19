@@ -1140,7 +1140,8 @@ function syncModalFilters() {
           chk.checked = isChecked;
       });
   };
-async function processDynamicExport(format) {
+
+async function processDynamicExport(format, isBatchMode = false) {
       const container = document.getElementById('exportCheckboxesArea');
       const checkboxes = Array.from(container.querySelectorAll('.item-check:checked'));
       if (checkboxes.length === 0) { alert("Sélectionnez au moins un élément."); return; }
@@ -1166,379 +1167,282 @@ async function processDynamicExport(format) {
       const periodName = (document.getElementById('mois').value ? document.getElementById('mois').value : (document.getElementById('trimestre').value || "Année")) + " " + new Date().getFullYear();
       const dateGen = new Date().toLocaleDateString('fr-FR');
 
-      // ==========================================
+      // PRÉPARATION DES TÂCHES
+      const captureTasks = [];
+      const globalSubEntiteEl = document.getElementById('sousEntite');
+      const isHiaCioaGlobal = (entiteVal === 'HIA CIOA' && globalSubEntiteEl && globalSubEntiteEl.value === '');
+
+      function createTask(cb, groupKey, config, item, overrideSubEntite, subtitleSuffix) {
+          const timeFilterCb = cb.closest('.export-item').querySelector('.time-filter-check');
+          const applyTimeFilter = timeFilterCb ? timeFilterCb.checked : true;
+          return { groupKey, config, item, applyTimeFilter, targetElId: item.captureId || config.targetId, overrideSubEntite, subtitleSuffix };
+      }
+
+      if (isHiaCioaGlobal) {
+          for (let cb of checkboxes) {
+              const [groupKey, itemIndex] = cb.value.split('|');
+              const config = EXPORT_CONFIG[groupKey];
+              const item = config.items[itemIndex];
+              if (config.targetId === 'view-flash') captureTasks.push(createTask(cb, groupKey, config, item, null, ""));
+          }
+          for (let cb of checkboxes) {
+              const [groupKey, itemIndex] = cb.value.split('|');
+              const config = EXPORT_CONFIG[groupKey];
+              const item = config.items[itemIndex];
+              if (config.targetId !== 'view-flash') captureTasks.push(createTask(cb, groupKey, config, item, 'HIA', " - HIA"));
+          }
+          for (let cb of checkboxes) {
+              const [groupKey, itemIndex] = cb.value.split('|');
+              const config = EXPORT_CONFIG[groupKey];
+              const item = config.items[itemIndex];
+              if (config.targetId !== 'view-flash') captureTasks.push(createTask(cb, groupKey, config, item, 'CIOA', " - CIOA"));
+          }
+      } else {
+          for (let cb of checkboxes) {
+              const [groupKey, itemIndex] = cb.value.split('|');
+              const config = EXPORT_CONFIG[groupKey];
+              const item = config.items[itemIndex];
+              captureTasks.push(createTask(cb, groupKey, config, item, null, ""));
+          }
+      }
+
       // CONFIGURATION PPTX
-      // ==========================================
       if (format === 'ppt') {
-          pptx = new PptxGenJS();
-          pptx.layout = 'LAYOUT_16x9';
-          pptx.title = `Rapport d'activité - ${entiteName}`;
-          
+          pptx = new PptxGenJS(); pptx.layout = 'LAYOUT_16x9'; pptx.title = `Rapport d'activité - ${entiteName}`;
           if(includeCover) {
-              let slide = pptx.addSlide(); 
-              slide.background = { color: "F8FAFF" };
-              slide.addShape(pptx.ShapeType.rect, { x:0, y:0, w:0.5, h:'100%', fill:'363795' }); 
-              slide.addShape(pptx.ShapeType.rect, { x:0.5, y:0, w:0.1, h:'100%', fill:'E67E22' }); 
-              
+              let slide = pptx.addSlide(); slide.background = { color: "F8FAFF" };
+              slide.addShape(pptx.ShapeType.rect, { x:0, y:0, w:0.5, h:'100%', fill:'363795' }); slide.addShape(pptx.ShapeType.rect, { x:0.5, y:0, w:0.1, h:'100%', fill:'E67E22' }); 
               slide.addText("RAPPORT D'ACTIVITÉ", { x:1.5, y:2.0, fontSize:44, color:'363795', bold:true, fontFace:'Arial' });
               slide.addText(entiteName, { x:1.5, y:3.0, fontSize:32, color:'E67E22', bold:true, fontFace:'Arial' });
               slide.addText(periodName, { x:1.5, y:3.8, fontSize:22, color:'64748B', fontFace:'Arial' });
-              
               slide.addShape(pptx.ShapeType.line, { x:1.5, y:4.5, w:6, h:0, line:{color:'E2E8F0', width:2} });
-              
               slide.addText("MANAGEMENT", { x:1.5, y:5.0, fontSize:14, color:'363795', bold:true, fontFace:'Arial' });
-              let yMgt = 5.5;
-              slide.addText("Directrice Régionale : Mme ELBOUAMI Aicha", { x:1.5, y:yMgt, fontSize:12, color:'475569', fontFace:'Arial' });
-              yMgt += 0.4;
+              let yMgt = 5.5; slide.addText("Directeur OST Régional : Mr SMAOUI Sami", { x:1.5, y:yMgt, fontSize:12, color:'475569', fontFace:'Arial' }); yMgt += 0.4;
               if(respName) { slide.addText("Resp. Exploitation : " + respName, { x:1.5, y:yMgt, fontSize:12, color:'475569', fontFace:'Arial' }); yMgt += 0.4; }
               if(dirMedName) { slide.addText("Dir. Médical : " + dirMedName, { x:1.5, y:yMgt, fontSize:12, color:'475569', fontFace:'Arial' }); }
-
               slide.addText(`Généré le ${dateGen}`, { x:'50%', y:8.5, w:'50%', align:'right', fontSize:10, color:'94A3B8', fontFace:'Arial' });
               
-              let summarySlide = pptx.addSlide();
-              summarySlide.background = { color: "FFFFFF" };
+              let summarySlide = pptx.addSlide(); summarySlide.background = { color: "FFFFFF" };
               summarySlide.addText("PLAN", { x:0.8, y:0.8, fontSize:28, color:'363795', bold:true, fontFace:'Arial' });
               summarySlide.addShape(pptx.ShapeType.line, { x:0.8, y:1.5, w:8, h:0, line:{color:'E67E22', width:2} });
               
               let yPos = 2.0; let currentSection = "";
-              checkboxes.forEach(cb => {
-                  let groupKey = cb.getAttribute('data-group-ref');
-                  let sectionTitle = EXPORT_CONFIG[groupKey].title;
-                  if (sectionTitle !== currentSection) {
-                      summarySlide.addText(sectionTitle.toUpperCase(), { x:0.8, y:yPos, fontSize:16, color:'1E293B', bold:true, fontFace:'Arial' });
-                      yPos += 0.5; currentSection = sectionTitle;
-                  }
-                  let subTitle = cb.getAttribute('data-title');
-                  summarySlide.addText("•  " + subTitle, { x:1.2, y:yPos, fontSize:14, color:'64748B', fontFace:'Arial' });
-                  yPos += 0.4;
+              captureTasks.forEach(task => {
+                  let sectionTitle = task.config.title + (task.overrideSubEntite ? ` - ${task.overrideSubEntite}` : "");
+                  if (sectionTitle !== currentSection) { summarySlide.addText(sectionTitle.toUpperCase(), { x:0.8, y:yPos, fontSize:16, color:'1E293B', bold:true, fontFace:'Arial' }); yPos += 0.5; currentSection = sectionTitle; }
+                  let subTitle = task.item.name + task.subtitleSuffix; summarySlide.addText("•  " + subTitle, { x:1.2, y:yPos, fontSize:14, color:'64748B', fontFace:'Arial' }); yPos += 0.4;
                   if(yPos > 6.8) { summarySlide = pptx.addSlide(); yPos = 1.0; }
               });
           }
       } 
-      // ==========================================
       // CONFIGURATION PDF
-      // ==========================================
       else {
-          window.jsPDF = window.jspdf.jsPDF;
-          pdf = new jsPDF('l', 'mm', 'a4');
+          window.jsPDF = window.jspdf.jsPDF; pdf = new jsPDF('l', 'mm', 'a4');
           const w = pdf.internal.pageSize.getWidth(); const h = pdf.internal.pageSize.getHeight();
-
           if (includeCover) {
-              pdf.setFillColor(248, 250, 252); pdf.rect(0, 0, w, h, 'F'); 
-              pdf.setFillColor(54, 55, 149); pdf.rect(0, 0, 20, h, 'F'); 
-              pdf.setFillColor(230, 126, 34); pdf.rect(20, 60, 5, h-120, 'F'); 
-
-              pdf.setTextColor(30, 41, 59); pdf.setFontSize(44); pdf.setFont("helvetica", "bold");
-              pdf.text("RAPPORT", 35, 80); pdf.text("D'ACTIVITÉ", 35, 98);
-              
-              pdf.setTextColor(230, 126, 34); pdf.setFontSize(30);
-              pdf.text(entiteName.toUpperCase(), 35, 125);
-              
-              pdf.setTextColor(100, 116, 139); pdf.setFontSize(20); pdf.setFont("helvetica", "normal");
-              pdf.text(periodName, 35, 140);
-              
-              pdf.setDrawColor(226, 232, 240); pdf.setLineWidth(0.5);
-              pdf.line(35, 150, 150, 150);
-
-              pdf.setFontSize(13); pdf.setTextColor(54, 55, 149); pdf.setFont("helvetica", "bold");
-              pdf.text("MANAGEMENT", 35, 165);
+              pdf.setFillColor(248, 250, 252); pdf.rect(0, 0, w, h, 'F'); pdf.setFillColor(54, 55, 149); pdf.rect(0, 0, 20, h, 'F'); pdf.setFillColor(230, 126, 34); pdf.rect(20, 60, 5, h-120, 'F'); 
+              pdf.setTextColor(30, 41, 59); pdf.setFontSize(44); pdf.setFont("helvetica", "bold"); pdf.text("RAPPORT", 35, 80); pdf.text("D'ACTIVITÉ", 35, 98);
+              pdf.setTextColor(230, 126, 34); pdf.setFontSize(30); pdf.text(entiteName.toUpperCase(), 35, 125);
+              pdf.setTextColor(100, 116, 139); pdf.setFontSize(20); pdf.setFont("helvetica", "normal"); pdf.text(periodName, 35, 140);
+              pdf.setDrawColor(226, 232, 240); pdf.setLineWidth(0.5); pdf.line(35, 150, 150, 150);
+              pdf.setFontSize(13); pdf.setTextColor(54, 55, 149); pdf.setFont("helvetica", "bold"); pdf.text("MANAGEMENT", 35, 165);
               pdf.setFontSize(11); pdf.setTextColor(71, 85, 105); pdf.setFont("helvetica", "normal");
-              let yC = 173;
-              pdf.text("Directrice Régionale : Mme ELBOUAMI Aicha", 35, yC); yC += 7;
+              let yC = 173; pdf.text("Directeur OST Régional : Mr SMAOUI Sami", 35, yC); yC += 7;
               if(respName) { pdf.text("Responsable Exploitation : " + respName, 35, yC); yC+=7; }
               if(dirMedName) { pdf.text("Directeur Médical : " + dirMedName, 35, yC); }
+              pdf.setTextColor(148, 163, 184); pdf.setFontSize(10); pdf.text(`Edité le ${dateGen}`, w - 15, h - 10, { align: 'right' });
+              pdf.addPage(); pdf.setFillColor(54, 55, 149); pdf.rect(0, 0, w, 22, 'F'); pdf.setTextColor(255, 255, 255); pdf.setFontSize(18); pdf.setFont("helvetica", "bold"); pdf.text("PLAN", 15, 15);
 
-              pdf.setTextColor(148, 163, 184); pdf.setFontSize(10);
-              pdf.text(`Edité le ${dateGen}`, w - 15, h - 10, { align: 'right' });
-
-              pdf.addPage();
-              pdf.setFillColor(54, 55, 149); pdf.rect(0, 0, w, 22, 'F');
-              pdf.setTextColor(255, 255, 255); pdf.setFontSize(18); pdf.setFont("helvetica", "bold");
-              pdf.text("PLAN", 15, 15);
-
-              let yPos = 40; let pageCounter = 3; 
-              let lastGroup = "";
-              
-              checkboxes.forEach(cb => {
-                  let groupKey = cb.getAttribute('data-group-ref');
-                  let sectionTitle = EXPORT_CONFIG[groupKey].title;
-                  
+              let yPos = 40; let pageCounter = 3; let lastGroup = "";
+              captureTasks.forEach(task => {
+                  let sectionTitle = task.config.title + (task.overrideSubEntite ? ` - ${task.overrideSubEntite}` : "");
+                  let groupTracker = task.groupKey + (task.overrideSubEntite || "");
                   if (yPos > 185) { pdf.addPage(); yPos = 30; }
-                  
-                  if(groupKey !== lastGroup) {
-                      yPos += 6;
-                      pdf.setTextColor(30, 41, 59); pdf.setFontSize(14); pdf.setFont("helvetica", "bold");
-                      pdf.text(sectionTitle.toUpperCase(), 20, yPos);
-                      yPos += 8;
-                      lastGroup = groupKey;
-                      if(includeSeparators) pageCounter++;
-                  }
-
-                  let title = cb.getAttribute('data-title');
-                  pdf.setTextColor(100, 116, 139); pdf.setFontSize(11); pdf.setFont("helvetica", "normal");
-                  pdf.text(title, 30, yPos);
-                  
-                  const textW = pdf.getStringUnitWidth(title) * 11 / pdf.internal.scaleFactor;
-                  let lineStartX = 35 + textW;
-                  if(lineStartX < w - 30) {
-                      pdf.setDrawColor(226, 232, 240); pdf.setLineDash([1, 1.5], 0);
-                      pdf.line(lineStartX, yPos, w - 25, yPos);
-                      pdf.setLineDash([]); 
-                  }
-                  
-                  pdf.setFont("helvetica", "bold"); pdf.setTextColor(54, 55, 149);
-                  pdf.text(String(pageCounter), w - 20, yPos, { align: 'right' });
-                  yPos += 7; pageCounter++; 
+                  if(groupTracker !== lastGroup) { yPos += 6; pdf.setTextColor(30, 41, 59); pdf.setFontSize(14); pdf.setFont("helvetica", "bold"); pdf.text(sectionTitle.toUpperCase(), 20, yPos); yPos += 8; lastGroup = groupTracker; if(includeSeparators) pageCounter++; }
+                  let title = task.item.name + task.subtitleSuffix; pdf.setTextColor(100, 116, 139); pdf.setFontSize(11); pdf.setFont("helvetica", "normal"); pdf.text(title, 30, yPos);
+                  const textW = pdf.getStringUnitWidth(title) * 11 / pdf.internal.scaleFactor; let lineStartX = 35 + textW;
+                  if(lineStartX < w - 30) { pdf.setDrawColor(226, 232, 240); pdf.setLineDash([1, 1.5], 0); pdf.line(lineStartX, yPos, w - 25, yPos); pdf.setLineDash([]); }
+                  pdf.setFont("helvetica", "bold"); pdf.setTextColor(54, 55, 149); pdf.text(String(pageCounter), w - 20, yPos, { align: 'right' }); yPos += 7; pageCounter++; 
               });
           }
       }
 
-      let lastGroupKey = "";
-      let processedCount = 0;
-      let currentPageNum = includeCover ? 3 : 1;
+      let lastGroupTracker = ""; let processedCount = 0; let currentPageNum = includeCover ? 3 : 1;
 
-      // ==========================================
       // CAPTURES DYNAMIQUES
-      // ==========================================
-      for (let cb of checkboxes) {
-          const [groupKey, itemIndex] = cb.value.split('|');
-          const config = EXPORT_CONFIG[groupKey];
-          const item = config.items[itemIndex];
-          const targetEl = document.getElementById(item.captureId || config.targetId);
+      for (let task of captureTasks) {
+          const { groupKey, config, item, applyTimeFilter, targetElId, overrideSubEntite, subtitleSuffix } = task;
+          const targetEl = document.getElementById(targetElId);
 
-          const timeFilterCb = cb.closest('.export-item').querySelector('.time-filter-check');
-          const applyTimeFilter = timeFilterCb ? timeFilterCb.checked : true;
+          let dynamicPeriodText = periodName; if (!applyTimeFilter) { dynamicPeriodText = ""; }
+          let currentGroupTracker = groupKey + (overrideSubEntite || "");
+          let separatorTitle = config.title.toUpperCase() + (overrideSubEntite ? ` - ${overrideSubEntite}` : "");
 
-          // VÉRIFICATION CHRONO AFFICHEE DANS L'EN-TÊTE DU PDF !
-          let dynamicPeriodText = periodName;
-          if (!applyTimeFilter) {
-              dynamicPeriodText = "";
-          }
-
-          if (includeSeparators && groupKey !== lastGroupKey) {
+          if (includeSeparators && currentGroupTracker !== lastGroupTracker) {
               if (format === 'pdf') {
-                  pdf.addPage([297, 210], 'l');
-                  pdf.setFillColor(54, 55, 149); pdf.rect(0, 0, 297, 210, 'F');
-                  pdf.setTextColor(255, 255, 255); pdf.setFontSize(40); pdf.setFont("helvetica", "bold");
-                  pdf.text(config.title.toUpperCase(), 297/2, 210/2, { align: 'center' });
-                  pdf.setFontSize(10); pdf.setFont("helvetica", "normal");
-                  pdf.text(`Page ${currentPageNum}`, 297-15, 210-10, { align: 'right' });
-                  currentPageNum++;
+                  pdf.addPage([297, 210], 'l'); pdf.setFillColor(54, 55, 149); pdf.rect(0, 0, 297, 210, 'F'); pdf.setTextColor(255, 255, 255); pdf.setFontSize(40); pdf.setFont("helvetica", "bold"); pdf.text(separatorTitle, 297/2, 210/2, { align: 'center' }); pdf.setFontSize(10); pdf.setFont("helvetica", "normal"); pdf.text(`Page ${currentPageNum}`, 297-15, 210-10, { align: 'right' }); currentPageNum++;
               } else {
-                  let s = pptx.addSlide(); s.background = { color: "363795" };
-                  s.addText(config.title.toUpperCase(), { x:0, y:'45%', w:'100%', align:'center', fontSize:36, color:'FFFFFF', bold:true, fontFace:'Arial' });
+                  let s = pptx.addSlide(); s.background = { color: "363795" }; s.addText(separatorTitle, { x:0, y:'45%', w:'100%', align:'center', fontSize:36, color:'FFFFFF', bold:true, fontFace:'Arial' });
               }
-              lastGroupKey = groupKey;
+              lastGroupTracker = currentGroupTracker;
           }
 
           document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active'));
           const parentView = targetEl.closest('.view-section') || targetEl;
           parentView.classList.add('active'); parentView.style.display = 'block';
           
-          // 🔴 1. Appliquer les filtres AVANT le changement de vue
-          applyGlobalFiltersToView(config.targetId, applyTimeFilter);
+          const expectedEntite = entiteVal; 
+          const expectedSousEntite = overrideSubEntite || (globalSubEntiteEl ? globalSubEntiteEl.value : "");
+
+          const enforceFiltersDOM = () => {
+              const domEntite = document.getElementById('entite');
+              if (domEntite) {
+                  if (expectedEntite && !Array.from(domEntite.options).some(opt => opt.value === expectedEntite)) domEntite.add(new Option(expectedEntite, expectedEntite));
+                  domEntite.value = expectedEntite;
+              }
+              if (globalSubEntiteEl) {
+                  if (expectedSousEntite && !Array.from(globalSubEntiteEl.options).some(opt => opt.value === expectedSousEntite)) globalSubEntiteEl.add(new Option(expectedSousEntite, expectedSousEntite));
+                  globalSubEntiteEl.value = expectedSousEntite;
+              }
+              syncFilters('entite'); 
+          };
+
+          enforceFiltersDOM(); applyGlobalFiltersToView(config.targetId, applyTimeFilter);
           
-          // Action (ex: switchFamily qui peut parfois réinitialiser certaines variables)
-          if (item.action) item.action();
+          if (item.action) { item.action(); await new Promise(r => setTimeout(r, 400)); }
           
-          // 🔴 2. FORCER les filtres APRÈS l'action pour garantir le respect de la règle chrono !
-          applyGlobalFiltersToView(config.targetId, applyTimeFilter);
+          enforceFiltersDOM(); applyGlobalFiltersToView(config.targetId, applyTimeFilter);
 
           const elsToHide = [];
-          if(item.hideIds) {
-              item.hideIds.forEach(hid => {
-                  const el = document.getElementById(hid);
-                  if(el && el.style.display !== 'none') {
-                      el.setAttribute('data-original-display', el.style.display);
-                      el.style.display = 'none';
-                      elsToHide.push(el);
-                  }
-              });
-          }
+          if(item.hideIds) { item.hideIds.forEach(hid => { const el = document.getElementById(hid); if(el && el.style.display !== 'none') { el.setAttribute('data-original-display', el.style.display); el.style.display = 'none'; elsToHide.push(el); } }); }
 
           const chkShowKpiFlash = document.getElementById('chkShowKpiFlash');
           if (chkShowKpiFlash && !chkShowKpiFlash.checked && config.targetId === 'view-flash') {
               const kpiPanel = document.getElementById('kpiPanel');
-              if (kpiPanel && kpiPanel.style.display !== 'none') {
-                  kpiPanel.setAttribute('data-original-display', kpiPanel.style.display);
-                  kpiPanel.style.display = 'none';
-                  elsToHide.push(kpiPanel);
-              }
+              if (kpiPanel && kpiPanel.style.display !== 'none') { kpiPanel.setAttribute('data-original-display', kpiPanel.style.display); kpiPanel.style.display = 'none'; elsToHide.push(kpiPanel); }
           }
 
           let styleBackups = [];
+          styleBackups.push({ element: targetEl, width: targetEl.style.width, minWidth: targetEl.style.minWidth, minHeight: targetEl.style.minHeight, background: targetEl.style.background });
+          targetEl.style.minWidth = '1600px'; targetEl.style.width = 'max-content'; targetEl.style.minHeight = 'auto'; targetEl.style.background = '#ffffff'; 
           
-          styleBackups.push({
-              element: targetEl,
-              width: targetEl.style.width,
-              minWidth: targetEl.style.minWidth,
-              minHeight: targetEl.style.minHeight,
-              background: targetEl.style.background
-          });
-          
-          targetEl.style.minWidth = '1600px'; 
-          targetEl.style.width = 'max-content'; 
-          targetEl.style.minHeight = 'auto'; 
-          targetEl.style.background = '#ffffff'; 
-          
-          const mainContent = document.getElementById('mainContent');
-          const appLayout = document.querySelector('.app-layout');
-          [mainContent, appLayout].forEach(el => {
-              if (el) {
-                  styleBackups.push({ element: el, height: el.style.height, overflowY: el.style.overflowY, width: el.style.width, overflowX: el.style.overflowX });
-                  el.style.height = 'max-content';
-                  el.style.overflowY = 'visible';
-                  el.style.width = 'max-content'; 
-                  el.style.overflowX = 'visible'; 
-              }
-          });
+          const mainContent = document.getElementById('mainContent'); const appLayout = document.querySelector('.app-layout');
+          [mainContent, appLayout].forEach(el => { if (el) { styleBackups.push({ element: el, height: el.style.height, overflowY: el.style.overflowY, width: el.style.width, overflowX: el.style.overflowX }); el.style.height = 'max-content'; el.style.overflowY = 'visible'; el.style.width = 'max-content'; el.style.overflowX = 'visible'; } });
 
           let elsToExpand = [targetEl, ...targetEl.querySelectorAll('*')];
           elsToExpand.forEach(el => {
-              
-              // 🔴 CORRECTION MAJEURE : On ignore totalement les conteneurs de graphiques pour éviter l'effet "écrasé"
-              const isChartElement = el.id === 'chartContainer' || 
-                                     el.id === 'mainChartWrapper' || 
-                                     el.id === 'pieChartWrapper' || 
-                                     el.classList.contains('chart-container') || 
-                                     el.tagName.toLowerCase() === 'canvas';
-                                     
-              if (isChartElement) {
-                  return; // On passe au suivant sans écraser sa hauteur
-              }
-
+              const isChartElement = el.id === 'chartContainer' || el.id === 'mainChartWrapper' || el.id === 'pieChartWrapper' || el.classList.contains('chart-container') || el.tagName.toLowerCase() === 'canvas';
+              if (isChartElement) return;
               const comp = window.getComputedStyle(el);
-              if (comp.overflowY === 'auto' || comp.overflowY === 'scroll' || el.style.height.includes('vh') || el.classList.contains('table-container') || el.id.includes('Container')) {
-                  styleBackups.push({
-                      element: el,
-                      height: el.style.height,
-                      maxHeight: el.style.maxHeight,
-                      minHeight: el.style.minHeight,
-                      overflow: el.style.overflow,
-                      overflowY: el.style.overflowY
-                  });
-                  el.style.height = 'max-content';
-                  el.style.maxHeight = 'none';
-                  el.style.minHeight = 'max-content';
-                  el.style.overflow = 'visible';
-                  el.style.overflowY = 'visible';
-              }
+              if (comp.overflowY === 'auto' || comp.overflowY === 'scroll' || el.style.height.includes('vh') || el.classList.contains('table-container') || el.id.includes('Container')) { styleBackups.push({ element: el, height: el.style.height, maxHeight: el.style.maxHeight, minHeight: el.style.minHeight, overflow: el.style.overflow, overflowY: el.style.overflowY }); el.style.height = 'max-content'; el.style.maxHeight = 'none'; el.style.minHeight = 'max-content'; el.style.overflow = 'visible'; el.style.overflowY = 'visible'; }
           });
 
           await new Promise(r => setTimeout(r, 2200));
 
           try {
               let captureWidth = Math.max(1600, targetEl.scrollWidth);
-
-const canvas = await html2canvas(targetEl, { 
-                  scale: 2, 
-                  useCORS: true, 
-                  logging: false, 
-                  backgroundColor: '#ffffff', 
-                  scrollX: 0, 
-                  scrollY: 0,
-                  width: captureWidth,         
-                  windowWidth: captureWidth,
-                  // SÉCURITÉ : Ignorer les canvas (graphiques) avec une largeur/hauteur de 0 ou cachés
-                  ignoreElements: (node) => {
-                      if (node.tagName && node.tagName.toLowerCase() === 'canvas') {
-                          if (node.width === 0 || node.height === 0 || window.getComputedStyle(node).display === 'none') {
-                              return true; // Demande à html2canvas de l'ignorer
-                          }
-                      }
-                      return false;
-                  }
+              const canvas = await html2canvas(targetEl, { 
+                  scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, width: captureWidth, windowWidth: captureWidth,
+                  ignoreElements: (node) => { if (node.tagName && node.tagName.toLowerCase() === 'canvas') { if (node.width === 0 || node.height === 0 || window.getComputedStyle(node).display === 'none') { return true; } } return false; }
               });
               const imgData = canvas.toDataURL('image/jpeg', 0.85);
 
               if (format === 'pdf') {
-                  const pdfPageW = 297; 
-                  const minPdfPageH = 210; 
+                  const pdfPageW = 297; const minPdfPageH = 210; const imgProps = pdf.getImageProperties(imgData);
+                  let marginX = 12; let marginY = 8; let headerHeight = 14; let footerHeight = 10;
+                  let availW = pdfPageW - (marginX * 2); let naturalH = (imgProps.height * availW) / imgProps.width;
+                  let requiredH = naturalH + headerHeight + footerHeight + (marginY * 2); let finalPageH = requiredH > minPdfPageH ? requiredH : minPdfPageH;
 
-                  const imgProps = pdf.getImageProperties(imgData);
-                  
-                  let marginX = 12; 
-                  let marginY = 8; 
-                  let headerHeight = 14;
-                  let footerHeight = 10;
-                  
-                  let availW = pdfPageW - (marginX * 2);
-                  let naturalH = (imgProps.height * availW) / imgProps.width;
-                  
-                  let requiredH = naturalH + headerHeight + footerHeight + (marginY * 2);
-                  let finalPageH = requiredH > minPdfPageH ? requiredH : minPdfPageH;
-
-                  let orientation = finalPageH > pdfPageW ? 'p' : 'l';
-                  pdf.addPage([pdfPageW, finalPageH], orientation);
-                  
-                  pdf.setFillColor(248, 250, 252); pdf.rect(0, 0, pdfPageW, headerHeight, 'F');
-                  pdf.setFillColor(54, 55, 149); pdf.rect(0, headerHeight - 0.5, pdfPageW, 0.5, 'F');
-                  pdf.setTextColor(30, 41, 59); pdf.setFontSize(11); pdf.setFont("helvetica", "bold");
-                  pdf.text(`${config.title} > ${item.name}`, marginX, headerHeight - 5);
-                  pdf.setTextColor(100, 116, 139); pdf.setFontSize(10); pdf.setFont("helvetica", "normal");
-                  
-                  // AFFICHAGE DU TEXTE DYNAMIQUE DU CHRONO
+                  let orientation = finalPageH > pdfPageW ? 'p' : 'l'; pdf.addPage([pdfPageW, finalPageH], orientation);
+                  pdf.setFillColor(248, 250, 252); pdf.rect(0, 0, pdfPageW, headerHeight, 'F'); pdf.setFillColor(54, 55, 149); pdf.rect(0, headerHeight - 0.5, pdfPageW, 0.5, 'F'); pdf.setTextColor(30, 41, 59); pdf.setFontSize(11); pdf.setFont("helvetica", "bold"); pdf.text(`${config.title} > ${item.name}${subtitleSuffix}`, marginX, headerHeight - 5); pdf.setTextColor(100, 116, 139); pdf.setFontSize(10); pdf.setFont("helvetica", "normal");
                   pdf.text(`${entiteName} | ${dynamicPeriodText}`, pdfPageW - marginX, headerHeight - 5, { align: 'right' });
 
-                  let xPos = marginX;
-                  let yPos = headerHeight + marginY;
-                  if (finalPageH === minPdfPageH && naturalH < (minPdfPageH - headerHeight - footerHeight - marginY*2)) {
-                      yPos += ((minPdfPageH - headerHeight - footerHeight - marginY*2) - naturalH) / 2;
-                  }
+                  let xPos = marginX; let yPos = headerHeight + marginY;
+                  if (finalPageH === minPdfPageH && naturalH < (minPdfPageH - headerHeight - footerHeight - marginY*2)) { yPos += ((minPdfPageH - headerHeight - footerHeight - marginY*2) - naturalH) / 2; }
                   pdf.addImage(imgData, 'JPEG', xPos, yPos, availW, naturalH);
                   
-                  pdf.setDrawColor(226, 232, 240); pdf.setLineWidth(0.5);
-                  pdf.line(10, finalPageH - footerHeight, pdfPageW - 10, finalPageH - footerHeight);
-                  pdf.setFontSize(8); pdf.setTextColor(148, 163, 184);
-                  pdf.text(`Edité par Sami YAHYAOUI le ${dateGen}`, marginX, finalPageH - 4);
-                  pdf.setFont("helvetica", "bold");
-                  pdf.text(`Page ${currentPageNum}`, pdfPageW - marginX, finalPageH - 4, { align: 'right' });
-                  
-                  currentPageNum++;
+                  pdf.setDrawColor(226, 232, 240); pdf.setLineWidth(0.5); pdf.line(10, finalPageH - footerHeight, pdfPageW - 10, finalPageH - footerHeight); pdf.setFontSize(8); pdf.setTextColor(148, 163, 184); pdf.text(`Edité par Sami YAHYAOUI le ${dateGen}`, marginX, finalPageH - 4); pdf.setFont("helvetica", "bold"); pdf.text(`Page ${currentPageNum}`, pdfPageW - marginX, finalPageH - 4, { align: 'right' }); currentPageNum++;
               } else {
-                  let slide = pptx.addSlide();
-                  slide.background = { color: "FFFFFF" };
-                  slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 0.5, fill: 'F8FAFC' });
-                  slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0.5, w: '100%', h: 0.03, fill: '363795' });
-                  slide.addText(`${config.title} > ${item.name}`, { x: 0.3, y: 0.1, fontSize: 13, color: '1E293B', bold: true, fontFace:'Arial' });
-                  slide.addText(`${entiteName} | ${dynamicPeriodText}`, { x: '30%', y: 0.1, w: '68%', align: 'right', fontSize: 11, color: '64748B', fontFace:'Arial' });
-                  slide.addImage({ data: imgData, x: 0.2, y: 0.7, w: '96%', h: '85%', sizing: { type: 'contain', w: '96%', h: '85%' } });
+                  let slide = pptx.addSlide(); slide.background = { color: "FFFFFF" }; slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 0.5, fill: 'F8FAFC' }); slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0.5, w: '100%', h: 0.03, fill: '363795' }); slide.addText(`${config.title} > ${item.name}${subtitleSuffix}`, { x: 0.3, y: 0.1, fontSize: 13, color: '1E293B', bold: true, fontFace:'Arial' }); slide.addText(`${entiteName} | ${dynamicPeriodText}`, { x: '30%', y: 0.1, w: '68%', align: 'right', fontSize: 11, color: '64748B', fontFace:'Arial' }); slide.addImage({ data: imgData, x: 0.2, y: 0.7, w: '96%', h: '85%', sizing: { type: 'contain', w: '96%', h: '85%' } });
               }
-          } catch(e) { 
-              console.error(e); 
-          } finally {
-              styleBackups.forEach(itemInfo => {
-                  if (itemInfo.element) {
-                      itemInfo.element.style.width = itemInfo.width !== undefined ? itemInfo.width : '';
-                      itemInfo.element.style.height = itemInfo.height !== undefined ? itemInfo.height : '';
-                      if(itemInfo.maxHeight !== undefined) itemInfo.element.style.maxHeight = itemInfo.maxHeight;
-                      if(itemInfo.minWidth !== undefined) itemInfo.element.style.minWidth = itemInfo.minWidth;
-                      if(itemInfo.minHeight !== undefined) itemInfo.element.style.minHeight = itemInfo.minHeight;
-                      itemInfo.element.style.overflow = itemInfo.overflow !== undefined ? itemInfo.overflow : '';
-                      itemInfo.element.style.overflowY = itemInfo.overflowY !== undefined ? itemInfo.overflowY : '';
-                      itemInfo.element.style.overflowX = itemInfo.overflowX !== undefined ? itemInfo.overflowX : '';
-                      if(itemInfo.background !== undefined) itemInfo.element.style.background = itemInfo.background;
-                  }
-              });
-
+          } catch(e) { console.error(e); } finally {
+              styleBackups.forEach(itemInfo => { if (itemInfo.element) { itemInfo.element.style.width = itemInfo.width !== undefined ? itemInfo.width : ''; itemInfo.element.style.height = itemInfo.height !== undefined ? itemInfo.height : ''; if(itemInfo.maxHeight !== undefined) itemInfo.element.style.maxHeight = itemInfo.maxHeight; if(itemInfo.minWidth !== undefined) itemInfo.element.style.minWidth = itemInfo.minWidth; if(itemInfo.minHeight !== undefined) itemInfo.element.style.minHeight = itemInfo.minHeight; itemInfo.element.style.overflow = itemInfo.overflow !== undefined ? itemInfo.overflow : ''; itemInfo.element.style.overflowY = itemInfo.overflowY !== undefined ? itemInfo.overflowY : ''; itemInfo.element.style.overflowX = itemInfo.overflowX !== undefined ? itemInfo.overflowX : ''; if(itemInfo.background !== undefined) itemInfo.element.style.background = itemInfo.background; } });
               elsToHide.forEach(el => el.style.display = el.getAttribute('data-original-display') || 'block');
           }
-
-          processedCount++;
-          loadingHeader.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Export Haute Qualité... ${Math.round(processedCount / checkboxes.length * 100)}%`;
+          processedCount++; loadingHeader.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Export Haute Qualité... ${Math.round(processedCount / captureTasks.length * 100)}%`;
       } 
+
+      if (isHiaCioaGlobal && globalSubEntiteEl) { globalSubEntiteEl.value = ''; }
 
       const fileName = `Rapport_d'activité_${entiteName.replace(/\s+/g,'_')}_${dateGen.replace(/\//g,'-')}`;
       if (format === 'pdf') pdf.save(fileName + ".pdf"); else pptx.writeFile({ fileName: fileName + ".pptx" });
 
+      if (!isBatchMode) {
+          loadingHeader.innerHTML = originalText;
+          if(container) container.style.display = 'block'; 
+          modal.style.display = 'none';
+          const domEntite = document.getElementById('entite');
+          if(domEntite && entiteVal) domEntite.value = entiteVal;
+          syncFilters('entite'); syncFilters('annee');
+      }
+  }
+
+  // =======================================================================
+  //  EXPORT EN LOT (TOUTES LES ENTITÉS)
+  // =======================================================================
+window.toggleAllExports = function(masterCheckbox) {
+      const isChecked = masterCheckbox.checked;
+      const allCheckboxes = document.querySelectorAll('#exportCheckboxesArea .export-checkbox');
+      allCheckboxes.forEach(chk => { chk.checked = isChecked; });
+  };
+
+window.exportAllEntities = async function(format) {
+      const entities = window.ENTITY_ORDER || ["HIA CIOA", "CIT", "CID", "PIL", "HPG", "ALHIKMA", "CII"];
+      
+      if (!confirm(`Voulez-vous vraiment générer et télécharger un fichier ${format.toUpperCase()} distinct pour CHAQUE entité (${entities.length} fichiers au total) ?`)) return;
+
+      const modal = document.getElementById('exportModal');
+      const loadingHeader = modal.querySelector('h3');
+      const originalText = loadingHeader.innerHTML;
+      const container = document.getElementById('exportCheckboxesArea');
+
+      if(container) container.style.display = 'none';
+
+      for (let i = 0; i < entities.length; i++) {
+          const entite = entities[i];
+          loadingHeader.innerHTML = `<i class="fas fa-layer-group"></i> Génération en lot : <b>${entite}</b> (${i+1}/${entities.length})`;
+          
+          const domEntite = document.getElementById('entite');
+          const modEntite = document.getElementById('modEntite');
+          
+          if (domEntite) {
+              if (!Array.from(domEntite.options).some(opt => opt.value === entite)) domEntite.add(new Option(entite, entite));
+              domEntite.value = entite;
+          }
+          if (modEntite) {
+              if (!Array.from(modEntite.options).some(opt => opt.value === entite)) modEntite.add(new Option(entite, entite));
+              modEntite.value = entite;
+          }
+          
+          const modSousEntite = document.getElementById('modSousEntite');
+          if (modSousEntite) modSousEntite.value = '';
+          const sousEntite = document.getElementById('sousEntite');
+          if (sousEntite) sousEntite.value = '';
+          
+          syncFilters('entite');
+          if(typeof syncModalFilters === 'function') syncModalFilters();
+
+          await new Promise(resolve => setTimeout(resolve, 800));
+          await processDynamicExport(format, true);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
       loadingHeader.innerHTML = originalText;
       if(container) container.style.display = 'block'; 
       modal.style.display = 'none';
+      alert("Tous les fichiers ont été générés !");
+  };
 
-      syncFilters('entite');
-      syncFilters('annee');
-  }
-  
   function selectFamily(family) { 
       document.querySelectorAll('#familyButtons button').forEach(btn => { 
           btn.classList.toggle('active', btn.getAttribute('data-family') === family); 
