@@ -1,0 +1,260 @@
+<script>
+/* ============================================================ */
+/*  DEPENSES OVERRIDE V2 - COMPLETE                              */
+/*  Full chart rewrite + thousands separators + entity fix        */
+/* ============================================================ */
+
+
+/* ============================================================ */
+/* GLOBAL: formatMoney with thousands separator                  */
+/* ============================================================ */
+window.formatMoney = function(v) {
+  if (v === undefined || v === null || isNaN(v)) return "0";
+  return Math.round(v).toLocaleString('fr-FR');
+};
+
+/* ============================================================ */
+/* OVERRIDE drawExpensesCharts - COMPLETE REWRITE                */
+/* Flash style: gradient bars, variations, modern pie            */
+/* ============================================================ */
+window.drawExpensesCharts = function(data, selectedYear) {
+  var canvasBar = document.getElementById('chartDepenseEvol');
+  var canvasPie = document.getElementById('chartDepensePie');
+  if (!canvasBar || !canvasPie) return;
+  var ctxBar = canvasBar.getContext('2d');
+  var ctxPie = canvasPie.getContext('2d');
+  if (window.expensesChartInstance) window.expensesChartInstance.destroy();
+  if (window.expensesPieInstance) window.expensesPieInstance.destroy();
+  var dk = document.body.classList.contains('dark-mode');
+  var FJ = "'Plus Jakarta Sans',sans-serif";
+  var COLS = ['#6366f1','#f59e0b','#10b981','#8b5cf6','#06b6d4','#ec4899','#ef4444','#84cc16'];
+
+  // Gradient
+  var gV = ctxBar.createLinearGradient(0, 0, 0, 400);
+  gV.addColorStop(0, '#6366f1'); gV.addColorStop(1, '#a78bfa');
+  var gG = ctxBar.createLinearGradient(0, 0, 0, 400);
+  gG.addColorStop(0, '#cbd5e1'); gG.addColorStop(1, '#e2e8f0');
+
+  var fK = function(v) { if (!v || isNaN(v)) return ''; return Math.round(v / 1000).toLocaleString('fr-FR'); };
+  var chartData = { labels: [], datasets: [] };
+  var dynamicTitle = "";
+  var fTrim = document.getElementById('depenseFilterTrim').value;
+  var fMois = document.getElementById('depenseFilterMois').value;
+  var fGroupe = document.getElementById('depenseFilterEntite').value;
+  var fSub = document.getElementById('depenseFilterSubEntity') ? document.getElementById('depenseFilterSubEntity').value : "";
+
+  if (depenseGraphMode === 'TIME') {
+    var labelsX = [];
+    if (fMois) labelsX = [fMois]; else if (fTrim) labelsX = depQuarters[fTrim]; else labelsX = depMonthOrder;
+
+    if (!selectedYear || selectedYear === '') {
+      // MULTI-YEAR comparison
+      dynamicTitle = "Comparaison annuelle des depenses (Kdh)";
+      chartData.labels = labelsX;
+      var yearsAvailable = [...new Set(data.map(function(d) { return d.annee; }))].filter(function(y) { return y; }).sort();
+      chartData.datasets = yearsAvailable.map(function(yr, idx) {
+        var monthlyData = labelsX.map(function(m) { return data.filter(function(d) { return String(d.annee) === String(yr) && d.mois === m; }).reduce(function(s, d) { return s + d.montant; }, 0); });
+        var isLast = idx === yearsAvailable.length - 1;
+        return {
+          label: String(yr), data: monthlyData,
+          backgroundColor: isLast ? gV : (idx === yearsAvailable.length - 2 ? '#94a3b8' : '#e2e8f0'),
+          borderRadius: 10, borderSkipped: false, barPercentage: 0.6, categoryPercentage: 0.75,
+          datalabels: { display: true, anchor: 'end', align: 'top', offset: 2, color: isLast ? '#1e293b' : '#94a3b8', font: { weight: '800', size: 11, family: FJ }, formatter: function(v) { return v > 0 ? fK(v) : ''; } }
+        };
+      });
+    } else {
+      // SINGLE YEAR with variations ▲/▼
+      dynamicTitle = "Evolution mensuelle " + selectedYear + " (Kdh)";
+      chartData.labels = labelsX;
+      var currentTotals = labelsX.map(function(m) { return data.filter(function(d) { return String(d.annee) === String(selectedYear) && d.mois === m; }).reduce(function(s, d) { return s + d.montant; }, 0); });
+
+      // Compute M vs M-1 variations
+      var variations = currentTotals.map(function(val, i) {
+        if (i === 0) return null;
+        var prev = currentTotals[i - 1];
+        if (prev === 0) return null;
+        return ((val - prev) / prev) * 100;
+      });
+
+      chartData.datasets = [{
+        type: 'bar', label: selectedYear, data: currentTotals,
+        backgroundColor: gV, borderRadius: 10, borderSkipped: false, barPercentage: 0.5, categoryPercentage: 0.7,
+        datalabels: { display: true, anchor: 'end', align: 'top', offset: 2, color: dk ? '#e2e8f0' : '#1e293b', font: { weight: '800', size: 13, family: FJ }, formatter: function(v) { return v > 0 ? fK(v) : ''; } }
+      }];
+    }
+  } else {
+    // ENTITY or CATEGORIE
+    var key = depenseGraphMode === 'ENTITY' ? 'entite' : 'categorie';
+    dynamicTitle = depenseGraphMode === 'ENTITY' ? "Repartition par entite (Kdh)" : "Repartition par categorie (Kdh)";
+    var agg = {};
+    data.forEach(function(d) { agg[d[key] || "Autre"] = (agg[d[key] || "Autre"] || 0) + d.montant; });
+    var sorted = Object.entries(agg).sort(function(a, b) { return b[1] - a[1]; }).slice(0, 12);
+    chartData = {
+      labels: sorted.map(function(s) { return s[0]; }),
+      datasets: [{
+        type: 'bar', label: 'Montant', data: sorted.map(function(s) { return s[1]; }),
+        backgroundColor: sorted.map(function(v, i) { return COLS[i % COLS.length]; }),
+        borderRadius: 10, borderSkipped: false,
+        datalabels: { anchor: 'end', align: 'top', offset: 2, color: dk ? '#e2e8f0' : '#1e293b', font: { weight: '800', size: 12, family: FJ }, formatter: function(v) { return v > 0 ? fK(v) : ''; } }
+      }]
+    };
+  }
+
+  // CREATE BAR CHART
+  window.expensesChartInstance = new Chart(ctxBar, {
+    type: 'bar', data: chartData,
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 40, bottom: 10 } },
+      plugins: {
+        title: { display: true, text: dynamicTitle, align: 'start', font: { size: 14, weight: '800', family: FJ }, color: dk ? '#e2e8f0' : '#1e293b', padding: { bottom: 16 } },
+        legend: { display: chartData.datasets.length > 1, position: 'top', align: 'end', labels: { usePointStyle: true, pointStyle: 'rectRounded', padding: 16, color: dk ? '#94a3b8' : '#64748b', font: { size: 11, weight: '700', family: FJ } } },
+        datalabels: { display: true }
+      },
+      scales: {
+        y: { display: false, beginAtZero: true, grace: '15%' },
+        y1: { display: false },
+        x: { grid: { display: false }, border: { display: false }, ticks: { color: dk ? '#64748b' : '#94a3b8', font: { size: 11, weight: '700', family: FJ }, padding: 8 } }
+      },
+      onClick: function(e, elements) {
+        if (elements.length > 0) {
+          var idx = elements[0].index;
+          var label = chartData.labels[idx];
+          var subset = [];
+          if (depenseGraphMode === 'TIME') {
+            if (!selectedYear) subset = data.filter(function(d) { return d.mois === label; });
+            else subset = data.filter(function(d) { return d.mois === label; });
+          } else if (depenseGraphMode === 'ENTITY') subset = data.filter(function(d) { return d.entite === label; });
+          else subset = data.filter(function(d) { return d.categorie === label; });
+          if (typeof showExpenseDetails === 'function') showExpenseDetails(subset, 'Detail : ' + label);
+        }
+      }
+    }
+  });
+
+  // ADD VARIATION ANNOTATIONS between bars (single year only)
+  if (depenseGraphMode === 'TIME' && selectedYear && selectedYear !== '') {
+    var chart = window.expensesChartInstance;
+    var origAfterDraw = chart.options.animation ? chart.options.animation.onComplete : null;
+    
+    // Custom plugin for drawing variations
+    var variationPlugin = {
+      id: 'depVariations',
+      afterDraw: function(chart) {
+        var ds = chart.data.datasets[0];
+        if (!ds || ds.data.length < 2) return;
+        var ctx2 = chart.ctx;
+        var meta = chart.getDatasetMeta(0);
+        
+        for (var i = 1; i < ds.data.length; i++) {
+          var prev = ds.data[i - 1];
+          var curr = ds.data[i];
+          if (prev === 0 || curr === 0) continue;
+          var pct = ((curr - prev) / prev) * 100;
+          var isUp = pct >= 0;
+          var barPrev = meta.data[i - 1];
+          var barCurr = meta.data[i];
+          var x = (barPrev.x + barCurr.x) / 2;
+          var y = Math.min(barPrev.y, barCurr.y) - 18;
+          
+          ctx2.save();
+          ctx2.textAlign = 'center';
+          ctx2.textBaseline = 'bottom';
+          ctx2.font = "bold 11px 'Plus Jakarta Sans', sans-serif";
+          ctx2.fillStyle = isUp ? '#ef4444' : '#10b981'; // Red = expenses up (bad), Green = expenses down (good)
+          ctx2.fillText((isUp ? '▲' : '▼') + ' ' + Math.abs(pct).toFixed(0) + '%', x, y);
+          ctx2.restore();
+        }
+      }
+    };
+    
+    // Register plugin for this chart
+    if (!chart.config.plugins) chart.config.plugins = [];
+    chart.config.plugins.push(variationPlugin);
+    chart.update();
+  }
+
+  // PIE/DOUGHNUT CHART
+  var pieAgg = {};
+  data.forEach(function(d) { pieAgg[d.categorie || 'Autre'] = (pieAgg[d.categorie || 'Autre'] || 0) + d.montant; });
+  var sortedPie = Object.entries(pieAgg).sort(function(a, b) { return b[1] - a[1]; });
+  var pLab = [], pDat = [], other = 0;
+  sortedPie.forEach(function(x, i) { if (i < 6) { pLab.push(x[0]); pDat.push(x[1]); } else other += x[1]; });
+  if (other > 0) { pLab.push("Autre"); pDat.push(other); }
+  var totalPie = pDat.reduce(function(s, v) { return s + v; }, 0);
+
+  window.expensesPieInstance = new Chart(ctxPie, {
+    type: 'doughnut',
+    data: { labels: pLab, datasets: [{ data: pDat, backgroundColor: COLS, borderWidth: 3, borderColor: dk ? '#0f1423' : '#fff' }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '60%',
+      plugins: {
+        title: { display: true, text: 'Repartition par categorie', align: 'center', font: { size: 13, weight: '800', family: FJ }, color: dk ? '#e2e8f0' : '#1e293b', padding: { bottom: 10 } },
+        legend: { position: 'bottom', labels: { usePointStyle: true, pointStyle: 'circle', padding: 12, color: dk ? '#94a3b8' : '#64748b', font: { size: 10, weight: '700', family: FJ } } },
+        datalabels: { color: '#fff', font: { weight: '800', size: 12, family: FJ }, formatter: function(v) { return totalPie > 0 ? (v * 100 / totalPie).toFixed(0) + '%' : ''; } }
+      }
+    }
+  });
+};
+
+/* ============================================================ */
+/* OVERRIDE updateExpensesView - fix entities + thousands sep    */
+/* ============================================================ */
+
+/* ============================================================ */
+/* HOOK loadExpensesData                                          */
+/* ============================================================ */
+(function() {
+  var _origLoad = window.loadExpensesData;
+  window.loadExpensesData = function() {
+    if (_origLoad) _origLoad();
+    setTimeout(function() {
+      if (window.globalExpensesData) {
+        window.globalExpensesData.forEach(function(d) { d.groupe = d.entite; });
+      }
+    }, 600);
+  };
+})();
+
+/* ============================================================ */
+/* CSS                                                           */
+/* ============================================================ */
+(function() {
+  var s = document.createElement('style');
+  s.textContent = `
+    #view-depenses > div:first-child { background: white !important; padding: 18px 22px !important; border-radius: 14px !important; border-left: 4px solid #6366f1 !important; box-shadow: 0 2px 12px rgba(99,102,241,0.06) !important; margin-bottom: 16px !important; }
+    #view-depenses > div:first-child h2 { font-size: 1.3em !important; font-weight: 900 !important; color: #1e293b !important; font-family: 'Plus Jakarta Sans', sans-serif !important; }
+    #depenseLastUpdate { font-size: 0.72em !important; color: #94a3b8 !important; font-style: normal !important; }
+    #filterDisplay { color: #6366f1 !important; font-family: 'Plus Jakarta Sans', sans-serif !important; font-weight: 700 !important; font-size: 0.82em !important; }
+    #view-depenses .action-btn[onclick*="fileExpenses"] { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; border-radius: 12px !important; box-shadow: 0 4px 12px rgba(99,102,241,0.3) !important; font-family: 'Plus Jakarta Sans', sans-serif !important; font-weight: 700 !important; }
+    #view-depenses .sec-filter-group label { font-size: 0.68em !important; font-weight: 800 !important; color: #94a3b8 !important; text-transform: uppercase !important; font-family: 'Plus Jakarta Sans', sans-serif !important; letter-spacing: 0.5px !important; }
+    #view-depenses .sec-filter-group select { padding: 8px 12px !important; border: 1px solid #e8ecf4 !important; border-radius: 10px !important; background: #f8f9fd !important; font-family: 'Plus Jakarta Sans', sans-serif !important; font-weight: 600 !important; font-size: 0.85em !important; color: #1e293b !important; }
+    #view-depenses .sec-filter-group select:focus { border-color: #6366f1 !important; box-shadow: 0 0 0 3px rgba(99,102,241,0.1) !important; }
+    #view-depenses .stat-card { border-radius: 14px !important; border: 1px solid #e8ecf4 !important; box-shadow: 0 2px 8px rgba(0,0,0,0.03) !important; font-family: 'Plus Jakarta Sans', sans-serif !important; transition: transform 0.2s, box-shadow 0.2s !important; }
+    #view-depenses .stat-card:hover { transform: translateY(-2px) !important; box-shadow: 0 6px 20px rgba(0,0,0,0.06) !important; }
+    #view-depenses .stat-card[style*="border-top: 4px solid #363795"] { border-top: 4px solid #6366f1 !important; }
+    #view-depenses .stat-card[style*="border-top: 4px solid #2ecc71"] { border-top: 4px solid #10b981 !important; }
+    #view-depenses .stat-card[style*="border-top: 4px solid #f1c40f"] { border-top: 4px solid #f59e0b !important; }
+    #view-depenses .stat-card[style*="border-top: 4px solid #e84393"] { border-top: 4px solid #ec4899 !important; }
+    #view-depenses .stat-value { font-family: 'Plus Jakarta Sans', sans-serif !important; font-weight: 900 !important; }
+    #view-depenses .stat-title { font-family: 'Plus Jakarta Sans', sans-serif !important; font-weight: 800 !important; }
+    #kpiDepenseTotal { color: #6366f1 !important; }
+    #view-depenses .clickable-card::after { content: '↗ Voir detail'; position: absolute; bottom: 8px; right: 12px; font-size: 0.65em; color: #6366f1; font-weight: 700; opacity: 0; transition: opacity 0.2s; font-family: 'Plus Jakarta Sans', sans-serif; }
+    #view-depenses .clickable-card:hover::after { opacity: 0.8; }
+    #view-depenses .clickable-card { position: relative !important; }
+    #view-depenses .chart-container { border-radius: 14px !important; border: 1px solid #e8ecf4 !important; box-shadow: 0 2px 8px rgba(0,0,0,0.03) !important; }
+    #view-depenses canvas { border-radius: 14px !important; }
+    #view-depenses .toggle-chart-btn { font-family: 'Plus Jakarta Sans', sans-serif !important; border-radius: 10px !important; font-weight: 700 !important; border: 1px solid #e8ecf4 !important; }
+    #view-depenses .toggle-chart-btn.active { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border-color: #6366f1 !important; box-shadow: 0 4px 12px rgba(99,102,241,0.3) !important; }
+    #view-depenses h4 { font-family: 'Plus Jakarta Sans', sans-serif !important; font-weight: 800 !important; color: #1e293b !important; }
+    #view-depenses .table-container { border-radius: 14px !important; border: 1px solid #e8ecf4 !important; box-shadow: 0 2px 8px rgba(0,0,0,0.03) !important; overflow: hidden !important; }
+    #view-depenses .table-container h4 { background: #f8f9fd !important; color: #6366f1 !important; font-size: 0.88em !important; }
+    #view-depenses table th { background: #f8f9fd !important; font-family: 'Plus Jakarta Sans', sans-serif !important; font-weight: 800 !important; font-size: 0.7em !important; color: #94a3b8 !important; text-transform: uppercase !important; }
+    #view-depenses table td { font-family: 'Plus Jakarta Sans', sans-serif !important; font-weight: 600 !important; }
+    #view-depenses table tr:hover td { background: rgba(99,102,241,0.04) !important; }
+    #expenseDetailModal > div > div:first-child { background: linear-gradient(135deg, #1e1b4b, #312e81) !important; border-radius: 16px 16px 0 0 !important; }
+    #expenseDetailModal > div { border-radius: 16px !important; }
+  `;
+  document.head.appendChild(s);
+})();
+</script>

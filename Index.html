@@ -3,7 +3,7 @@
   <head>
     <base target="_top">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#0a0f1c">
+    <meta name="theme-color" content="#0f172a">
     <title>DASHBOARD - REGION GRAND SUD</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -13,191 +13,387 @@
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     
     <?!= include('css_styles'); ?>
     
     <style>
-      /* Styles spécifiques (Export, Login, Modales) */
-      .export-group { border: 1px solid #e1e8f0; border-radius: 8px; margin-bottom: 12px; overflow: hidden; background: white; transition: box-shadow 0.2s; }
-      .export-group:hover { box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
-      .export-group-header { background: #f8faff; padding: 12px 15px; display: flex; align-items: center; border-bottom: 1px solid #eee; user-select: none; }
-      .export-group-title { flex: 1; font-weight: 700; color: #2c3e50; font-size: 0.95em; display: flex; align-items: center; gap: 10px; }
-      .export-group-controls { display: flex; gap: 5px; }
-      .sort-btn { background: white; border: 1px solid #ccc; color: #555; width: 24px; height: 24px; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 0.7em; transition: all 0.2s; }
-      .sort-btn:hover { background: #363795; color: white; border-color: #363795; }
-      .export-group-body { padding: 5px 0; background: white; display: none; }
-      .export-group-body.open { display: block; }
-      .export-item { display: flex; align-items: center; padding: 8px 15px 8px 45px; border-bottom: 1px dashed #f0f0f0; font-size: 0.9em; color: #555; transition: background 0.1s; }
-      .export-item:hover { background: #fbfbfb; }
-      .export-item:last-child { border-bottom: none; }
-      .export-checkbox { transform: scale(1.1); margin-right: 10px; cursor: pointer; accent-color: #363795; }
+      body { font-family: 'Plus Jakarta Sans', sans-serif !important; }
+      header { display: none !important; }
+      #kpiPanel { display: none !important; }
+
+      #view-recouvrement > div > div:first-child { display: none !important; }
+      #view-recouvrement > div { display: block !important; border: none !important; box-shadow: none !important; background: transparent !important; height: auto !important; min-height: auto !important; overflow: visible !important; border-radius: 0 !important; }
+      #view-recouvrement > div > div:last-child { width: 100% !important; overflow: visible !important; padding: 0 !important; background: transparent !important; }
+      #view-recouvrement > div > div:last-child > div:first-child { background: white !important; padding: 18px 22px !important; border-radius: 14px !important; border-left: 4px solid #6366f1 !important; box-shadow: 0 2px 12px rgba(99,102,241,0.06) !important; margin-bottom: 16px !important; }
+      #recouvMainTitle { font-size: 1.3em !important; font-weight: 900 !important; color: #1e293b !important; font-family: 'Plus Jakarta Sans', sans-serif !important; }
+      #recouvSubTitle { font-size: 0.82em !important; color: #6366f1 !important; font-weight: 700 !important; }
+      #recouvLastUpdate { font-size: 0.72em !important; color: #94a3b8 !important; }
+      #recouvImportZone button { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; border-radius: 12px !important; box-shadow: 0 4px 12px rgba(99,102,241,0.3) !important; font-weight: 700 !important; }
+      #recouvFilterRow { background: white !important; padding: 12px 18px !important; border-radius: 14px !important; border: 1px solid #e8ecf4 !important; box-shadow: 0 2px 8px rgba(0,0,0,0.03) !important; margin-bottom: 16px !important; border-top: none !important; }
+      #recouvFilterRow .sec-filter-group label, #recouvFilterRow label { font-size: 0.68em !important; font-weight: 800 !important; color: #94a3b8 !important; text-transform: uppercase !important; }
+      #recouvFilterRow .sec-filter-group select, #recouvFilterRow select { padding: 8px 12px !important; border: 1px solid #e8ecf4 !important; border-radius: 10px !important; background: #f8f9fd !important; font-weight: 600 !important; font-size: 0.85em !important; color: #1e293b !important; }
+      #filterApprocheContainer { display: none !important; }
+      #filterPatientContainer { display: none !important; }
+      #btnModeTransf { display: none !important; }
+      #view-recouvrement .stat-card, #recouvDataContent .stat-card { border-radius: 14px !important; border: 1px solid #e8ecf4 !important; box-shadow: 0 2px 8px rgba(0,0,0,0.03) !important; transition: transform 0.2s, box-shadow 0.2s !important; }
+      #view-recouvrement .stat-card:hover { transform: translateY(-2px) !important; box-shadow: 0 6px 20px rgba(0,0,0,0.06) !important; }
+      #view-recouvrement .stat-value { font-weight: 900 !important; }
+      #view-recouvrement .stat-title { font-weight: 800 !important; }
+      #view-recouvrement .stat-card[style*="border-top: 4px solid #e67e22"], #view-recouvrement .stat-card[style*="border-top:4px solid #e67e22"] { border-top: 4px solid #6366f1 !important; }
+      #view-recouvrement .stat-card[style*="border-top: 4px solid #c0392b"], #view-recouvrement .stat-card[style*="border-top:4px solid #c0392b"] { border-top: 4px solid #ef4444 !important; }
+      #view-recouvrement .stat-card[style*="border-top: 4px solid #27ae60"], #view-recouvrement .stat-card[style*="border-top:4px solid #27ae60"] { border-top: 4px solid #10b981 !important; }
+      #view-recouvrement .stat-card[style*="border-top: 4px solid #f1c40f"], #view-recouvrement .stat-card[style*="border-top:4px solid #f1c40f"] { border-top: 4px solid #f59e0b !important; }
+      #view-recouvrement .stat-card[style*="border-top: 4px solid #9b59b6"], #view-recouvrement .stat-card[style*="border-top:4px solid #9b59b6"] { border-top: 4px solid #8b5cf6 !important; }
+      #view-recouvrement .stat-card[style*="border-top: 4px solid #3498db"], #view-recouvrement .stat-card[style*="border-top:4px solid #3498db"] { border-top: 4px solid #06b6d4 !important; }
+      #view-recouvrement .stat-card[style*="border-top: 4px solid #f39c12"], #view-recouvrement .stat-card[style*="border-top:4px solid #f39c12"] { border-top: 4px solid #f59e0b !important; }
+      #view-recouvrement [style*="color: #d35400"], #view-recouvrement [style*="color:#d35400"] { color: #6366f1 !important; }
+      #view-recouvrement [style*="color:#c0392b"], #view-recouvrement [style*="color: #c0392b"] { color: #ef4444 !important; }
+      #view-recouvrement [style*="color:#a93226"] { color: #dc2626 !important; }
+      #view-recouvrement [style*="color:#27ae60"], #view-recouvrement [style*="color: #27ae60"] { color: #10b981 !important; }
+      #view-recouvrement [style*="color:#1e8449"] { color: #059669 !important; }
+      #view-recouvrement [style*="background:#fff5f5"] { background: rgba(239,68,68,0.06) !important; }
+      #view-recouvrement [style*="background:#f0fbf4"], #view-recouvrement [style*="background: #f0fbf4"] { background: rgba(16,185,129,0.06) !important; }
+      #view-recouvrement [style*="background:#fdf8e4"] { background: rgba(245,158,11,0.06) !important; }
+      #view-recouvrement .stat-card[onclick] { position: relative !important; }
+      #view-recouvrement canvas { border-radius: 14px !important; }
+      #view-recouvrement .chart-container { border-radius: 14px !important; border: 1px solid #e8ecf4 !important; }
+      #view-recouvrement .toggle-chart-btn.active { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border-color: #6366f1 !important; }
+      #view-recouvrement button[style*="background:#363795"], #view-recouvrement button[style*="background: #363795"] { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; border-radius: 18px !important; }
+      #view-recouvrement h4[style*="color:#363795"], #view-recouvrement h4[style*="color: #363795"] { color: #6366f1 !important; }
+      #view-recouvrement h4 { font-weight: 800 !important; color: #1e293b !important; }
+      #view-recouvrement table th { background: #f8f9fd !important; font-weight: 800 !important; font-size: 0.7em !important; color: #94a3b8 !important; text-transform: uppercase !important; }
+      #view-recouvrement table td { font-weight: 600 !important; }
+      #view-recouvrement table tr:hover td { background: rgba(99,102,241,0.04) !important; }
+      #recouvSortSelect { color: #6366f1 !important; }
+      .back-btn { color: #6366f1 !important; background: rgba(99,102,241,0.08) !important; }
+      #view-recouvrement .obj-card, #view-recouvrement .obj-box { border-radius: 14px !important; border: 1px solid #e8ecf4 !important; }
+      .nav-sub-btn.active { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border: none !important; }
       
-      /* Login Overlay Styles */
-      #loginOverlay { font-family: 'Segoe UI', sans-serif; }
-.login-input { 
-    width: 100%; 
-    padding: 12px 12px 12px 40px; /* Le 40px dégage l'espace pour l'icône */
-    border: 1px solid #cbd5e1; 
-    border-radius: 6px; 
-    box-sizing: border-box; 
-    outline: none; 
-    transition: border-color 0.3s; 
-}
-      .login-input:focus { border-color: #3b82f6; }
-      .login-label { display: block; font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 5px; text-align: left; }
+      #appContainer { display: flex !important; flex-direction: row !important; height: 100vh !important; }
+      .app-layout { flex: 1 !important; flex-direction: column !important; height: 100vh !important; min-height: unset !important; }
+
+      #slimSidebar { width: 78px; background: #ffffff; border-right: 1px solid #e8ecf4; display: flex; flex-direction: column; align-items: center; padding: 16px 0; flex-shrink: 0; height: 100vh; z-index: 200; box-shadow: 2px 0 20px rgba(0,0,0,0.03); }
+      .slim-logo { width: 50px; height: 50px; margin-bottom: 24px; cursor: pointer; transition: transform 0.2s; display: flex; align-items: center; justify-content: center; }
+      .slim-logo:hover { transform: scale(1.05); }
+      .slim-logo img { width: 46px; height: 46px; object-fit: contain; }
+      .slim-nav { display: flex; flex-direction: column; gap: 4px; align-items: center; flex: 1; width: 100%; padding: 0 10px; }
+      .slim-nav-item { width: 54px; height: 54px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: pointer; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); color: #94a3b8; background: transparent; border: none; font-family: inherit; position: relative; }
+      .slim-nav-item i { font-size: 1.15em; transition: all 0.2s; }
+      .slim-nav-item span { font-size: 0.55em; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase; }
+      .slim-nav-item:hover { background: #f1f0ff; color: #6366f1; }
+      .slim-nav-item.active { background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35); }
+      .slim-nav-item.active i { transform: scale(1.1); }
+      .slim-divider { width: 36px; height: 1px; background: #e8ecf4; margin: 8px 0; }
+      .slim-bottom { display: flex; flex-direction: column; align-items: center; gap: 10px; padding-bottom: 10px; }
+      .slim-avatar { width: 38px; height: 38px; border-radius: 12px; object-fit: cover; border: 2px solid #e8ecf4; cursor: pointer; transition: border-color 0.2s; }
+      .slim-avatar:hover { border-color: #6366f1; }
+
+      #topBar { background: #ffffff; padding: 14px 28px; border-bottom: 1px solid #e8ecf4; display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-shrink: 0; z-index: 100; }
+      .topbar-left { display: flex; align-items: center; gap: 16px; }
+      .topbar-title { font-size: 1.3em; font-weight: 900; color: #1a1d2e; letter-spacing: -0.5px; }
+      .topbar-title span { color: #6366f1; }
+      .topbar-breadcrumb { font-size: 0.78em; color: #94a3b8; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+      .topbar-breadcrumb .sep { color: #d1d5db; }
+      .topbar-breadcrumb .current { color: #6366f1; font-weight: 700; }
+      .topbar-filters { display: flex; gap: 10px; align-items: center; }
+      .topbar-filter-pill { display: flex; align-items: center; gap: 6px; background: #f4f4fb; border: 1px solid #e8ecf4; padding: 8px 14px; border-radius: 10px; font-size: 0.82em; font-weight: 600; color: #64748b; transition: all 0.2s; }
+      .topbar-filter-pill select { border: none; background: transparent; color: #1a1d2e; font-weight: 700; font-family: inherit; font-size: 1em; outline: none; cursor: pointer; padding: 0; margin: 0; }
+      .topbar-filter-pill:focus-within { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+      .topbar-actions { display: flex; gap: 8px; align-items: center; }
+      .topbar-action-btn { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 1px solid #e8ecf4; background: #f8f9fc; color: #64748b; font-size: 0.95em; transition: all 0.2s; }
+      .topbar-action-btn:hover { background: #f1f0ff; color: #6366f1; border-color: #c7d2fe; }
+      .topbar-user { display: flex; align-items: center; gap: 10px; background: #f8f9fc; padding: 6px 14px 6px 6px; border-radius: 14px; border: 1px solid #e8ecf4; }
+      .topbar-user img { width: 32px; height: 32px; border-radius: 10px; object-fit: cover; }
+      .topbar-user-info { display: flex; flex-direction: column; line-height: 1.2; }
+      .topbar-user-info .name { font-size: 0.8em; font-weight: 800; color: #1a1d2e; }
+      .topbar-user-info .role { font-size: 0.65em; color: #94a3b8; font-weight: 600; }
+
+      #sidebar { width: 0 !important; overflow: hidden !important; border-right: none !important; box-shadow: none !important; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s; opacity: 0; }
+      #sidebar.sidebar-open { width: 250px !important; opacity: 1; border-right: 1px solid #e8ecf4 !important; box-shadow: 2px 0 20px rgba(0,0,0,0.03) !important; }
+      .family-toggle-btn { display: flex; align-items: center; gap: 8px; background: #f4f4fb; border: 1px solid #e8ecf4; padding: 8px 16px; border-radius: 10px; font-size: 0.82em; font-weight: 700; color: #6366f1; cursor: pointer; transition: all 0.2s; font-family: inherit; white-space: nowrap; }
+      .family-toggle-btn:hover { background: #ede9fe; border-color: #c7d2fe; }
+      .family-toggle-btn.active { background: #6366f1; color: white; border-color: #6366f1; }
+      .family-toggle-btn i { font-size: 0.9em; transition: transform 0.3s; }
+      .family-toggle-btn.active i { transform: rotate(180deg); }
+      #sidebarToggle { display: none !important; }
+      .main-content { flex-grow: 1 !important; height: auto !important; overflow-y: auto !important; padding: 24px 28px !important; background: #f0f2f8 !important; }
+      #ctxEntity { font-size: 1.3em !important; font-weight: 900 !important; }
+
+      /* ============================================ */
+      /* SPLASH SCREEN                               */
+      /* ============================================ */
+      #splashScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 40%, #0f172a 100%); z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; transition: opacity 0.6s ease, transform 0.6s ease; }
+      #splashScreen.fade-out { opacity: 0; transform: scale(1.05); pointer-events: none; }
+      .splash-bg-glow { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.12; animation: floatGlow 8s ease-in-out infinite; }
+      .glow-1 { width: 400px; height: 400px; background: #6366f1; top: -100px; left: -100px; }
+      .glow-2 { width: 300px; height: 300px; background: #06b6d4; bottom: -80px; right: -80px; animation-delay: 3s; }
+      @keyframes floatGlow { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(30px,-20px) scale(1.1)} }
+      .splash-logo-main { width: 80px; height: 80px; margin-bottom: 28px; animation: logoIn 0.8s cubic-bezier(0.16,1,0.3,1) forwards; opacity: 0; transform: translateY(30px); }
+      .splash-logo-main img { width: 80px; height: 80px; object-fit: contain; filter: brightness(0) invert(1); }
+      @keyframes logoIn { to { opacity: 1; transform: translateY(0); } }
+      .splash-text-region { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 4px; color: #6366f1; font-weight: 800; margin-bottom: 8px; animation: txtIn 0.6s 0.3s cubic-bezier(0.16,1,0.3,1) forwards; opacity: 0; transform: translateY(20px); font-family: 'Plus Jakarta Sans', sans-serif; }
+      .splash-text-title { font-size: 1.9rem; font-weight: 900; color: #e2e8f0; margin-bottom: 6px; animation: txtIn 0.6s 0.5s cubic-bezier(0.16,1,0.3,1) forwards; opacity: 0; transform: translateY(20px); font-family: 'Plus Jakarta Sans', sans-serif; }
+      .splash-text-sub { font-size: 0.85rem; color: #475569; font-weight: 500; margin-bottom: 45px; animation: txtIn 0.6s 0.7s cubic-bezier(0.16,1,0.3,1) forwards; opacity: 0; transform: translateY(20px); font-family: 'Plus Jakarta Sans', sans-serif; }
+      @keyframes txtIn { to { opacity: 1; transform: translateY(0); } }
+      .splash-bar-wrap { width: 260px; animation: txtIn 0.6s 0.9s cubic-bezier(0.16,1,0.3,1) forwards; opacity: 0; transform: translateY(20px); }
+      .splash-bar { width: 100%; height: 3px; background: rgba(255,255,255,0.06); border-radius: 10px; overflow: hidden; margin-bottom: 12px; }
+      .splash-bar-fill { height: 100%; background: linear-gradient(90deg, #6366f1, #a78bfa, #6366f1); background-size: 200% 100%; border-radius: 10px; width: 0%; animation: barFill 2.5s 1.2s ease-out forwards, barShimmer 1.5s linear infinite; }
+      @keyframes barFill { 0%{width:0%} 30%{width:40%} 60%{width:70%} 100%{width:100%} }
+      @keyframes barShimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+      .splash-bar-status { font-size: 0.72rem; color: #475569; font-weight: 500; text-align: center; font-family: 'Plus Jakarta Sans', sans-serif; transition: opacity 0.2s; }
+      .splash-footer-ver { position: absolute; bottom: 28px; font-size: 0.65rem; color: #334155; font-weight: 700; letter-spacing: 1px; animation: txtIn 0.6s 1s cubic-bezier(0.16,1,0.3,1) forwards; opacity: 0; font-family: 'Plus Jakarta Sans', sans-serif; }
+
+      .export-filters-row { display: flex; gap: 10px; padding: 12px 20px; background: #f8f9fd; border-bottom: 1px solid #e8ecf4; flex-wrap: wrap; }
+      .export-filter-item { display: flex; flex-direction: column; gap: 3px; }
+      .export-filter-item label { font-size: 0.68em; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+      .export-filter-item select { padding: 7px 12px; border: 1px solid #e8ecf4; border-radius: 8px; background: white; font-family: inherit; font-size: 0.85em; font-weight: 600; color: #1a1d2e; outline: none; }
+
+      @media (max-width: 850px) {
+        #slimSidebar { display: none !important; }
+        #topBar { flex-wrap: wrap; padding: 10px 14px; }
+        .topbar-filters { overflow-x: auto; flex-wrap: nowrap; }
+        .topbar-actions { display: none; }
+        .family-toggle-btn { display: none; }
+        #mobileBottomNav { display: flex !important; position: fixed; bottom: 0; left: 0; right: 0; background: white; z-index: 9990; border-top: 1px solid #e8ecf4; padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); box-shadow: 0 -4px 20px rgba(0,0,0,0.06); justify-content: space-around; }
+        .mob-nav-item { display: flex; flex-direction: column; align-items: center; gap: 2px; color: #94a3b8; font-size: 0.65em; font-weight: 700; border: none; background: none; cursor: pointer; padding: 4px 8px; border-radius: 10px; transition: all 0.2s; font-family: inherit; }
+        .mob-nav-item i { font-size: 1.4em; }
+        .mob-nav-item.active { color: #6366f1; }
+        .main-content { padding: 14px 14px 90px 14px !important; }
+        /* LOGIN mobile */
+        .login-wrapper { justify-content: center; align-items: flex-end; }
+        .login-glass-card { width: 100% !important; margin-right: 0 !important; border-radius: 24px 24px 0 0 !important; padding: 28px 20px 34px !important; max-height: 88vh; overflow-y: auto; }
+        .founders-overlay { display: none !important; }
+      }
+      #mobileBottomNav { display: none; }
+
+      .export-group { border: 1px solid #e8ecf4; border-radius: 14px; margin-bottom: 10px; overflow: hidden; background: white; }
+      .export-group-header { background: #f8f9fd; padding: 12px 15px; display: flex; align-items: center; border-bottom: 1px solid #f0f2f8; }
+      .export-group-title { flex: 1; font-weight: 700; color: #1a1d2e; font-size: 0.92em; }
+      .export-group-body { padding: 5px 0; display: none; }
+      .export-group-body.open { display: block; }
+      .export-item { display: flex; align-items: center; padding: 8px 15px 8px 45px; border-bottom: 1px dashed #f0f2f8; font-size: 0.88em; color: #64748b; }
+      .export-checkbox { transform: scale(1.1); margin-right: 10px; cursor: pointer; accent-color: #6366f1; }
+      .user-profile-widget { display: none !important; }
+      .user-profile-info { display: none !important; }
+      #kpiPanel { display: none !important; }
+      #sidebarProfile { display: none !important; }
+      .focus-box, .focus-box[class*="bg-"] { background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%) !important; color: white !important; }
+      .focus-box .focus-value { color: white !important; text-shadow: 0 2px 4px rgba(0,0,0,0.15) !important; }
+      .focus-box .focus-footer { background: rgba(0,0,0,0.12) !important; color: white !important; }
+      .focus-box .focus-label { color: rgba(255,255,255,0.9) !important; }
+      #chartContainer { background: #fff !important; padding: 24px !important; border-radius: 14px !important; border: 1px solid #e8ecf4 !important; box-shadow: 0 2px 8px rgba(0,0,0,0.03) !important; }
+      #secondaryFiltersPanel { background: #fff !important; padding: 12px 18px !important; border-radius: 14px !important; border: 1px solid #e8ecf4 !important; box-shadow: 0 2px 8px rgba(0,0,0,0.03) !important; }
+      #secondaryFiltersPanel .sec-filter-group label { font-size: 0.68em !important; font-weight: 800 !important; color: #94a3b8 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; }
+      #secondaryFiltersPanel .sec-filter-group select { padding: 8px 12px !important; border: 1px solid #e8ecf4 !important; border-radius: 10px !important; background: #f8f9fd !important; font-family: 'Plus Jakarta Sans', sans-serif !important; font-weight: 600 !important; font-size: 0.85em !important; color: #1a1d2e !important; }
+      #secondaryFiltersPanel .sec-filter-group select:focus { border-color: #6366f1 !important; box-shadow: 0 0 0 3px rgba(99,102,241,0.1) !important; }
+
+      /* ============================================ */
+      /* LOGIN GLASSMORPHISM                         */
+      /* ============================================ */
+      .login-wrapper { position: fixed; inset: 0; z-index: 999999; display: flex; align-items: center; justify-content: flex-end; font-family: 'Plus Jakarta Sans', sans-serif; }
+      .login-bg { position: absolute; inset: 0; background-image: url('https://clinique-internationale-taroudant.ma/wp-content/uploads/slider/cache/14ae8d041e5f6eae941dac24a334181c/ITP-Akdital-Taroudant-2.jpg'); background-size: cover; background-position: center; z-index: 0; }
+      .login-bg::after { content: ''; position: absolute; inset: 0; background: linear-gradient(120deg, rgba(10,15,35,0.15) 0%, rgba(10,15,35,0.05) 40%, rgba(10,15,35,0.55) 100%); }
+      .login-glass-card { position: relative; z-index: 2; width: 410px; margin-right: 6%; padding: 38px 36px; background: rgba(255,255,255,0.12); backdrop-filter: blur(24px) saturate(1.8); -webkit-backdrop-filter: blur(24px) saturate(1.8); border: 1px solid rgba(255,255,255,0.28); border-radius: 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.35); animation: lgFadeIn 0.7s cubic-bezier(0.16,1,0.3,1) both; }
+      @keyframes lgFadeIn { from{opacity:0;transform:translateX(30px)} to{opacity:1;transform:translateX(0)} }
+      .lg-card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+      .lg-card-header img { width: 42px; height: auto; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.3)); }
+      .lg-card-header-title { font-size: 1.05rem; font-weight: 800; color: #fff; letter-spacing: 0.4px; text-shadow: 0 1px 4px rgba(0,0,0,0.3); display: block; }
+      .lg-card-header-sub { font-size: 0.62rem; color: rgba(255,255,255,0.65); font-weight: 500; letter-spacing: 0.8px; text-transform: uppercase; margin-top: 2px; display: block; }
+      .lg-divider { height: 1px; background: linear-gradient(90deg, rgba(255,255,255,0.45), rgba(255,255,255,0.04)); margin: 18px 0; }
+      .lg-user-box { display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.11); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; padding: 11px 13px; margin-bottom: 22px; }
+      .lg-user-box img { width: 44px; height: 44px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.45); object-fit: cover; flex-shrink: 0; }
+      .lg-user-name { font-size: 0.88rem; font-weight: 800; color: #fff; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .lg-user-poste { font-size: 0.72rem; color: rgba(255,255,255,0.72); font-weight: 500; margin: 2px 0 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .lg-user-email { display: inline-flex; align-items: center; gap: 5px; font-size: 0.68rem; color: rgba(255,255,255,0.78); background: rgba(255,255,255,0.14); padding: 2px 8px; border-radius: 5px; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .lg-label { display: block; font-size: 0.76rem; font-weight: 700; color: rgba(255,255,255,0.88); margin-bottom: 7px; letter-spacing: 0.2px; }
+      .lg-form-group { margin-bottom: 15px; }
+      .lg-input-wrap { position: relative; display: flex; align-items: center; }
+      .lg-input-icon { position: absolute; left: 13px; color: rgba(255,255,255,0.55); font-size: 0.85rem; pointer-events: none; z-index: 2; }
+      .lg-input { width: 100%; padding: 11px 13px 11px 38px; background: rgba(255,255,255,0.13); border: 1px solid rgba(255,255,255,0.28); border-radius: 10px; font-size: 0.88rem; color: #fff; font-family: 'Plus Jakarta Sans', sans-serif; outline: none; transition: all 0.25s ease; }
+      .lg-input::placeholder { color: rgba(255,255,255,0.4); }
+      .lg-input:focus { background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.6); box-shadow: 0 0 0 3px rgba(255,255,255,0.1); }
+      .lg-eye { position: absolute; right: 13px; color: rgba(255,255,255,0.45); cursor: pointer; font-size: 0.85rem; transition: color 0.2s; z-index: 3; }
+      .lg-eye:hover { color: rgba(255,255,255,0.88); }
+      .lg-btn { width: 100%; padding: 12px 16px; background: linear-gradient(135deg, #3b5bdb 0%, #4263eb 100%); color: white; border: none; border-radius: 10px; font-size: 0.9rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; letter-spacing: 0.6px; box-shadow: 0 4px 16px rgba(59,91,219,0.5); font-family: 'Plus Jakarta Sans', sans-serif; margin: 8px 0 14px; transition: all 0.3s ease; }
+      .lg-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 22px rgba(59,91,219,0.6); }
+      .lg-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+      .lg-error { display: none; align-items: center; gap: 9px; padding: 10px 13px; background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.4); border-radius: 9px; color: #fca5a5; font-size: 0.8rem; font-weight: 600; margin-bottom: 12px; animation: lgShake 0.4s ease; }
+      @keyframes lgShake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-5px)} 75%{transform:translateX(5px)} }
+      .lg-forgot { text-align: center; }
+      .lg-forgot a { color: rgba(255,255,255,0.6); font-size: 0.78rem; font-weight: 500; text-decoration: none; transition: color 0.2s; }
+      .lg-forgot a:hover { color: #fff; text-decoration: underline; }
+      .lg-version { text-align: center; margin-top: 18px; font-size: 0.62rem; color: rgba(255,255,255,0.28); letter-spacing: 0.8px; text-transform: uppercase; }
+      /* Créateurs bas gauche */
+      .founders-overlay { position: absolute; bottom: 34px; left: 42px; z-index: 2; animation: lgFoundersIn 0.8s cubic-bezier(0.16,1,0.3,1) 0.3s both; }
+      @keyframes lgFoundersIn { from{opacity:0;transform:translateX(-18px)} to{opacity:1;transform:translateX(0)} }
+      .founders-label { font-size: 0.63rem; color: rgba(255,255,255,0.48); text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; margin-bottom: 11px; }
+      .founders-row { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; flex-wrap: wrap; }
+      .founder-chip { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.17); border-radius: 40px; padding: 5px 13px 5px 5px; transition: all 0.25s ease; cursor: default; }
+      .founder-chip:hover { background: rgba(255,255,255,0.17); transform: translateY(-2px); }
+      .founder-chip img { width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.38); object-fit: cover; }
+      .founder-chip-name { font-size: 0.78rem; font-weight: 700; color: #fff; white-space: nowrap; display: block; line-height: 1.2; }
+      .founder-chip-title { font-size: 0.62rem; color: rgba(255,255,255,0.58); white-space: nowrap; display: block; }
+      .director-chip { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+      .director-dot { width: 5px; height: 5px; border-radius: 50%; background: rgba(255,255,255,0.35); flex-shrink: 0; }
+      .director-text { font-size: 0.7rem; color: rgba(255,255,255,0.5); }
+      .director-text strong { color: rgba(255,255,255,0.78); font-weight: 600; }
+      /* Modal forgot password */
+      #forgotOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 9999999; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
+      .forgot-modal { background: rgba(15,20,40,0.96); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.17); padding: 36px; border-radius: 20px; max-width: 390px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.5); animation: lgFadeIn 0.4s ease; }
+      .forgot-modal h3 { color: #fff; font-size: 1.1rem; margin-bottom: 10px; font-weight: 700; }
+      .forgot-modal p { color: rgba(255,255,255,0.58); margin-bottom: 20px; font-size: 0.86rem; line-height: 1.5; }
+      .forgot-actions { display: flex; gap: 10px; margin-top: 18px; }
+      .btn-cancel { flex: 1; padding: 11px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 9px; color: rgba(255,255,255,0.78); font-weight: 600; font-size: 0.86rem; cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif; transition: background 0.2s; }
+      .btn-cancel:hover { background: rgba(255,255,255,0.17); }
+      .btn-send { flex: 1; padding: 11px; background: linear-gradient(135deg,#3b5bdb,#4263eb); border: none; border-radius: 9px; color: white; font-weight: 700; font-size: 0.86rem; cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif; transition: all 0.2s; }
+      .btn-send:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(59,91,219,0.5); }
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
     </style>
   </head>
   <body>
 
-<div id="loginOverlay" class="login-wrapper">
-        <div class="login-main-card">
-            
-            <div class="login-left-panel">
-                <div class="login-left-overlay"></div>
-                <div class="login-left-content">
-                    <h3 style="color: white; font-weight: 300; font-size: 1.4rem; margin-bottom: 30px;">Dashboard <br><strong style="font-weight: 800;">Région Grand-Sud</strong></h3>
-                    
-                    <div class="founders-box">
-                        <p style="color: rgba(255,255,255,0.7); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px;">Créé & Développé par</p>
-                        
-                        <div class="founder-profile">
-                            <img src="https://myakdital.humaneo.ma/rails/active_storage/blobs/redirect/eyJfcmFpbHMiOnsiZGF0YSI6MjMxODgsInB1ciI6ImJsb2JfaWQifX0=--fd8a05afa2f8049866ac0b5e8524fc94c5b68e09/yahyaoui_sami.jpg" alt="S. Yahyaoui">
-                            <div class="founder-info">
-                                <h4>Sami YAHYAOUI</h4>
-                                <span>Chargé de Reporting Régional - GRAND SUD</span>
-                            </div>
-                        </div>
-                        
-                        <div class="founder-profile">
-                            <img src="https://i.ibb.co/YvtwVwN/Whats-App-Image-2026-02-19-at-14-20-37-1.jpg" alt="O. Duieb">
-                            <div class="founder-info">
-                                <h4>Othmane DUIEB</h4>
-                                <span>Chargé de Reporting Régional - CENTRE</span>
-                            </div>
-                        </div>
-                        <div class="founder-profile">
-                            <img src="https://myakdital.humaneo.ma/rails/active_storage/blobs/redirect/eyJfcmFpbHMiOnsiZGF0YSI6MjcxMDcsInB1ciI6ImJsb2JfaWQifX0=--eb63e34540ffc00736d883fa148a876f6d3a0d34/WhatsApp%20Image%202026-01-16%20at%2015.36.11.jpeg" alt="O. Duieb">
-                            <div class="founder-info">
-                                <h4>Noura EL HRARMA</h4>
-                                <span>Chargée de Recouvrement Régional - GRAND SUD</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+    <!-- ============================================ -->
+    <!-- LOGIN OVERLAY                               -->
+    <!-- ============================================ -->
+    <div id="loginOverlay" class="login-wrapper">
+      <div class="login-bg"></div>
 
-            <div class="login-right-panel">
-                <div class="login-form-container">
-                    <img src="https://myakdital.humaneo.ma/rails/active_storage/blobs/redirect/eyJfcmFpbHMiOnsiZGF0YSI6NiwicHVyIjoiYmxvYl9pZCJ9fQ==--0976c7c23de2a60252dabfe89e491678d4c651a9/akdital-secondary.png" alt="AKDITAL" class="akdital-logo">
-                    
-                    <h2 class="login-title">Bienvenue</h2>
-                    <p class="login-subtitle">Veuillez vous authentifier pour accéder à votre espace.</p>
-                    
-    
-<div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 12px; margin-bottom: 25px; display: flex; align-items: center; gap: 15px; text-align: left;">
-    
-    <img src="<?= userPhoto ?>" alt="Avatar" style="width: 54px; height: 54px; border-radius: 50%; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.05); flex-shrink: 0; object-fit: cover;">
-    
-    <div style="display: flex; flex-direction: column; overflow: hidden; width: 100%;">
-        
-        <span style="font-size: 1rem; font-weight: 800; color: #1e293b; text-transform: uppercase; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">
-            <?= userName ?>
-        </span>
-        
-        <span style="font-size: 0.8rem; color: #64748b; font-weight: 600; margin-bottom: 6px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">
-            <?= userPoste ?>
-        </span>
-        
-        <div style="display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #475569; background: #e2e8f0; padding: 3px 8px; border-radius: 6px; width: fit-content; max-width: 100%;">
-            <i class="fab fa-google" style="color: #ea4335; flex-shrink: 0;"></i>
-            <span style="white-space: nowrap; text-overflow: ellipsis; overflow: hidden; font-weight: 500;">
-                <?= userEmail ?>
-            </span>
+      <!-- Créateurs — bas gauche (Othmane en premier) -->
+      <div class="founders-overlay">
+        <div class="founders-label">Créé &amp; Développé par</div>
+        <div class="founders-row">
+          <div class="founder-chip">
+            <img src="https://myakdital.humaneo.ma/rails/active_storage/blobs/redirect/eyJfcmFpbHMiOnsiZGF0YSI6MjMxODgsInB1ciI6ImJsb2JfaWQifX0=--fd8a05afa2f8049866ac0b5e8524fc94c5b68e09/yahyaoui_sami.jpg"
+                 onerror="this.src='https://ui-avatars.com/api/?name=SY&background=3b5bdb&color=fff&bold=true'" alt="Sami YAHYAOUI">
+            <div>
+              <span class="founder-chip-name">Sami YAHYAOUI</span>
+              <span class="founder-chip-title">Reporting Régional · GRAND-SUD</span>
+            </div>
+          </div>
+          <div class="founder-chip">
+            <img src="https://i.ibb.co/YvtwVwN/Whats-App-Image-2026-02-19-at-14-20-37-1.jpg"
+                 onerror="this.src='https://ui-avatars.com/api/?name=OD&background=7048e8&color=fff&bold=true'" alt="Othmane Duieb">
+            <div>
+              <span class="founder-chip-name">Othmane Duieb</span>
+              <span class="founder-chip-title">Reporting Régional · CENTER</span>
+            </div>
+          </div>
         </div>
-        
-        <input type="hidden" id="detectedEmail" value="<?= userEmail ?>">
+        <div class="director-chip">
+          <div class="director-dot"></div>
+          <div class="director-text">Directeur OST Régional · <strong>SMAOUI Sami</strong></div>
+        </div>
+      </div>
+
+      <!-- Carte de connexion -->
+      <div class="login-glass-card">
+        <!-- Header -->
+        <div class="lg-card-header">
+          <img src="https://myakdital.humaneo.ma/rails/active_storage/blobs/redirect/eyJfcmFpbHMiOnsiZGF0YSI6NiwicHVyIjoiYmxvYl9pZCJ9fQ==--0976c7c23de2a60252dabfe89e491678d4c651a9/akdital-secondary.png"
+               onerror="this.style.display='none'" alt="AKDITAL">
+          <div>
+            <span class="lg-card-header-title">AKDITAL - RÉGION GRAND SUD</span>
+            <span class="lg-card-header-sub">Direction Régionale · Tableau de Bord Exécutif · Écran de Connexion</span>
+          </div>
+        </div>
+        <div class="lg-divider"></div>
+
+        <!-- Contexte Google -->
+        <div class="lg-user-box">
+          <img id="lgUserPhoto" src="https://ui-avatars.com/api/?name=U&background=3b5bdb&color=fff&bold=true" alt="Avatar">
+          <div style="flex:1;overflow:hidden;">
+            <div class="lg-user-name" id="lgUserName">Utilisateur</div>
+            <div class="lg-user-poste" id="lgUserPoste"></div>
+            <div class="lg-user-email">
+              <i class="fab fa-google" style="color:#ea4335;font-size:0.72rem;flex-shrink:0;"></i>
+              <span id="lgUserEmail">chargement...</span>
+            </div>
+            <input type="hidden" id="detectedEmail">
+          </div>
+        </div>
+
+        <!-- Identifiant -->
+        <div class="lg-form-group">
+          <label class="lg-label">Nom d'utilisateur</label>
+          <div class="lg-input-wrap">
+            <i class="fas fa-user lg-input-icon"></i>
+            <input type="text" id="loginUser" class="lg-input" placeholder="Entrez votre nom d'utilisateur" autocomplete="username">
+          </div>
+        </div>
+
+        <!-- Mot de passe -->
+        <div class="lg-form-group">
+          <label class="lg-label">Mot de passe</label>
+          <div class="lg-input-wrap">
+            <i class="fas fa-lock lg-input-icon"></i>
+            <input type="password" id="loginPass" class="lg-input" placeholder="Entrez votre mot de passe" autocomplete="current-password">
+            <i class="fas fa-eye-slash lg-eye" id="togglePasswordIcon" onclick="togglePasswordVisibility()"></i>
+          </div>
+        </div>
+
+        <!-- Erreur -->
+        <div id="loginError" class="lg-error"></div>
+
+        <!-- Bouton -->
+        <button id="btnLogin" class="lg-btn" onclick="attemptLogin()">
+          <i class="fas fa-arrow-right-to-bracket"></i> SE CONNECTER
+        </button>
+
+        <!-- Mot de passe oublié -->
+        <div class="lg-forgot">
+          <a href="#" onclick="document.getElementById('forgotOverlay').style.display='flex';return false;">Mot de passe oublié ?</a>
+        </div>
+
+        <div class="lg-version">Version <?= appVersion ?> &nbsp;·&nbsp; AKDITAL Région Grand SUD</div>
+      </div>
     </div>
+
+    <!-- Modal mot de passe oublié -->
+    <div id="forgotOverlay">
+      <div class="forgot-modal">
+        <h3><i class="fas fa-key" style="color:#a78bfa;margin-right:9px;"></i>Réinitialiser le mot de passe</h3>
+        <p>Saisissez votre adresse email pour recevoir un lien de réinitialisation.</p>
+        <div class="lg-input-wrap">
+          <i class="fas fa-envelope lg-input-icon"></i>
+          <input type="email" id="resetEmail" class="lg-input" placeholder="votre.email@akdital.ma">
+        </div>
+        <div class="forgot-actions">
+          <button class="btn-cancel" onclick="document.getElementById('forgotOverlay').style.display='none'">Annuler</button>
+          <button class="btn-send" onclick="doResetPass()"><i class="fas fa-paper-plane" style="margin-right:6px;"></i>Envoyer</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SPLASH SCREEN — caché jusqu'au login -->
+    <div id="splashScreen" style="display:none;">
+      <div class="splash-bg-glow glow-1"></div>
+      <div class="splash-bg-glow glow-2"></div>
+      <div class="splash-logo-main">
+        <img src="https://myakdital.humaneo.ma/rails/active_storage/blobs/redirect/eyJfcmFpbHMiOnsiZGF0YSI6NiwicHVyIjoiYmxvYl9pZCJ9fQ==--0976c7c23de2a60252dabfe89e491678d4c651a9/akdital-secondary.png" alt="Logo">
+      </div>
+      <div class="splash-text-region">Région Grand-SUD</div>
+      <div class="splash-text-title">Tableau de Bord</div>
+      <div class="splash-text-sub">Pilotage &amp; Reporting Régional</div>
+      <div class="splash-bar-wrap">
+        <div class="splash-bar"><div class="splash-bar-fill"></div></div>
+        <div class="splash-bar-status" id="splashStatus">Initialisation...</div>
+      </div>
+      <div class="splash-footer-ver">Version <?= appVersion ?></div>
+    </div>
+
+   <!-- LOADING OVERLAY -->
+<div id="loadingOverlay">
+  <img id="loadingLogo" src="https://myakdital.humaneo.ma/rails/active_storage/blobs/redirect/eyJfcmFpbHMiOnsiZGF0YSI6NiwicHVyIjoiYmxvYl9pZCJ9fQ==--0976c7c23de2a60252dabfe89e491678d4c651a9/akdital-secondary.png" 
+       style="width:80px; height:80px; animation:spin 2s linear infinite; margin-bottom:30px;">
+  <h3 id="loadingText" style="margin-top:15px; color:#ffffff; font-weight:700;">Chargement des données</h3>
 </div>
-                    
-                    <div class="form-group">
-                        <label class="login-label">Identifiant</label>
-                        <div class="input-icon-wrapper">
-                            <i class="fas fa-user input-icon"></i>
-                            <input type="text" id="loginUser" class="login-input" placeholder="Ex: s.yahyaoui">
-                        </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="login-label">Mot de passe</label>
-                        <div class="input-icon-wrapper">
-                            <i class="fas fa-lock input-icon"></i>
-                            <input type="password" id="loginPass" class="login-input" placeholder="••••••••" style="padding-right: 40px;">
-                            <i class="fas fa-eye-slash" id="togglePasswordIcon" onclick="togglePasswordVisibility('loginPass', 'togglePasswordIcon')" style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); color: #94a3b8; cursor: pointer; font-size: 0.95rem; transition: color 0.2s;"></i>
-                        </div>
-                    </div>
-            
-                    <button onclick="attemptLogin()" id="btnLogin" class="btn-primary">
-                        SE CONNECTER <i class="fas fa-arrow-right"></i>
-                    </button>
-                    
-                    <p id="loginError" class="login-error-msg"></p>
-        
-                    <div class="forgot-password">
-                        <a href="#" onclick="document.getElementById('forgotOverlay').style.display='flex'; return false;">Mot de passe oublié ?</a>
-                    </div>
-                    
-                    <div style="text-align: center; margin-top: 30px; font-size: 0.75rem; color: #cbd5e1; font-weight: 600; letter-spacing: 0.5px;">
-                        Version <?= appVersion ?>
-                    </div>
 
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div id="forgotOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:999999; justify-content:center; align-items:center; backdrop-filter:blur(2px);">
-        <div style="background:white; padding:30px; border-radius:10px; width:350px; text-align:center; box-shadow:0 10px 25px rgba(0,0,0,0.2);">
-            <h3 style="margin-top:0; color:#333;">Récupération</h3>
-            <p style="font-size:12px; color:#666; margin-bottom:15px;">Un nouveau mot de passe sera envoyé à votre adresse email professionnelle.</p>
-            <input type="email" id="resetEmail" class="login-input" placeholder="Votre email..." style="margin-bottom:15px;">
-            <div style="display:flex; gap:10px;">
-                <button onclick="document.getElementById('forgotOverlay').style.display='none'" style="flex:1; background:#f1f5f9; border:1px solid #cbd5e1; color:#333; padding:10px; border-radius:5px; cursor:pointer;">Annuler</button>
-                <button onclick="doResetPass()" style="flex:1; background:#363795; color:white; border:none; padding:10px; border-radius:5px; cursor:pointer; font-weight:bold;">Envoyer</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="changePassModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; justify-content:center; align-items:center; backdrop-filter:blur(2px);">
-        <div style="background:white; padding:30px; border-radius:10px; width:350px; box-shadow:0 10px 25px rgba(0,0,0,0.2);">
-            <h3 style="margin-top:0; color:#333; text-align:center;">Changer Mot de passe</h3>
-            
-            <label class="login-label">Ancien mot de passe</label>
-            <div style="position:relative; margin-bottom:15px;">
-                <input type="password" id="cpOld" class="login-input" style="padding-right:40px; width:100%; box-sizing:border-box;">
-                <i class="fas fa-eye-slash" id="toggleOldIcon" onclick="togglePasswordVisibility('cpOld', 'toggleOldIcon')" style="position:absolute; right:15px; top:50%; transform:translateY(-50%); color:#94a3b8; cursor:pointer;"></i>
-            </div>
-            
-            <label class="login-label">Nouveau mot de passe</label>
-            <div style="position:relative; margin-bottom:20px;">
-                <input type="password" id="cpNew" class="login-input" style="padding-right:40px; width:100%; box-sizing:border-box;">
-                <i class="fas fa-eye-slash" id="toggleNewIcon" onclick="togglePasswordVisibility('cpNew', 'toggleNewIcon')" style="position:absolute; right:15px; top:50%; transform:translateY(-50%); color:#94a3b8; cursor:pointer;"></i>
-            </div>
-            
-            <div style="display:flex; gap:10px;">
-                <button onclick="document.getElementById('changePassModal').style.display='none'" style="flex:1; background:#f1f5f9; border:1px solid #cbd5e1; color:#333; padding:10px; border-radius:5px; cursor:pointer;">Annuler</button>
-                <button onclick="doChangePass()" style="flex:1; background:#10b981; color:white; border:none; padding:10px; border-radius:5px; cursor:pointer; font-weight:bold;">Valider</button>
-            </div>
-            <p id="cpError" style="color:#ef4444; font-size:11px; margin-top:10px; display:none; text-align:center;"></p>
-        </div>
-    </div>
-    
-    <div id="loadingOverlay">
-        <div class="loader"></div>
-        <h3 id="loadingText" style="margin-top: 15px;">Chargement...</h3>
-        <p id="loadingSubText" style="color: #ccc; font-size: 0.9em;">Connexion des données</p>
-    </div>
-
+    <!-- EXPORT MODAL -->
 <div id="exportModal" style="display:none; position:fixed; z-index:3000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); backdrop-filter:blur(3px); align-items:center; justify-content:center;">
         <div style="background:white; width:650px; padding:0; border-radius:12px; box-shadow:0 15px 40px rgba(0,0,0,0.4); display:flex; flex-direction:column; max-height:90vh; overflow:hidden;">
             <div style="padding:20px; background:linear-gradient(135deg, #2c3e50 0%, #363795 100%); color:white; display:flex; justify-content:space-between; align-items:center;">
@@ -293,366 +489,542 @@
         </div>
     </div>
 
-    <div id="historyModal">
-        <div class="modal-content">
-            <span class="close-modal" onclick="document.getElementById('historyModal').style.display='none'">&times;</span>
-            <h3 id="modalTitle">Évolution</h3>
-            <div id="modalSubtitle"></div>
-            <div style="height: 350px;"><canvas id="historyChart"></canvas></div>
-        </div>
-    </div>
+    <!-- HISTORY MODAL -->
+    <div id="historyModal"><div class="modal-content"><span class="close-modal" onclick="document.getElementById('historyModal').style.display='none'">&times;</span><h3 id="modalTitle">Évolution</h3><div id="modalSubtitle"></div><div style="height:350px;"><canvas id="historyChart"></canvas></div></div></div>
 
-    <div id="appContainer" style="display:none; flex-direction:column; height:100vh;">
-        
-        <header>
-          <div class="header-left">
-            <button id="sidebarToggle" onclick="toggleSidebar()" style="background: none; border: none; color: white; font-size: 1.5em; cursor: pointer;">&#9776;</button>
-            <h2>Rapport d'activité</h2>
+    <!-- ============================================ -->
+    <!-- APPLICATION                                  -->
+    <!-- ============================================ -->
+    <div id="appContainer" style="display:none;">
+
+      <div id="slimSidebar">
+        <div class="slim-logo" title="Région Grand-SUD">
+          <img src="https://myakdital.humaneo.ma/rails/active_storage/blobs/redirect/eyJfcmFpbHMiOnsiZGF0YSI6NiwicHVyIjoiYmxvYl9pZCJ9fQ==--0976c7c23de2a60252dabfe89e491678d4c651a9/akdital-secondary.png" alt="Akdital">
+        </div>
+        <div class="slim-nav">
+          <button class="slim-nav-item active" onclick="slimSwitchTab('flash', this)" title="Flash Activité"><i class="fas fa-bolt"></i><span>Flash</span></button>
+          <button class="slim-nav-item" onclick="slimSwitchTab('ca-budget', this)" title="CA vs Budget"><i class="fas fa-chart-line"></i><span>Budget</span></button>
+          <button class="slim-nav-item" onclick="slimSwitchTab('recouvrement', this)" title="Recouvrement"><i class="fas fa-file-invoice-dollar"></i><span>Recouv</span></button>
+          <button class="slim-nav-item" onclick="slimSwitchTab('expedition', this)" title="Expédition"><i class="fas fa-truck"></i><span>Exped</span></button>
+          <div class="slim-divider"></div>
+          <button class="slim-nav-item" onclick="slimSwitchTab('depenses', this)" title="Dépenses"><i class="fas fa-wallet"></i><span>Dépenses</span></button>
+          <button class="slim-nav-item" onclick="slimSwitchTab('honoraires', this)" title="Honoraires"><i class="fas fa-user-md"></i><span>Honos</span></button>
+          <button class="slim-nav-item" onclick="slimSwitchTab('rh', this)" title="Ressources Humaines"><i class="fas fa-users"></i><span>RH</span></button>
+          <button class="slim-nav-item" onclick="slimSwitchTab('achat', this)" title="Gestion des Achats"><i class="fas fa-shopping-cart"></i><span>Achats</span></button>
+        </div>
+        <div class="slim-bottom">
+          <img id="connectedUserPhoto" class="slim-avatar" src="" alt="Profil">
+        </div>
+      </div>
+
+      <div class="app-layout">
+        <div id="topBar">
+          <div class="topbar-left">
+            <div>
+              <div class="topbar-title">Région <span>Grand-SUD</span></div>
+              <div class="topbar-breadcrumb">
+                <span>Tableau de Bord</span>
+                <span class="sep">›</span>
+                <span class="current" id="topBarCurrentTab">Flash Activité</span>
+              </div>
+            </div>
+            <button class="family-toggle-btn" id="familyToggleBtn" onclick="toggleFamilySidebar()">
+              <i class="fas fa-layer-group"></i>
+              <span id="familyToggleLabel">Famille</span>
+              <i class="fas fa-chevron-right" id="familyToggleArrow"></i>
+            </button>
+            <div id="budgetTopBtns" style="display:none; gap:6px;">
+              <button class="family-toggle-btn active" id="btnTopComparison" onclick="switchBudgetPage('comparison')"><i class="fas fa-balance-scale"></i><span>CA vs Budget</span></button>
+              <button class="family-toggle-btn" id="btnTopAnalyse" onclick="switchBudgetPage('trend')"><i class="fas fa-chart-pie"></i><span>Analyse CA</span></button>
+            </div>
+            <div id="recouvTopBtns" style="display:none; gap:6px;">
+              <button class="family-toggle-btn recouv-top-btn active" data-sub="Dossiers non réglés" onclick="switchRecouvSub('Dossiers non réglés')"><i class="fas fa-file-invoice"></i><span>Non réglés</span></button>
+              <button class="family-toggle-btn recouv-top-btn" data-sub="Dossiers non soldés" onclick="switchRecouvSub('Dossiers non soldés')"><i class="fas fa-file-alt"></i><span>Non soldés</span></button>
+              <button class="family-toggle-btn recouv-top-btn" data-sub="Objectif vs Réalisation" onclick="switchRecouvSub('Objectif vs Réalisation')"><i class="fas fa-bullseye"></i><span>Objectifs</span></button>
+            </div>
+            <div id="expedTopBtns" style="display:none; gap:6px;">
+              <button class="family-toggle-btn exped-top-btn active" data-sub="Dossiers non expédiés" onclick="switchExpedSub('Dossiers non expédiés')"><i class="fas fa-box-open"></i><span>Non expédiés</span></button>
+              <button class="family-toggle-btn exped-top-btn" data-sub="Objectif vs Réalisation" onclick="switchExpedSub('Objectif vs Réalisation')"><i class="fas fa-bullseye"></i><span>Objectifs</span></button>
+            </div>
           </div>
-          <div class="header-center">
-              <div class="nav-tabs">
-                  <button class="nav-tab-btn active" onclick="switchTab('flash')">Flash</button>
-                  <button class="nav-tab-btn" onclick="switchTab('ca-budget')">CA vs Budget</button>
-                  <button class="nav-tab-btn" onclick="switchTab('recouvrement')">Recouvrement & Expédition</button>
-                  <button class="nav-tab-btn" onclick="switchTab('depenses')">Dépenses</button>
-                  <button class="nav-tab-btn" onclick="switchTab('honoraires')">Honoraires</button>
-                  <button class="nav-tab-btn" onclick="switchTab('rh')">RH</button>                  
+<div style="display:flex; align-items:center; gap:12px;">
+            <div class="topbar-filters" id="globalFilters">
+              
+              <div class="topbar-filter-pill">
+                <i class="fas fa-building" style="color:#6366f1; font-size:0.85em;"></i>
+                <select id="entite" onchange="syncFilters('entite')"></select>
               </div>
               
-<div class="header-filters" id="globalFilters">
-                  <label>Entité</label>
-                  <select id="entite" class="header-select" onchange="syncFilters('entite')"></select>
-                  
-                  <label id="lblSousEntite" style="display:none;">Sous-entité</label>
-                  <select id="sousEntite" class="header-select" onchange="syncFilters('sousEntite')" style="display:none;">
-                      <option value="">Global</option>
-                      <option value="HIA">HIA</option>
-                      <option value="CIOA">CIOA</option>
-                  </select>
-                  <label>Année</label>
-                  <select id="annee" class="header-select" onchange="syncFilters('annee')"></select>
-                  <label>Trim</label>
-                  <select id="trimestre" class="header-select" onchange="updateMonthOptions(); syncFilters('trimestre')"></select>
-                  <label>Mois</label>
-                  <select id="mois" class="header-select" onchange="syncFilters('mois')"></select>
+              <div class="topbar-filter-pill" id="lblSousEntite" style="display:none;">
+                <i class="fas fa-sitemap" style="color:#6366f1; font-size:0.85em;"></i>
+                <select id="sousEntite" onchange="syncFilters('sousEntite')" style="display:none;">
+                    <option value="">Global</option>
+                    <option value="HIA">HIA</option>
+                    <option value="CIOA">CIOA</option>
+                </select>
               </div>
-          </div>
-<div class="header-right">
-    <button class="action-btn" onclick="toggleDarkMode()" title="Mode Sombre">🌙</button>
-    <button id="btnUpdate" class="action-btn" onclick="updateData()" title="Actualiser">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="white"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
-    </button>
-    <button class="action-btn" onclick="openGlobalExportModal()" title="Générer Rapport">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="white"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-    </button>
 
-    <div style="width: 1px; height: 30px; background: rgba(255,255,255,0.2); margin: 0 10px;"></div>
-
-    <div class="dropdown-container">
-        <div class="user-profile-widget" onclick="document.getElementById('profileDropdown').classList.toggle('show')" title="Mon Compte">
-            <img id="connectedUserPhoto" src="https://ui-avatars.com/api/?name=User&background=f4f6f9&color=363795" alt="Profil">
-            <div class="user-profile-info">
-                <span id="connectedUserName">Chargement...</span>
-                <span id="connectedUserPoste">---</span>
+              <div class="topbar-filter-pill">
+                <i class="fas fa-calendar" style="color:#6366f1; font-size:0.85em;"></i>
+                <select id="annee" onchange="syncFilters('annee')"></select>
+              </div>
+              
+              <div class="topbar-filter-pill">
+                <i class="fas fa-layer-group" style="color:#6366f1; font-size:0.85em;"></i>
+                <select id="trimestre" onchange="updateMonthOptions(); syncFilters('trimestre')"></select>
+              </div>
+              
+              <div class="topbar-filter-pill">
+                <i class="fas fa-calendar-day" style="color:#6366f1; font-size:0.85em;"></i>
+                <select id="mois" onchange="syncFilters('mois')"></select>
+              </div>
+              
             </div>
-            <i class="fas fa-chevron-down" style="font-size: 0.8em; margin-left: 5px; opacity: 0.8; color: white;"></i>
+          </div>
+          <div class="topbar-actions">
+            <button class="topbar-action-btn" onclick="toggleDarkMode()" title="Mode Sombre"><i class="fas fa-moon"></i></button>
+            <button class="topbar-action-btn" onclick="updateData()" title="Actualiser"><i class="fas fa-sync-alt"></i></button>
+            <button class="topbar-action-btn" onclick="openGlobalExportModal()" title="Export"><i class="fas fa-download"></i></button>
+            <div class="topbar-user dropdown-container" onclick="document.getElementById('profileDropdown').classList.toggle('show')">
+              <img id="topbarUserPhoto" src="" alt="">
+              <div class="topbar-user-info">
+                <span class="name" id="connectedUserName"></span>
+                <span class="role" id="connectedUserPoste"></span>
+              </div>
+              <!-- Dropdown profil -->
+              <div class="dropdown-menu" id="profileDropdown">
+                <div class="dropdown-header">Mon compte</div>
+                <button class="dropdown-item" onclick="openChangePassModal()"><i class="fas fa-key"></i> Changer mot de passe</button>
+                <button class="dropdown-item logout-btn" onclick="logoutApp()"><i class="fas fa-sign-out-alt"></i> Se déconnecter</button>
+              </div>
+            </div>
+          </div>
         </div>
-        
-<div id="profileDropdown" class="dropdown-menu">
-    <div class="dropdown-header">Mon Compte</div>
-    <button class="dropdown-item" onclick="openChangePassModal(); document.getElementById('profileDropdown').classList.remove('show');">
-        <i class="fas fa-key" style="width: 20px;"></i> Changer Mot de passe
-    </button>
-    <button class="dropdown-item logout-btn" onclick="logoutApp()">
-        <i class="fas fa-sign-out-alt" style="width: 20px;"></i> Se déconnecter
-    </button>
-</div>
-    </div>
-</div>
-          
-        </header>
-        
-        <div class="app-layout">
-          <div id="mobileSidebarOverlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+        <div style="display:flex; flex:1; overflow:hidden;">
+          <div id="mobileSidebarOverlay" class="sidebar-overlay" onclick="toggleFamilySidebar()"></div>
           <div id="sidebar">
             <div id="sidebarProfile">
-                <div class="sb-profile-group">
-                    <div class="sb-label">Responsable Exploitation</div>
-                    <div id="sbRespExploit" class="sb-value">--</div>
-                </div>
-                <div class="sb-profile-group">
-                    <div class="sb-label">Directeur Médical</div>
-                    <div id="sbDirMedical" class="sb-value">--</div>
-                </div>
+              <div class="sb-profile-group"><div class="sb-label">Responsable Exploitation</div><div id="sbRespExploit" class="sb-value">--</div></div>
+              <div class="sb-profile-group"><div class="sb-label">Directeur Médical</div><div id="sbDirMedical" class="sb-value">--</div></div>
             </div>
-            <div id="familyContainer">
-                <h3>Famille</h3>
-                <div id="familyButtons"></div>
-            </div>
+            <div id="familyContainer"><h3>Famille</h3><div id="familyButtons"></div></div>
           </div>
-
           <div class="main-content" id="mainContent">
             <?!= include('part_flash'); ?>
             <?!= include('part_budget'); ?>
-            <?!= include('part_recouvrement'); ?> 
-            <?!= include('part_depenses'); ?> 
+            <?!= include('part_recouvrement'); ?>
+            <?!= include('part_depenses'); ?>
             <?!= include('part_honoraires'); ?>
-            <?!= include('part_rh'); ?> 
+            <?!= include('part_rh'); ?>
+            <?!= include('part_achat'); ?>
           </div>
-        </div> 
-    </div> 
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal changement mot de passe -->
+    <div id="changePassModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:9999999; justify-content:center; align-items:center; backdrop-filter:blur(4px);">
+      <div style="background:rgba(15,20,40,0.96); backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,0.17); padding:36px; border-radius:20px; max-width:380px; width:90%; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+        <h3 style="color:#fff; font-size:1.1rem; margin-bottom:20px; font-weight:700;"><i class="fas fa-key" style="color:#a78bfa; margin-right:9px;"></i>Changer le mot de passe</h3>
+        <div class="lg-form-group"><label class="lg-label">Ancien mot de passe</label><div class="lg-input-wrap"><i class="fas fa-lock lg-input-icon"></i><input type="password" id="cpOld" class="lg-input" placeholder="Ancien mot de passe"></div></div>
+        <div class="lg-form-group"><label class="lg-label">Nouveau mot de passe</label><div class="lg-input-wrap"><i class="fas fa-lock-open lg-input-icon"></i><input type="password" id="cpNew" class="lg-input" placeholder="Nouveau mot de passe"></div></div>
+        <div id="cpError" style="display:none; color:#fca5a5; font-size:0.8rem; margin-bottom:12px; background:rgba(239,68,68,0.18); padding:9px 12px; border-radius:8px;"></div>
+        <div class="forgot-actions">
+          <button class="btn-cancel" onclick="document.getElementById('changePassModal').style.display='none'">Annuler</button>
+          <button class="btn-send" onclick="doChangePass()"><i class="fas fa-check" style="margin-right:6px;"></i>Confirmer</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MOBILE BOTTOM NAV -->
+    <div id="mobileBottomNav">
+      <button class="mob-nav-item active" onclick="slimSwitchTab('flash', this)"><i class="fas fa-bolt"></i>Flash</button>
+      <button class="mob-nav-item" onclick="slimSwitchTab('ca-budget', this)"><i class="fas fa-chart-line"></i>Budget</button>
+      <button class="mob-nav-item" onclick="slimSwitchTab('recouvrement', this)"><i class="fas fa-file-invoice-dollar"></i>Recouv</button>
+      <button class="mob-nav-item" onclick="slimSwitchTab('expedition', this)"><i class="fas fa-truck"></i>Exped</button>
+      <button class="mob-nav-item" onclick="slimSwitchTab('rh', this)"><i class="fas fa-users"></i>RH</button>
+    </div>
 
     <?!= include('js_global'); ?>
     <?!= include('js_flash'); ?>
+    <?!= include('js_chart_override'); ?>
     <?!= include('js_budget'); ?>
+    <?!= include('js_budget_override'); ?>
     <?!= include('js_recouvrement_core'); ?>
     <?!= include('js_recouvrement_non_regles'); ?>
     <?!= include('js_recouvrement_non_soldes'); ?>
     <?!= include('js_recouvrement_expedition'); ?>
     <?!= include('js_recouvrement_retours'); ?>
-    <?!= include('js_recouvrement_objectifs'); ?> 
+    <?!= include('js_recouvrement_objectifs'); ?>
+    <?!= include('js_recouvrement_override'); ?>
     <?!= include('js_depenses'); ?>
+    <?!= include('js_depenses_override'); ?>
     <?!= include('js_honoraires'); ?>
+    <?!= include('js_honoraires_override'); ?>
     <?!= include('js_rh'); ?>
+    <?!= include('js_achat'); ?>
 
     <script>
-    // --- GESTION LOGIN SECURISE ---
-    
-    document.body.style.overflow = 'hidden';
-    var clientIP = "Unknown";
+    /* ============================================ */
+    /* CONTEXTE UTILISATEUR                         */
+    /* ============================================ */
+    window.currentUserContext = null;
+    window.clientIP = 'Unknown';
 
-    // 1. INITIALISATION AU CHARGEMENT (Modifié)
-    window.onload = function() {
-        // A. Récupération IP (Service tiers)
-        fetch('https://api.ipify.org?format=json')
-            .then(res => res.json())
-            .then(data => { clientIP = data.ip; })
-            .catch(e => console.log('IP non détectée'));
+    fetch('https://api.ipify.org?format=json')
+      .then(r => r.json()).then(d => { window.clientIP = d.ip; }).catch(() => {});
 
-        // B. REMPLISSAGE AUTO DU USERNAME ET VERROUILLAGE
-        const detectedEmailEl = document.getElementById('detectedEmail');
-        const loginUserEl = document.getElementById('loginUser');
-
-        if (detectedEmailEl && loginUserEl) {
-            const email = detectedEmailEl.value.trim().toLowerCase();
-            
-            // Si un email est bien détecté (ex: s.yahyaoui@akdital.ma)
-            if (email && email.includes('@')) {
-                // On extrait le préfixe (s.yahyaoui)
-                const prefix = email.split('@')[0];
-                
-                // On remplit le champ
-                loginUserEl.value = prefix;
-                
-                // On le verrouille visuellement (Grisé)
-                loginUserEl.disabled = true;
-                loginUserEl.style.backgroundColor = "#e5e7eb"; // Gris clair
-                loginUserEl.style.color = "#6b7280";           // Texte gris foncé
-                loginUserEl.style.cursor = "not-allowed";      // Curseur interdit
-                loginUserEl.style.borderColor = "#cbd5e1";
-                loginUserEl.title = "Identifiant verrouillé selon votre email connecté";
-                
-                // On met le focus directement sur le mot de passe pour gagner du temps
-                setTimeout(() => document.getElementById('loginPass').focus(), 100);
-            }
-        }
+    const TAB_LABELS = {
+      'flash': 'Flash Activité', 'ca-budget': 'CA vs Budget',
+      'recouvrement': 'Recouvrement', 'expedition': 'Expedition',
+      'depenses': 'Dépenses Caisses', 'honoraires': 'Honoraires Médecins',
+      'rh': 'Ressources Humaines', 'achat': 'Gestion des Achats',
     };
-    
-    // 2. TENTATIVE DE CONNEXION (Légèrement adaptée pour lire le champ désactivé)
-    function attemptLogin() {
-      const u = document.getElementById('loginUser').value.trim().toLowerCase();
-      const p = document.getElementById('loginPass').value.trim();
-      const detectedEmailEl = document.getElementById('detectedEmail');
-      const detectedEmail = detectedEmailEl ? detectedEmailEl.value.trim().toLowerCase() : '';
-      
-      const btn = document.getElementById('btnLogin');
-      const err = document.getElementById('loginError');
 
-      if(!u || !p) {
-          err.innerHTML = "<i class='fas fa-exclamation-circle'></i> Veuillez remplir l'utilisateur et le mot de passe.";
-          err.style.display = 'block';
-          return;
+    /* ============================================ */
+    /* LOGIN — Pré-remplissage depuis doGet()       */
+    /* ============================================ */
+    (function initLoginContext() {
+      const email  = '<?= userEmail ?>';
+      const name   = '<?= userName ?>';
+      const poste  = '<?= userPoste ?>';
+      const photo  = '<?= userPhoto ?>';
+
+      if (email) {
+        document.getElementById('lgUserEmail').textContent = email;
+        document.getElementById('detectedEmail').value = email;
+        document.getElementById('loginUser').value = email.split('@')[0];
       }
+      if (name)  document.getElementById('lgUserName').textContent = name.toUpperCase();
+      if (poste) document.getElementById('lgUserPoste').textContent = poste;
+      if (photo) document.getElementById('lgUserPhoto').src = photo;
+      else if (name) document.getElementById('lgUserPhoto').src =
+        'https://ui-avatars.com/api/?name=' + encodeURIComponent(name) + '&background=3b5bdb&color=fff&bold=true';
+    })();
 
-      if (detectedEmail) {
-          const prefix = detectedEmail.split('@')[0];
-          if (u !== prefix) {
-              err.innerHTML = `<i class='fas fa-shield-alt'></i> <b>Erreur de sécurité :</b><br>L'utilisateur saisi (<b>${u}</b>) ne correspond pas au compte Google connecté (<b>${prefix}</b>).`;
-              err.style.display = 'block';
-              return;
-          }
+    /* ============================================ */
+    /* TOGGLE MOT DE PASSE                          */
+    /* ============================================ */
+    function togglePasswordVisibility() {
+      var input = document.getElementById('loginPass');
+      var icon  = document.getElementById('togglePasswordIcon');
+      if (input.type === 'password') {
+        input.type = 'text';
+        icon.classList.replace('fa-eye-slash', 'fa-eye');
+        icon.style.color = 'rgba(255,255,255,0.88)';
+      } else {
+        input.type = 'password';
+        icon.classList.replace('fa-eye', 'fa-eye-slash');
+        icon.style.color = 'rgba(255,255,255,0.45)';
       }
-
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Vérification...';
-      err.style.display = 'none';
-
-      google.script.run
-          .withSuccessHandler(function(res) {
-              if (res.success) {
-window.currentUserContext = {
-                      role: res.role,
-                      entity: res.entity,
-                      username: res.username,
-                      email: res.email,
-                      poste: res.poste,
-                      photo: res.photo,
-                  };
-
-                  const nameEl = document.getElementById('connectedUserName');
-                  const posteEl = document.getElementById('connectedUserPoste');
-                  const photoEl = document.getElementById('connectedUserPhoto');
-                  
-                  if (nameEl) nameEl.textContent = res.username.toUpperCase();
-                  if (posteEl) posteEl.textContent = res.poste || 'Utilisateur';
-                  
-                  if (photoEl) {
-                      const photoUrl = res.photo ? res.photo : `https://ui-avatars.com/api/?name=${res.username}&background=f8faff&color=363795&bold=true`;
-                      photoEl.src = photoUrl;
-                  }
-
-if(typeof applyUserPermissions === 'function') {
-                      applyUserPermissions(res.role, res.entity, res.modules); // <-- AJOUT DE res.modules
-                  }
-
-                  const overlay = document.getElementById('loginOverlay');
-                  overlay.style.transition = 'opacity 0.5s';
-                  overlay.style.opacity = '0';
-                  
-                  setTimeout(() => { 
-                      overlay.style.display = 'none'; 
-                      document.body.style.overflow = 'auto';
-                      
-                      const app = document.getElementById('appContainer');
-                      if(app) {
-                          app.style.display = 'flex';
-                          if(typeof loadData === 'function') loadData(); 
-                          window.dispatchEvent(new Event('resize'));
-                      }
-                  }, 500);
-
-              } else {
-                  err.innerHTML = `<i class='fas fa-exclamation-triangle'></i> ${res.message}`;
-                  err.style.display = 'block';
-                  btn.disabled = false;
-                  btn.innerHTML = 'SE CONNECTER <i class="fas fa-arrow-right"></i>';
-              }
-          })
-          .withFailureHandler(function(e) {
-              err.innerHTML = `<i class='fas fa-wifi'></i> Erreur de connexion serveur : ${e.message}`;
-              err.style.display = 'block';
-              btn.disabled = false;
-              btn.innerHTML = 'SE CONNECTER <i class="fas fa-arrow-right"></i>';
-          })
-          .verifyCustomLogin(u, p, window.clientIP || "Unknown"); 
-  }
-
-
-    // 2. MOT DE PASSE OUBLIÉ
-    function doResetPass() {
-        const email = document.getElementById('resetEmail').value;
-        if(!email) return alert("Veuillez saisir votre email.");
-        
-        const btn = document.querySelector('#forgotOverlay button:nth-child(2)'); // Bouton Envoyer
-        const txt = btn.innerText;
-        btn.innerText = "Envoi...";
-        btn.disabled = true;
-
-        google.script.run
-            .withSuccessHandler(function(res) {
-                alert(res.message);
-                document.getElementById('forgotOverlay').style.display = 'none';
-                btn.innerText = txt;
-                btn.disabled = false;
-            })
-            .resetUserPassword(email);
     }
 
-    // 3. CHANGER MOT DE PASSE
+    /* ============================================ */
+    /* TENTATIVE DE CONNEXION                       */
+    /* ============================================ */
+    function attemptLogin() {
+      var username = document.getElementById('loginUser').value.trim();
+      var password = document.getElementById('loginPass').value;
+      var error    = document.getElementById('loginError');
+      var btn      = document.getElementById('btnLogin');
+
+      if (!username || !password) {
+        error.innerHTML = '<i class="fas fa-exclamation-circle"></i> Veuillez remplir tous les champs';
+        error.style.display = 'flex'; return;
+      }
+      error.style.display = 'none';
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Vérification...';
+
+      google.script.run
+        .withSuccessHandler(function(res) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-arrow-right-to-bracket"></i> SE CONNECTER';
+
+          if (res.success) {
+            // Stocker le contexte
+            window.currentUserContext = {
+              role: res.role, entity: res.entity,
+              username: res.username, email: res.email,
+              poste: res.poste, photo: res.photo
+            };
+            // Mettre à jour le header de l'app
+            var photo = res.photo || ('https://ui-avatars.com/api/?name=' + encodeURIComponent(res.username) + '&background=3b5bdb&color=fff&bold=true');
+            var el;
+            el = document.getElementById('connectedUserName');   if (el) el.textContent = res.username.toUpperCase();
+            el = document.getElementById('connectedUserPoste');  if (el) el.textContent = res.poste || 'Utilisateur';
+            el = document.getElementById('connectedUserPhoto');  if (el) el.src = photo;
+            el = document.getElementById('topbarUserPhoto');     if (el) el.src = photo;
+
+             if(typeof applyUserPermissions === 'function') {
+                      applyUserPermissions(res.role, res.entity, res.modules);
+                  }
+
+            // Fermer le login
+            var overlay = document.getElementById('loginOverlay');
+            overlay.style.transition = 'opacity 0.5s ease';
+            overlay.style.opacity = '0';
+            setTimeout(function() {
+              overlay.style.display = 'none';
+              startSplashAndLoad();
+            }, 500);
+          } else {
+            error.innerHTML = '<i class="fas fa-exclamation-triangle"></i> ' + res.message;
+            error.style.display = 'flex';
+          }
+        })
+        .withFailureHandler(function(e) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-arrow-right-to-bracket"></i> SE CONNECTER';
+          error.innerHTML = '<i class="fas fa-wifi"></i> Erreur serveur : ' + e.message;
+          error.style.display = 'flex';
+        })
+        .verifyCustomLogin(username, password, window.clientIP);
+    }
+
+    /* ============================================ */
+    /* SPLASH APRÈS LOGIN                           */
+    /* ============================================ */
+    function startSplashAndLoad() {
+      var splash    = document.getElementById('splashScreen');
+      var statusEl  = document.getElementById('splashStatus');
+      var app       = document.getElementById('appContainer');
+      var msgs      = ['Initialisation...', 'Connexion aux bases...', 'Chargement des KPIs...', 'Préparation...'];
+      var idx       = 0;
+
+      splash.style.display = 'flex';
+
+      var interval = setInterval(function() {
+        idx++;
+        if (idx < msgs.length && statusEl) {
+          statusEl.style.opacity = '0';
+          setTimeout(function() { statusEl.textContent = msgs[idx]; statusEl.style.opacity = '1'; }, 200);
+        }
+      }, 800);
+
+      setTimeout(function() {
+        clearInterval(interval);
+        app.style.display = 'flex';
+        splash.classList.add('fade-out');
+        setTimeout(function() {
+          splash.style.display = 'none';
+          document.body.style.overflow = 'auto';
+          if (typeof loadData === 'function') loadData();
+          window.dispatchEvent(new Event('resize'));
+        }, 600);
+      }, 3800);
+    }
+
+    /* ============================================ */
+    /* RESET MOT DE PASSE                          */
+    /* ============================================ */
+    function doResetPass() {
+      var email = document.getElementById('resetEmail').value.trim();
+      if (!email) { alert('Veuillez saisir votre email.'); return; }
+      var btn = document.querySelector('.btn-send');
+      var orig = btn.innerHTML;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+      btn.disabled = true;
+      google.script.run
+        .withSuccessHandler(function(res) {
+          alert(res.message);
+          document.getElementById('forgotOverlay').style.display = 'none';
+          btn.innerHTML = orig; btn.disabled = false;
+        })
+        .withFailureHandler(function(e) {
+          alert('Erreur : ' + e.message);
+          btn.innerHTML = orig; btn.disabled = false;
+        })
+        .resetUserPassword(email);
+    }
+
+    /* ============================================ */
+    /* CHANGER MOT DE PASSE                        */
+    /* ============================================ */
     function openChangePassModal() {
-        document.getElementById('changePassModal').style.display = 'flex';
-        document.getElementById('cpOld').value = "";
-        document.getElementById('cpNew').value = "";
-        document.getElementById('cpError').style.display = 'none';
+      document.getElementById('changePassModal').style.display = 'flex';
+      document.getElementById('cpOld').value = '';
+      document.getElementById('cpNew').value = '';
+      document.getElementById('cpError').style.display = 'none';
+      document.getElementById('profileDropdown').classList.remove('show');
     }
 
     function doChangePass() {
-        const oldP = document.getElementById('cpOld').value;
-        const newP = document.getElementById('cpNew').value;
-        const err = document.getElementById('cpError');
-        
-        if(!oldP || !newP) {
-            err.textContent = "Tous les champs sont requis.";
-            err.style.display = 'block';
-            return;
-        }
-
-        google.script.run
-            .withSuccessHandler(function(res) {
-                if(res.success) {
-                    alert("Mot de passe modifié avec succès !");
-                    document.getElementById('changePassModal').style.display = 'none';
-                } else {
-                    err.textContent = res.message;
-                    err.style.display = 'block';
-                }
-            })
-            .changeUserPassword(window.currentUserContext.username, oldP, newP, clientIP);
+      var oldP = document.getElementById('cpOld').value;
+      var newP = document.getElementById('cpNew').value;
+      var err  = document.getElementById('cpError');
+      if (!oldP || !newP) { err.textContent = 'Tous les champs sont requis.'; err.style.display = 'block'; return; }
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (res.success) { alert('Mot de passe modifié avec succès !'); document.getElementById('changePassModal').style.display = 'none'; }
+          else { err.textContent = res.message; err.style.display = 'block'; }
+        })
+        .changeUserPassword(window.currentUserContext.username, oldP, newP, window.clientIP);
     }
-    
-    document.getElementById('loginPass').addEventListener('keypress', function (e) {
-        if (e.key === 'Enter') attemptLogin();
-    });
 
-  // 1. Fermer le menu du profil si on clique n'importe où ailleurs sur la page
-    window.addEventListener('click', function(e) {
-        if (!e.target.closest('.dropdown-container')) {
-            const dropdown = document.getElementById('profileDropdown');
-            if (dropdown && dropdown.classList.contains('show')) {
-                dropdown.classList.remove('show');
-            }
-        }
-    });
-
-    // 2. Fonction pour gérer la déconnexion
+    /* ============================================ */
+    /* DÉCONNEXION                                 */
+    /* ============================================ */
     function logoutApp() {
-        // Cacher le menu déroulant
-        document.getElementById('profileDropdown').classList.remove('show');
-        
-        // Masquer l'application principale
-        document.getElementById('appContainer').style.display = 'none';
-        
-        // Réafficher la page de connexion
-        const loginPage = document.getElementById('loginOverlay');
-        loginPage.style.display = 'flex';
-        loginPage.style.opacity = '1';
-        
-        // Vider le champ du mot de passe par sécurité
-        document.getElementById('loginPass').value = '';
-        const err = document.getElementById('loginError');
-        if (err) err.style.display = 'none';
-        
-        // Effacer le contexte utilisateur en mémoire
-        window.currentUserContext = null;
+      document.getElementById('profileDropdown').classList.remove('show');
+      document.getElementById('appContainer').style.display = 'none';
+      document.body.style.overflow = 'hidden';
+      var loginPage = document.getElementById('loginOverlay');
+      loginPage.style.display = 'flex';
+      loginPage.style.opacity = '1';
+      document.getElementById('loginPass').value = '';
+      var err = document.getElementById('loginError');
+      if (err) err.style.display = 'none';
+      window.currentUserContext = null;
     }
 
-    function togglePasswordVisibility(inputId, iconId) {
-        const passInput = document.getElementById(inputId);
-        const icon = document.getElementById(iconId);
-        if (passInput.type === 'password') {
-            passInput.type = 'text';
-            icon.classList.remove('fa-eye-slash');
-            icon.classList.add('fa-eye');
-            icon.style.color = '#005c97'; // Devient bleu quand affiché
-        } else {
-            passInput.type = 'password';
-            icon.classList.remove('fa-eye');
-            icon.classList.add('fa-eye-slash');
-            icon.style.color = '#94a3b8'; // Redevient gris quand masqué
+    /* ============================================ */
+    /* TOUCHE ENTRÉE                               */
+    /* ============================================ */
+    document.getElementById('loginPass').addEventListener('keypress', function(e) { if (e.key === 'Enter') attemptLogin(); });
+    document.getElementById('loginUser').addEventListener('keypress', function(e) { if (e.key === 'Enter') document.getElementById('loginPass').focus(); });
+
+    /* ============================================ */
+    /* NAVIGATION                                   */
+    /* ============================================ */
+    function slimSwitchTab(tabName, el) {
+      document.querySelectorAll('.slim-nav-item').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.mob-nav-item').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.slim-nav-item, .mob-nav-item').forEach(b => {
+        if (b.getAttribute('onclick') && b.getAttribute('onclick').includes("'" + tabName + "'")) b.classList.add('active');
+      });
+      var bc = document.getElementById('topBarCurrentTab');
+      if (bc) bc.textContent = TAB_LABELS[tabName] || tabName;
+      var fb = document.getElementById('familyToggleBtn');
+      if (fb) fb.style.display = (tabName === 'flash') ? 'flex' : 'none';
+      var bb = document.getElementById('budgetTopBtns');
+      if (bb) bb.style.display = (tabName === 'ca-budget') ? 'flex' : 'none';
+      var rb = document.getElementById('recouvTopBtns');
+      if (rb) rb.style.display = (tabName === 'recouvrement') ? 'flex' : 'none';
+      var eb = document.getElementById('expedTopBtns');
+      if (eb) eb.style.display = (tabName === 'expedition') ? 'flex' : 'none';
+      closeFamilySidebar();
+      if (tabName === 'expedition') {
+        if (typeof switchTab === 'function') switchTab('recouvrement');
+        setTimeout(function() { if (typeof switchFamily === 'function') switchFamily('Expédition', 'Dossiers non expédiés', document.querySelector('.nav-sub-btn')); }, 300);
+      } else if (tabName === 'recouvrement') {
+        if (typeof switchTab === 'function') switchTab('recouvrement');
+        setTimeout(function() { if (typeof switchFamily === 'function') switchFamily('Recouvrement', 'Dossiers non réglés', document.querySelector('.nav-sub-btn')); }, 300);
+      } else {
+        if (typeof switchTab === 'function') switchTab(tabName);
+      }
+    }
+
+    function switchBudgetPage(mode) {
+      var btnComp = document.getElementById('btnTopComparison');
+      var btnAn   = document.getElementById('btnTopAnalyse');
+      if (mode === 'comparison') { if (btnComp) btnComp.classList.add('active'); if (btnAn) btnAn.classList.remove('active'); }
+      else { if (btnComp) btnComp.classList.remove('active'); if (btnAn) btnAn.classList.add('active'); }
+      if (typeof setBudgetMode === 'function') setBudgetMode(mode);
+    }
+
+    function toggleFamilySidebar() {
+      var sidebar = document.getElementById('sidebar');
+      var btn = document.getElementById('familyToggleBtn');
+      var arrow = document.getElementById('familyToggleArrow');
+      if (sidebar.classList.contains('sidebar-open')) { closeFamilySidebar(); }
+      else { sidebar.classList.add('sidebar-open'); if (btn) btn.classList.add('active'); if (arrow) arrow.style.transform = 'rotate(180deg)'; }
+    }
+
+    function closeFamilySidebar() {
+      var sidebar = document.getElementById('sidebar');
+      var btn = document.getElementById('familyToggleBtn');
+      var arrow = document.getElementById('familyToggleArrow');
+      sidebar.classList.remove('sidebar-open');
+      if (btn) btn.classList.remove('active');
+      if (arrow) arrow.style.transform = 'rotate(0deg)';
+    }
+    window.toggleSidebar = toggleFamilySidebar;
+
+    /* ============================================ */
+    /* EXPORT                                       */
+    /* ============================================ */
+    function syncExportFilter(type, value) {
+      var mainSelect = document.getElementById(type === 'entite' ? 'entite' : type === 'annee' ? 'annee' : type === 'trimestre' ? 'trimestre' : 'mois');
+      if (mainSelect && value) { mainSelect.value = value; if (typeof syncFilters === 'function') syncFilters(type); }
+    }
+    var origOpenExport = window.openGlobalExportModal;
+    window.openGlobalExportModal = function() {
+      ['entite', 'annee', 'trimestre', 'mois'].forEach(function(id) {
+        var main = document.getElementById(id);
+        var exp  = document.getElementById('exportFilter' + id.charAt(0).toUpperCase() + id.slice(1));
+        if (main && exp) {
+          var currentVal = exp.value;
+          exp.innerHTML = main.innerHTML;
+          var allOpt = document.createElement('option');
+          allOpt.value = '';
+          allOpt.textContent = (id === 'entite' || id === 'annee') ? 'Toutes' : 'Tous';
+          exp.insertBefore(allOpt, exp.firstChild);
+          exp.value = currentVal || '';
         }
-    }
-    
+      });
+      if (origOpenExport) origOpenExport();
+      else document.getElementById('exportModal').style.display = 'flex';
+    };
 
+    /* ============================================ */
+    /* CORRECTIFS VISUELS                          */
+    /* ============================================ */
+
+    function fixRegionName() {
+      document.querySelectorAll('#ctxEntity,h2,h3').forEach(function(el) {
+        if (el.textContent.match(/grand.?sud/i)) el.textContent = el.textContent.replace(/Grand[- ]?Sud/gi, 'Grand-Sud');
+      });
+    }
+    function moveManagementToInfoBar() {
+      var resp = document.getElementById('sbRespExploit');
+      var dir  = document.getElementById('sbDirMedical');
+      var ib   = document.getElementById('infoBar');
+      if (!ib) return;
+      var ex = document.getElementById('infobarMgmtRow'); if (ex) ex.remove();
+      var rt = resp ? resp.textContent : '--';
+      var dt = dir  ? dir.textContent  : '--';
+      if (rt === '--' && dt === '--') return;
+      var row = document.createElement('div');
+      row.id = 'infobarMgmtRow';
+      row.style.cssText = 'display:flex;gap:16px;margin-top:6px;';
+      row.innerHTML = '<div style="font-size:0.75em;color:#64748b;font-weight:600;"><i class="fas fa-user-tie" style="color:#6366f1;margin-right:4px;"></i>Resp: <strong style="color:#1a1d2e;">' + rt + '</strong></div>' +
+                      '<div style="font-size:0.75em;color:#64748b;font-weight:600;"><i class="fas fa-stethoscope" style="color:#6366f1;margin-right:4px;"></i>Dir. Méd: <strong style="color:#1a1d2e;">' + dt + '</strong></div>';
+      var cc = ib.querySelector('.ctx-container');
+      if (cc) cc.appendChild(row);
+    }
+    function reorderFlashLayout() {
+      var infoBar = document.getElementById('infoBar');
+      var filters = document.getElementById('secondaryFiltersPanel');
+      if (infoBar && filters && infoBar.nextElementSibling !== filters) infoBar.parentNode.insertBefore(filters, infoBar.nextElementSibling);
+    }
+    setInterval(function() { fixRegionName(); moveManagementToInfoBar(); }, 3000);
+    var origLoadData = window.loadData;
+    if (typeof origLoadData === 'function') {
+      window.loadData = function() {
+        origLoadData.apply(this, arguments);
+        setTimeout(function() { fixRegionName(); moveManagementToInfoBar(); reorderFlashLayout(); }, 2000);
+      };
+    }
+
+    /* ============================================ */
+    /* CLICK EN DEHORS DU PROFIL                   */
+    /* ============================================ */
+    window.addEventListener('click', function(e) {
+      if (!e.target.closest('.dropdown-container')) {
+        var d = document.getElementById('profileDropdown');
+        if (d && d.classList.contains('show')) d.classList.remove('show');
+      }
+    });
+
+    /* ============================================ */
+    /* window.onload — PAS de splash auto          */
+    /* Le splash démarre uniquement après login    */
+    /* ============================================ */
+    window.onload = function() {
+      // Rien ici — le login gère tout
+    };
     </script>
   </body>
 </html>

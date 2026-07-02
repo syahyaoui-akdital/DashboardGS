@@ -15,6 +15,16 @@
   
   // --- NOUVEAU : CONTEXTE SÉCURITÉ ---
   let currentUserContext = null; 
+
+  window.formatNumber = function(nombre) {
+    if (nombre === null || nombre === undefined || isNaN(nombre)) return "0";
+    
+    // Convertit en nombre et applique le format français (espaces pour les milliers)
+    return Number(nombre).toLocaleString('fr-FR', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2 // Garde jusqu'à 2 décimales uniquement si elles existent
+    });
+};
   // -----------------------------------
 
   // Instances Graphiques

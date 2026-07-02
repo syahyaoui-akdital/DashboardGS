@@ -1,0 +1,304 @@
+<script>
+/* ============================================================ */
+/*  OVERRIDE GRAPHIQUES — STYLE MODERNE PRO                     */
+/*  Inclure APRÈS js_flash dans Index.html                      */
+/* ============================================================ */
+
+// ============================================================
+// 1. OVERRIDE : renderChart — Graphique principal Flash
+// ============================================================
+window.renderChart = function(labels, datasets, isStacked, groupByAxis, chartTitle, showLegend) {
+    const ctx = document.getElementById('kpiChart').getContext('2d');
+    if (window.kpiChartInstance) window.kpiChartInstance.destroy();
+    if (labels.length === 0) { document.getElementById('noDataMessage').style.display = 'block'; return; }
+    document.getElementById('noDataMessage').style.display = 'none';
+    const isDark = document.body.classList.contains('dark-mode');
+
+    // Gradient violet pro
+    const grad2026 = ctx.createLinearGradient(0, 0, 0, 400);
+    grad2026.addColorStop(0, '#6366f1');
+    grad2026.addColorStop(1, '#a78bfa');
+
+    const grad2025 = ctx.createLinearGradient(0, 0, 0, 400);
+    grad2025.addColorStop(0, '#cbd5e1');
+    grad2025.addColorStop(1, '#e2e8f0');
+
+    // Appliquer les gradients
+    datasets.forEach(ds => {
+        if (ds.label === '2026' || ds.label === new Date().getFullYear().toString()) {
+            ds.backgroundColor = grad2026;
+            ds.borderRadius = 10;
+            ds.borderSkipped = false;
+            ds.barPercentage = 0.55;
+            ds.categoryPercentage = 0.75;
+        } else if (ds.label === '2025') {
+            ds.backgroundColor = grad2025;
+            ds.borderRadius = 10;
+            ds.borderSkipped = false;
+            ds.barPercentage = 0.55;
+            ds.categoryPercentage = 0.75;
+        } else if (ds.type === 'bar') {
+            ds.backgroundColor = grad2026;
+            ds.borderRadius = 10;
+            ds.borderSkipped = false;
+            ds.barPercentage = 0.5;
+        }
+        // Ligne moyenne
+        if (ds.type === 'line') {
+            ds.borderColor = '#f59e0b';
+            ds.borderWidth = 2;
+            ds.borderDash = [6, 4];
+            ds.pointRadius = 0;
+        }
+    });
+
+    // Calculer les variations M vs M-1 pour l'affichage
+    const variationPlugin = {
+        id: 'variationLabels',
+        afterDraw: function(chart) {
+            const ctx = chart.ctx;
+            const meta = chart.getDatasetMeta(chart.data.datasets.length - 1);
+            
+            // Ne montrer les variations que si on a un seul dataset de barres
+            const barDatasets = chart.data.datasets.filter(d => d.type === 'bar' || !d.type);
+            if (barDatasets.length === 1) {
+                const data = barDatasets[0].data;
+                meta.data.forEach((bar, i) => {
+                    if (i > 0 && data[i] > 0 && data[i-1] > 0) {
+                        const variation = ((data[i] - data[i-1]) / data[i-1] * 100).toFixed(0);
+                        const isPos = variation >= 0;
+                        const txt = (isPos ? '▲' : '▼') + Math.abs(variation) + '%';
+                        
+                        ctx.save();
+                        ctx.font = 'bold 13px "Plus Jakarta Sans", sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.fillStyle = isPos ? '#10b981' : '#ef4444';
+                        ctx.fillText(txt, bar.x, bar.y - 24);
+                        ctx.restore();
+                    }
+                });
+            }
+            
+            // Comparaison 2025 vs 2026 : montrer les variations
+            if (barDatasets.length === 2) {
+                const data2025 = barDatasets.find(d => d.label === '2025');
+                const data2026 = barDatasets.find(d => d.label === '2026');
+                if (data2025 && data2026) {
+                    const meta2026 = chart.getDatasetMeta(chart.data.datasets.indexOf(data2026));
+                    meta2026.data.forEach((bar, i) => {
+                        const v25 = data2025.data[i];
+                        const v26 = data2026.data[i];
+                        if (v25 > 0 && v26 > 0) {
+                            const variation = ((v26 - v25) / v25 * 100).toFixed(0);
+                            const isPos = variation >= 0;
+                            const txt = (isPos ? '▲' : '▼') + Math.abs(variation) + '%';
+                            
+                            ctx.save();
+                            ctx.font = 'bold 13px "Plus Jakarta Sans", sans-serif';
+                            ctx.textAlign = 'center';
+                            ctx.fillStyle = isPos ? '#10b981' : '#ef4444';
+                            ctx.fillText(txt, bar.x, bar.y - 24);
+                            ctx.restore();
+                        }
+                    });
+                }
+            }
+        }
+    };
+
+    window.kpiChartInstance = new Chart(ctx, { 
+        type: 'bar', 
+        data: { labels: labels, datasets: datasets },
+        plugins: [variationPlugin],
+        options: { 
+            responsive: true, 
+            maintainAspectRatio: false,
+            layout: { padding: { top: 45, bottom: 10, left: 5, right: 5 } },
+            plugins: { 
+                legend: { 
+                    display: showLegend, 
+                    position: 'top',
+                    align: 'end',
+                    labels: { 
+                        color: isDark ? '#94a3b8' : '#64748b',
+                        usePointStyle: true,
+                        pointStyle: 'rectRounded',
+                        padding: 20,
+                        font: { size: 12, weight: '700', family: "'Plus Jakarta Sans', sans-serif" }
+                    } 
+                }, 
+                datalabels: { 
+                    color: isDark ? '#e2e8f0' : '#1e293b',
+                    font: { weight: '800', size: 13, family: "'Plus Jakarta Sans', sans-serif" }, 
+                    anchor: 'end', 
+                    align: 'top', 
+                    offset: 2,
+                    formatter: function(v) { return v > 0 ? formatValue(v) : null; }
+                }, 
+                title: { 
+                    display: true, 
+                    text: chartTitle, 
+                    font: { size: 14, weight: '800', family: "'Plus Jakarta Sans', sans-serif" },
+                    color: isDark ? '#e2e8f0' : '#1e293b',
+                    padding: { bottom: 20 },
+                    align: 'start'
+                } 
+            }, 
+            scales: { 
+                x: { 
+                    stacked: false, 
+                    grid: { display: false },
+                    border: { display: false },
+                    ticks: { 
+                        color: isDark ? '#64748b' : '#94a3b8',
+                        font: { size: 11, weight: '700', family: "'Plus Jakarta Sans', sans-serif" },
+                        padding: 8
+                    } 
+                }, 
+                y: { 
+                    display: false
+                } 
+            },
+            animation: {
+                duration: 800,
+                easing: 'easeOutQuart'
+            }
+        } 
+    });
+};
+
+// ============================================================
+// 2. OVERRIDE : openHistoryModal — Graphique Occupation/Capacité
+// ============================================================
+(function() {
+    const origOpenHistory = window.openHistoryModal;
+
+    window.openHistoryModal = function(type, entite, keyName, elementFilter) {
+        // Appeler l'original pour la logique de données
+        if (origOpenHistory) origOpenHistory(type, entite, keyName, elementFilter);
+        
+        // Puis re-styliser le graphique après un court délai
+        setTimeout(function() {
+            if (!window.historyChartInstance) return;
+            
+            const chart = window.historyChartInstance;
+            
+            // Moderniser les datasets
+            chart.data.datasets.forEach(function(ds) {
+                if (ds.label && ds.label.includes('2026')) {
+                    ds.borderColor = '#6366f1';
+                    ds.backgroundColor = 'rgba(99, 102, 241, 0.08)';
+                    ds.borderWidth = 3;
+                    ds.pointBackgroundColor = '#6366f1';
+                    ds.pointBorderColor = '#fff';
+                    ds.pointBorderWidth = 2;
+                    ds.pointRadius = 5;
+                    ds.pointHoverRadius = 8;
+                    ds.tension = 0.4;
+                    ds.fill = true;
+                } else if (ds.label && ds.label.includes('2025')) {
+                    ds.borderColor = '#cbd5e1';
+                    ds.backgroundColor = 'transparent';
+                    ds.borderWidth = 2;
+                    ds.borderDash = [6, 4];
+                    ds.pointBackgroundColor = '#94a3b8';
+                    ds.pointBorderColor = '#fff';
+                    ds.pointBorderWidth = 2;
+                    ds.pointRadius = 4;
+                    ds.pointHoverRadius = 7;
+                    ds.tension = 0.4;
+                    ds.fill = false;
+                }
+            });
+
+            // Moderniser les options
+            chart.options.scales.y.display = false;
+            chart.options.scales.x.grid = { display: false };
+            chart.options.scales.x.border = { display: false };
+            chart.options.scales.x.ticks = {
+                color: '#94a3b8',
+                font: { size: 11, weight: '700', family: "'Plus Jakarta Sans', sans-serif" },
+                padding: 8
+            };
+            chart.options.layout = { padding: { top: 30, bottom: 5 } };
+            
+            // Data labels — ALWAYS show all values
+            chart.options.plugins.datalabels = {
+                display: function(ctx) {
+                    var v = ctx.dataset.data[ctx.dataIndex];
+                    return v && parseFloat(v) > 0;
+                },
+                color: function(ctx) {
+                    return ctx.dataset.label && ctx.dataset.label.includes('2026') ? '#4f46e5' : '#94a3b8';
+                },
+                font: { weight: '800', size: 12, family: "'Plus Jakarta Sans', sans-serif" },
+                anchor: function(ctx) {
+                    return ctx.dataset.label && ctx.dataset.label.includes('2026') ? 'end' : 'start';
+                },
+                align: function(ctx) {
+                    return ctx.dataset.label && ctx.dataset.label.includes('2026') ? 'top' : 'bottom';
+                },
+                offset: 6,
+                formatter: function(v) {
+                    if (!v || v === '0.0' || parseFloat(v) === 0) return '';
+                    return parseFloat(v).toFixed(0) + (type === 'occupation' ? '%' : '');
+                },
+                backgroundColor: function(ctx) {
+                    if (ctx.dataset.label && ctx.dataset.label.includes('2026')) return 'rgba(99,102,241,0.1)';
+                    return 'transparent';
+                },
+                borderRadius: 4,
+                padding: { top: 3, bottom: 3, left: 6, right: 6 }
+            };
+
+            chart.options.plugins.legend = {
+                display: true,
+                position: 'top',
+                align: 'end',
+                labels: {
+                    usePointStyle: true,
+                    pointStyle: 'circle',
+                    padding: 20,
+                    color: '#64748b',
+                    font: { size: 12, weight: '700', family: "'Plus Jakarta Sans', sans-serif" }
+                }
+            };
+
+            chart.options.plugins.title = {
+                display: false
+            };
+
+            chart.options.animation = { duration: 600, easing: 'easeOutQuart' };
+
+            chart.update();
+        }, 300);
+
+        // Moderniser la modale elle-même
+        setTimeout(function() {
+            var modal = document.getElementById('historyModal');
+            var content = modal ? modal.querySelector('.modal-content') : null;
+            if (content) {
+                content.style.borderRadius = '20px';
+                content.style.boxShadow = '0 25px 60px rgba(0,0,0,0.2)';
+                content.style.border = '1px solid #e8ecf4';
+                content.style.padding = '28px 32px';
+            }
+            // Style du titre
+            var title = document.getElementById('modalTitle');
+            if (title) {
+                title.style.color = '#1e293b';
+                title.style.fontFamily = "'Plus Jakarta Sans', sans-serif";
+                title.style.fontWeight = '900';
+                title.style.fontSize = '1.1em';
+                title.style.borderBottom = '2px solid #f0f2f8';
+                title.style.paddingBottom = '12px';
+            }
+            // Style du subtitle
+            var sub = document.getElementById('modalSubtitle');
+            if (sub) {
+                sub.style.fontFamily = "'Plus Jakarta Sans', sans-serif";
+            }
+        }, 100);
+    };
+})();
+</script>

@@ -2008,3 +2008,306 @@ function actualiserChiffreAffairesExtranet() {
     return "Échec de la mise à jour.";
   }
 }
+
+// =======================================================================
+// 12. NOUVEAU MODULE ACHAT (INTÉGRATION STABLE)
+// =======================================================================
+
+/**
+ * getAchatData v17 — AKDITAL Manager Suite
+ * Lit : BDD_CND_APP, BDD_CND_APP_2025, Index_buget, Index_buget_APP, index_6_2025, DATA_SAGE, Code_article
+ */
+function getAchatData() {
+  var result = {
+    data: [], headers: [],
+    data2025: [], headers2025: [],
+    budget: [], budgetHeaders: [],
+    budgetApp: [],
+    consoN1: [],
+    dataSage: [],
+    codeArticle: [],
+    lastUpdate: "--/--/----"
+  };
+  try {
+    // Utilise la spreadsheet active au lieu de l'ID statique
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    function readSheet(name, headerRow, dataStartRow, maxCol) {
+      var sheet = ss.getSheetByName(name);
+      if (!sheet) { Logger.log("⚠️ Feuille introuvable : " + name); return null; }
+      var lastRow = sheet.getLastRow();
+      var lastCol = maxCol || sheet.getLastColumn();
+      if (lastRow < dataStartRow || lastCol < 1) return null;
+      var headers = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0].map(function(h){return String(h || "");});
+      var data = sheet.getRange(dataStartRow, 1, lastRow - dataStartRow + 1, lastCol).getValues().map(function(row) {
+        return row.map(function(cell) {
+          if (cell instanceof Date) {
+            var d = cell.getDate().toString().padStart(2, '0');
+            var m = (cell.getMonth() + 1).toString().padStart(2, '0');
+            var y = cell.getFullYear();
+            var h = cell.getHours().toString().padStart(2, '0');
+            var mn = cell.getMinutes().toString().padStart(2, '0');
+            return (h === '00' && mn === '00') ? d+'/'+m+'/'+y : d+'/'+m+'/'+y+' '+h+':'+mn;
+          }
+          if (cell === null || cell === undefined) return "";
+          return cell;
+        });
+      });
+      Logger.log("✅ " + name + " : " + data.length + " lignes");
+      return { headers: headers, data: data };
+    }
+
+    var bdd = readSheet("BDD_CND_APP", 2, 3);
+    if (bdd) { result.headers = bdd.headers; result.data = bdd.data; }
+
+    var bdd25 = readSheet("BDD_CND_APP_2025", 2, 3);
+    if (bdd25) { result.headers2025 = bdd25.headers; result.data2025 = bdd25.data; }
+
+    var bud = readSheet("Index_buget", 1, 2);
+    if (bud) { result.budgetHeaders = bud.headers; result.budget = bud.data; }
+
+    var budApp = readSheet("Index_buget_APP", 1, 2);
+    if (budApp) result.budgetApp = budApp.data;
+
+    var n1 = readSheet("index_6_2025", 1, 2, 18);
+    if (n1) result.consoN1 = n1.data;
+
+    var sage = readSheet("DATA_SAGE", 1, 2);
+    if (sage) result.dataSage = sage.data;
+
+    var art = readSheet("Code_article", 1, 2);
+    if (art) result.codeArticle = art.data;
+
+    var prop = PropertiesService.getScriptProperties().getProperty('LAST_ACHAT_UPDATE');
+    if (prop) result.lastUpdate = prop;
+
+  } catch(e) {
+    Logger.log("Erreur getAchatData : " + e.message + "\n" + e.stack);
+  }
+
+  return result;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// ACHAT — CONSOMMATION VS BUDGET
+// ════════════════════════════════════════════════════════════════════
+
+function getAchatConsoData(params) {
+  params = params || {};
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  const C = {
+    SITE          : 1,   DATE_CRE_DA   : 6,   DATE_VAL1     : 11,
+    DATE_VAL2     : 13,  DATE_VAL3     : 15,  SECTION       : 24,
+    SOUS_FAM      : 25,  FAMILLE       : 26,  CODE_CPT      : 27,
+    ID_LIGNE      : 30,  FOURNISSEUR   : 31,  STATUT_BC     : 32,
+    DATE_CRE_BC   : 34,  DATE_VALID_BC : 36,  MONTANT_HT    : 37,
+    MONTANT_TTC   : 38,  VALEUR_ECO    : 40,
+  };
+
+  const parseDate = function(v) {
+    if (!v || v === '') return null;
+    if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  const M2T = {1:1,2:1,3:1,4:2,5:2,6:2,7:3,8:3,9:3,10:4,11:4,12:4};
+  const pYear = params.annee  ? parseInt(params.annee)  : null;
+  const pTri  = params.trim   ? parseInt(params.trim)   : null;
+  const pMois = params.mois   ? parseInt(params.mois)   : null;
+  const pSite = params.site   || null;
+  const pSect = params.section || null;
+  const pSF   = params.sousFam || null;
+
+  const bddSheet = ss.getSheetByName('BDD_CND_APP');
+  if (!bddSheet) throw new Error("Feuille BDD_CND_APP introuvable");
+  const bddRaw = bddSheet.getDataRange().getValues();
+
+  const seen = new Set();
+  const allRows = [];
+
+  for (var i = 2; i < bddRaw.length; i++) {
+    var r = bddRaw[i];
+    if (!r[C.SITE]) continue;
+    var statut = String(r[C.STATUT_BC] || '').trim();
+    if (statut === 'Rejeté') continue;
+    var idLigne = String(r[C.ID_LIGNE] || '').trim();
+    if (idLigne) {
+      if (seen.has(idLigne)) continue;
+      seen.add(idLigne);
+    }
+    allRows.push(r);
+  }
+
+  var setSites = {}, setSections = {}, setSF = {};
+  allRows.forEach(function(r) {
+    if (r[C.SITE])     setSites[String(r[C.SITE]).trim()]     = 1;
+    if (r[C.SECTION])  setSections[String(r[C.SECTION]).trim()] = 1;
+    if (r[C.SOUS_FAM]) setSF[String(r[C.SOUS_FAM]).trim()]    = 1;
+  });
+
+  var filterOptions = {
+    sites     : Object.keys(setSites).sort(),
+    sections  : Object.keys(setSections).sort(),
+    sousFams  : Object.keys(setSF).sort(),
+  };
+
+  var rows = allRows.filter(function(r) {
+    var d = parseDate(r[C.DATE_CRE_BC]);
+    if (!d) return false;
+    var m = d.getMonth() + 1;
+    if (pYear && d.getFullYear() !== pYear)  return false;
+    if (pTri  && M2T[m]          !== pTri)   return false;
+    if (pMois && m               !== pMois)  return false;
+    if (pSite && String(r[C.SITE]).trim()     !== pSite) return false;
+    if (pSect && String(r[C.SECTION]).trim()  !== pSect) return false;
+    if (pSF   && String(r[C.SOUS_FAM]).trim() !== pSF)   return false;
+    return true;
+  });
+
+  var totalEngage = 0, totalSaving = 0, dBCsum = 0, dBCn = 0, dDAsum = 0, dDAn = 0;
+  var byCPT = {}, bySF = {}, sfToCpts = {};
+  var epoch2000 = new Date('2000-01-01').getTime();
+
+  rows.forEach(function(r) {
+    var ttc = parseFloat(r[C.MONTANT_TTC]) || 0;
+    var eco = parseFloat(r[C.VALEUR_ECO])  || 0;
+    totalEngage += ttc;
+    totalSaving += eco;
+
+    var v1 = parseDate(r[C.DATE_VAL1]), v2 = parseDate(r[C.DATE_VAL2]), v3 = parseDate(r[C.DATE_VAL3]);
+    var dCreBC = parseDate(r[C.DATE_CRE_BC]);
+    var lastV = v1;
+    if (v2 && v2.getTime() > epoch2000) lastV = v2;
+    if (v3 && v3.getTime() > epoch2000) lastV = v3;
+
+    if (lastV && dCreBC) {
+      var diffBC = (dCreBC.getTime() - lastV.getTime()) / 86400000;
+      if (diffBC >= 0) { dBCsum += diffBC; dBCn++; }
+    }
+
+    var dCreDA = parseDate(r[C.DATE_CRE_DA]);
+    var dValBC = parseDate(r[C.DATE_VALID_BC]);
+    if (dCreDA && dValBC) {
+      var diffDA = (dValBC.getTime() - dCreDA.getTime()) / 86400000;
+      if (diffDA >= 0) { dDAsum += diffDA; dDAn++; }
+    }
+
+    var cpt = String(r[C.CODE_CPT] || 'N/A').trim();
+    var sf  = String(r[C.SOUS_FAM] || 'Autre').trim();
+    byCPT[cpt] = (byCPT[cpt] || 0) + ttc;
+    bySF[sf]   = (bySF[sf]   || 0) + ttc;
+
+    if (!sfToCpts[sf]) sfToCpts[sf] = {};
+    sfToCpts[sf][cpt] = 1;
+  });
+
+  var budSheet = ss.getSheetByName('Index_buget');
+  if (!budSheet) throw new Error("Feuille Index_buget introuvable");
+  var budRaw = budSheet.getDataRange().getValues();
+
+  var ML = {'Janvier':1,'Février':2,'Mars':3,'Avril':4,'Mai':5,'Juin':6,'Juillet':7,'Août':8,'Septembre':9,'Octobre':10,'Novembre':11,'Décembre':12};
+  var totalBudget = 0, budByCPT = {};
+
+  for (var bi = 1; bi < budRaw.length; bi++) {
+    var br = budRaw[bi];
+    var bSite  = String(br[1] || '').trim(), bCpt   = String(br[2] || '').trim();
+    var bDesc  = String(br[4] || '').trim(), bPoste = String(br[6] || '').trim();
+    var bMois  = String(br[8] || '').trim(), bMont  = parseFloat(br[9]) || 0;
+    if (!bMont) continue;
+
+    var isCible = /\b[23]\.\d/.test(bDesc) || /^[23]\.\d/.test(bPoste);
+    if (!isCible) continue;
+
+    var bm = ML[bMois];
+    if (!bm) continue;
+    if (pSite && bSite !== pSite) continue;
+    if (pTri  && M2T[bm] !== pTri)  continue;
+    if (pMois && bm      !== pMois)  continue;
+
+    totalBudget += bMont;
+    budByCPT[bCpt] = (budByCPT[bCpt] || 0) + bMont;
+  }
+
+  var budBySF = {};
+  Object.keys(sfToCpts).forEach(function(sf) {
+    var total = 0;
+    Object.keys(sfToCpts[sf]).forEach(function(c) { total += budByCPT[c] || 0; });
+    budBySF[sf] = total;
+  });
+
+  var c25Sheet = ss.getSheetByName('index_6_2025');
+  if (!c25Sheet) throw new Error("Feuille index_6_2025 introuvable");
+  var c25Raw = c25Sheet.getDataRange().getValues();
+
+  var totalConso25 = 0, c25ByCPT = {};
+
+  for (var ci = 1; ci < c25Raw.length; ci++) {
+    var cr = c25Raw[ci];
+    var cSite = String(cr[0] || '').trim();
+    var cCpt  = String(cr[1] || '').trim();
+    if (pSite && cSite !== pSite) continue;
+
+    var cMont = 0;
+    if (pMois) {
+      cMont = parseFloat(cr[5 + pMois]) || 0;
+    } else if (pTri) {
+      var starts = {1:0, 2:3, 3:6, 4:9};
+      var base   = starts[pTri];
+      for (var k = 0; k < 3; k++) cMont += parseFloat(cr[6 + base + k]) || 0;
+    } else {
+      for (var k = 6; k <= 17; k++) cMont += parseFloat(cr[k]) || 0;
+    }
+    if (!cMont) continue;
+
+    totalConso25 += cMont;
+    c25ByCPT[cCpt] = (c25ByCPT[cCpt] || 0) + cMont;
+  }
+
+  var allCPTs = {};
+  [Object.keys(byCPT), Object.keys(budByCPT), Object.keys(c25ByCPT)].forEach(function(arr) {
+    arr.forEach(function(k) { allCPTs[k] = 1; });
+  });
+
+  var chartByCPT = Object.keys(allCPTs).map(function(c) {
+    var bud = budByCPT[c] || 0, c26 = byCPT[c] || 0;
+    return {
+      label  : c,
+      budget : Math.round(bud),
+      conso26: Math.round(c26),
+      conso25: Math.round(c25ByCPT[c] || 0),
+      pct    : bud > 0 ? Math.round(c26 / bud * 100) : 0,
+    };
+  }).sort(function(a,b){ return b.budget - a.budget; }).slice(0, 25);
+
+  var allSFs = {};
+  [Object.keys(bySF), Object.keys(budBySF)].forEach(function(arr) {
+    arr.forEach(function(k) { allSFs[k] = 1; });
+  });
+
+  var chartBySF = Object.keys(allSFs).map(function(sf) {
+    var bud = budBySF[sf] || 0, c26 = bySF[sf] || 0;
+    return {
+      label  : sf,
+      budget : Math.round(bud),
+      conso26: Math.round(c26),
+      pct    : bud > 0 ? Math.round(c26 / bud * 100) : 0,
+    };
+  }).sort(function(a,b){ return b.budget - a.budget; }).slice(0, 20);
+
+  var reste = totalBudget - totalEngage;
+  var taux  = totalBudget > 0 ? Math.round(totalEngage / totalBudget * 1000) / 10 : 0;
+
+  return {
+    kpi: {
+      budget  : Math.round(totalBudget), engage  : Math.round(totalEngage), reste   : Math.round(reste),
+      taux    : taux, saving  : Math.round(totalSaving),
+      delaiBC : dBCn > 0 ? Math.round(dBCsum / dBCn * 10) / 10 : 0,
+      delaiDA : dDAn > 0 ? Math.round(dDAsum / dDAn * 10) / 10 : 0,
+      nbLignes: rows.length,
+    },
+    comparatif: { budget26: Math.round(totalBudget), conso26 : Math.round(totalEngage), conso25 : Math.round(totalConso25) },
+    chartByCPT, chartBySF, filterOptions,
+  };
+}

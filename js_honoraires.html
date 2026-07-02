@@ -146,7 +146,7 @@ function makeDate(a, mStr, j) {
 // =======================================================================
 
 function initHonorairesFilters() {
-    const ENTITY_ORDER_PREF = ["HIA CIOA", "CIT", "CID", "HPG", "PIL", "ALHIKMA"];
+    const ENTITY_ORDER_PREF = ["HIA CIOA", "CIT", "CID", "HPG", "PIL", "ALHIKMA","CII"];
     let entities = [...new Set(globalHonorairesData.map(d=>d.entite))];
     
     // Fusion HIA/CIOA pour l'affichage
@@ -891,6 +891,7 @@ function processSingleHonoFileSmart(file, sessionClearedKeys) {
         else if (n.includes("CIT")) detectedEntity = "CIT";
         else if (n.includes("CID")) detectedEntity = "CID";
         else if (n.includes("PIL")) detectedEntity = "PIL";
+        else if (n.includes("CII")) detectedEntity = "CII";
         else if (n.includes("ALHIKMA") || n.includes("HIKMA") || n.includes("CAH")) detectedEntity = "ALHIKMA";
         else if (n.includes("HPG")) detectedEntity = "HPG";
 

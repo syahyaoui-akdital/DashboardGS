@@ -1,0 +1,351 @@
+<script>
+/* ============================================================ */
+/*  RECOUVREMENT OVERRIDE V4 - THEME COMPLET                     */
+/* ============================================================ */
+
+window.REC_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#8b5cf6', '#06b6d4', '#ec4899', '#ef4444', '#84cc16', '#14b8a6', '#f97316'];
+
+/* ============================================================ */
+/* 1. IMMEDIATE REGION FIX — runs before anything renders        */
+/* ============================================================ */
+if (typeof TOTAL_REGION_LABEL !== 'undefined') window.TOTAL_REGION_LABEL = "Région Grand-sud";
+
+/* ============================================================ */
+/* 2. CSS - THEME COMPLET (appliqué immédiatement)               */
+/* ============================================================ */
+(function() {
+  var s = document.createElement('style');
+  s.textContent = `
+    /* ============================================ */
+    /* LAYOUT                                        */
+    /* ============================================ */
+    #view-recouvrement > div > div:first-child { display: none !important; }
+    #view-recouvrement > div { display: block !important; border: none !important; box-shadow: none !important; background: transparent !important; height: auto !important; min-height: auto !important; overflow: visible !important; border-radius: 0 !important; }
+    #view-recouvrement > div > div:last-child { width: 100% !important; overflow: visible !important; padding: 0 !important; background: transparent !important; }
+    
+    /* ============================================ */
+    /* HEADER (InfoBar)                              */
+    /* ============================================ */
+    #view-recouvrement > div > div:last-child > div:first-child {
+      background: white !important; padding: 18px 22px !important;
+      border-radius: 14px !important; border-left: 4px solid #6366f1 !important;
+      box-shadow: 0 2px 12px rgba(99,102,241,0.06) !important;
+      margin-bottom: 16px !important;
+    }
+    #recouvMainTitle {
+      font-size: 1.3em !important; font-weight: 900 !important;
+      color: #1e293b !important; font-family: 'Plus Jakarta Sans', sans-serif !important;
+    }
+    #recouvSubTitle {
+      font-size: 0.82em !important; color: #6366f1 !important;
+      font-weight: 700 !important; font-family: 'Plus Jakarta Sans', sans-serif !important;
+    }
+    #recouvLastUpdate { font-size: 0.72em !important; color: #94a3b8 !important; }
+    .recouv-mgmt-row { display: flex; gap: 16px; margin-top: 6px; }
+    .recouv-mgmt-item { font-size: 0.75em; color: #64748b; font-weight: 600; font-family: 'Plus Jakarta Sans', sans-serif; }
+    .recouv-mgmt-item strong { color: #1e293b; font-weight: 800; }
+    
+    /* ============================================ */
+    /* IMPORT BUTTON                                 */
+    /* ============================================ */
+    #recouvImportZone button {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+      border-radius: 12px !important;
+      box-shadow: 0 4px 12px rgba(99,102,241,0.3) !important;
+      font-family: 'Plus Jakarta Sans', sans-serif !important;
+      font-weight: 700 !important;
+    }
+    
+    /* ============================================ */
+    /* FILTERS                                       */
+    /* ============================================ */
+    #recouvFilterRow {
+      background: white !important; padding: 12px 18px !important;
+      border-radius: 14px !important; border: 1px solid #e8ecf4 !important;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.03) !important;
+      margin-bottom: 16px !important; border-top: none !important;
+    }
+    #recouvFilterRow .sec-filter-group label,
+    #recouvFilterRow label {
+      font-size: 0.68em !important; font-weight: 800 !important;
+      color: #94a3b8 !important; text-transform: uppercase !important;
+      font-family: 'Plus Jakarta Sans', sans-serif !important;
+    }
+    #recouvFilterRow .sec-filter-group select,
+    #recouvFilterRow select {
+      padding: 8px 12px !important; border: 1px solid #e8ecf4 !important;
+      border-radius: 10px !important; background: #f8f9fd !important;
+      font-family: 'Plus Jakarta Sans', sans-serif !important;
+      font-weight: 600 !important; font-size: 0.85em !important;
+      color: #1e293b !important;
+    }
+    #recouvFilterRow select:focus {
+      border-color: #6366f1 !important;
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.1) !important;
+    }
+    #filterApprocheContainer { display: none !important; }
+    #filterPatientContainer { display: none !important; }
+    #btnModeTransf { display: none !important; }
+    
+    /* ============================================ */
+    /* ALL CARDS                                     */
+    /* ============================================ */
+    #view-recouvrement .stat-card,
+    #recouvDataContent .stat-card {
+      border-radius: 14px !important;
+      border: 1px solid #e8ecf4 !important;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.03) !important;
+      font-family: 'Plus Jakarta Sans', sans-serif !important;
+      transition: transform 0.2s, box-shadow 0.2s !important;
+    }
+    #view-recouvrement .stat-card:hover,
+    #recouvDataContent .stat-card:hover {
+      transform: translateY(-2px) !important;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.06) !important;
+    }
+    #view-recouvrement .stat-value,
+    #recouvDataContent .stat-value {
+      font-family: 'Plus Jakarta Sans', sans-serif !important;
+      font-weight: 900 !important;
+    }
+    #view-recouvrement .stat-title,
+    #recouvDataContent .stat-title {
+      font-family: 'Plus Jakarta Sans', sans-serif !important;
+      font-weight: 800 !important;
+      letter-spacing: 0.3px !important;
+    }
+    
+    /* Color overrides — old → new */
+    #view-recouvrement .stat-card[style*="border-top: 4px solid #e67e22"],
+    #recouvDataContent .stat-card[style*="border-top: 4px solid #e67e22"],
+    #view-recouvrement .stat-card[style*="border-top:4px solid #e67e22"],
+    #recouvDataContent .stat-card[style*="border-top:4px solid #e67e22"] { border-top: 4px solid #6366f1 !important; }
+    
+    #view-recouvrement [style*="color: #d35400"],
+    #view-recouvrement [style*="color:#d35400"],
+    #recouvDataContent [style*="color: #d35400"],
+    #recouvDataContent [style*="color:#d35400"] { color: #6366f1 !important; }
+    
+    #view-recouvrement .stat-card[style*="border-top: 4px solid #c0392b"],
+    #view-recouvrement .stat-card[style*="border-top:4px solid #c0392b"] { border-top: 4px solid #ef4444 !important; }
+    #view-recouvrement .stat-card[style*="border-top: 4px solid #27ae60"],
+    #view-recouvrement .stat-card[style*="border-top:4px solid #27ae60"] { border-top: 4px solid #10b981 !important; }
+    #view-recouvrement .stat-card[style*="border-top: 4px solid #f1c40f"],
+    #view-recouvrement .stat-card[style*="border-top:4px solid #f1c40f"] { border-top: 4px solid #f59e0b !important; }
+    #view-recouvrement .stat-card[style*="border-top: 4px solid #9b59b6"],
+    #view-recouvrement .stat-card[style*="border-top:4px solid #9b59b6"] { border-top: 4px solid #8b5cf6 !important; }
+    #view-recouvrement .stat-card[style*="border-top: 4px solid #3498db"],
+    #view-recouvrement .stat-card[style*="border-top:4px solid #3498db"] { border-top: 4px solid #06b6d4 !important; }
+    #view-recouvrement .stat-card[style*="border-top: 4px solid #f39c12"],
+    #view-recouvrement .stat-card[style*="border-top:4px solid #f39c12"] { border-top: 4px solid #f59e0b !important; }
+    
+    /* Alert cards backgrounds */
+    #view-recouvrement [style*="color:#c0392b"],
+    #view-recouvrement [style*="color: #c0392b"] { color: #ef4444 !important; }
+    #view-recouvrement [style*="color:#a93226"] { color: #dc2626 !important; }
+    #view-recouvrement [style*="color:#27ae60"],
+    #view-recouvrement [style*="color: #27ae60"] { color: #10b981 !important; }
+    #view-recouvrement [style*="color:#1e8449"] { color: #059669 !important; }
+    #view-recouvrement [style*="color:#f39c12"],
+    #view-recouvrement [style*="color: #f39c12"] { color: #f59e0b !important; }
+    
+    /* Background overrides */
+    #view-recouvrement [style*="background:#fff5f5"] { background: rgba(239,68,68,0.06) !important; }
+    #view-recouvrement [style*="background:#f0fbf4"],
+    #view-recouvrement [style*="background: #f0fbf4"] { background: rgba(16,185,129,0.06) !important; }
+    #view-recouvrement [style*="background:#fdf8e4"] { background: rgba(245,158,11,0.06) !important; }
+    
+    /* ============================================ */
+    /* CLICKABLE HINT                                */
+    /* ============================================ */
+    #view-recouvrement .stat-card[onclick]::after {
+      content: '↗ Voir detail'; position: absolute; bottom: 8px; right: 12px;
+      font-size: 0.65em; color: #6366f1; font-weight: 700;
+      opacity: 0; transition: opacity 0.2s;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    #view-recouvrement .stat-card[onclick]:hover::after { opacity: 0.8; }
+    #view-recouvrement .stat-card[onclick] { position: relative !important; }
+    
+    /* ============================================ */
+    /* CHARTS                                        */
+    /* ============================================ */
+    #view-recouvrement canvas { border-radius: 14px !important; }
+    #view-recouvrement .chart-container {
+      border-radius: 14px !important; border: 1px solid #e8ecf4 !important;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.03) !important;
+    }
+    
+    /* Toggle buttons */
+    #view-recouvrement .toggle-chart-btn,
+    #view-recouvrement button[id^="btnRec"],
+    #view-recouvrement button[id^="btnBalAge"],
+    #view-recouvrement button[id^="btnBalPer"] {
+      font-family: 'Plus Jakarta Sans', sans-serif !important;
+      border-radius: 10px !important; font-weight: 700 !important;
+    }
+    #view-recouvrement .toggle-chart-btn.active {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+      color: white !important; border-color: #6366f1 !important;
+      box-shadow: 0 4px 12px rgba(99,102,241,0.3) !important;
+    }
+    
+    /* Balance buttons */
+    #view-recouvrement button[style*="background:#363795"],
+    #view-recouvrement button[style*="background: #363795"] {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+      border-radius: 18px !important;
+      box-shadow: 0 2px 8px rgba(99,102,241,0.3) !important;
+    }
+    
+    /* Chart titles */
+    #view-recouvrement h4,
+    #recouvDataContent h4 {
+      font-family: 'Plus Jakarta Sans', sans-serif !important;
+      font-weight: 800 !important; color: #1e293b !important;
+    }
+    #view-recouvrement h4[style*="color:#363795"],
+    #view-recouvrement h4[style*="color: #363795"] { color: #6366f1 !important; }
+    
+    /* Chart area backgrounds */
+    #view-recouvrement [style*="background:#f8faff"],
+    #view-recouvrement [style*="background: #f8faff"] { background: #f8f9fd !important; }
+    
+    /* ============================================ */
+    /* TABLES                                        */
+    /* ============================================ */
+    #view-recouvrement table th {
+      background: #f8f9fd !important;
+      font-family: 'Plus Jakarta Sans', sans-serif !important;
+      font-weight: 800 !important; font-size: 0.7em !important;
+      color: #94a3b8 !important; text-transform: uppercase !important;
+    }
+    #view-recouvrement table td {
+      font-family: 'Plus Jakarta Sans', sans-serif !important;
+      font-weight: 600 !important;
+    }
+    #view-recouvrement table tr:hover td { background: rgba(99,102,241,0.04) !important; }
+    
+    /* Sort select */
+    #recouvSortSelect { color: #6366f1 !important; }
+    
+    /* Back button */
+    .back-btn { color: #6366f1 !important; background: rgba(99,102,241,0.08) !important; }
+    
+    /* ============================================ */
+    /* OBJ/REAL CARDS                                */
+    /* ============================================ */
+    #view-recouvrement .obj-card,
+    #view-recouvrement .obj-box {
+      border-radius: 14px !important; border: 1px solid #e8ecf4 !important;
+      font-family: 'Plus Jakarta Sans', sans-serif !important;
+    }
+    #view-recouvrement .badge-perf.green { background: rgba(16,185,129,0.12) !important; color: #059669 !important; border-radius: 8px !important; }
+    #view-recouvrement .badge-perf.red { background: rgba(239,68,68,0.12) !important; color: #dc2626 !important; border-radius: 8px !important; }
+    
+    /* ============================================ */
+    /* MODAL                                         */
+    /* ============================================ */
+    #view-recouvrement div[style*="background:rgba(54, 55, 149"],
+    #view-recouvrement div[style*="background: rgba(54, 55, 149"] {
+      background: linear-gradient(135deg, #1e1b4b, #312e81) !important;
+    }
+    
+    /* ============================================ */
+    /* NAV-SUB-BTN (hidden sidebar but style anyway) */
+    /* ============================================ */
+    .nav-sub-btn { font-family: 'Plus Jakarta Sans', sans-serif !important; }
+    .nav-sub-btn.active {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+      color: white !important; border: none !important;
+      box-shadow: 0 4px 12px rgba(99,102,241,0.3) !important;
+    }
+  `;
+  document.head.appendChild(s);
+})();
+
+/* ============================================================ */
+/* 3. OVERRIDE initRecouvFilters                                 */
+/* ============================================================ */
+
+
+/* ============================================================ */
+/* 4. POST-RENDER FIXES (charts + management)                    */
+/* ============================================================ */
+function postRenderFixes() {
+  // Management row
+  var ex = document.getElementById('recouvMgmtRow'); if (ex) ex.remove();
+  var titleEl = document.getElementById('recouvMainTitle'); if (!titleEl) return;
+  var parent = titleEl.parentElement;
+  var resp = document.getElementById('recouvResp'), dir = document.getElementById('recouvDirMed');
+  var row = document.createElement('div'); row.id = 'recouvMgmtRow'; row.className = 'recouv-mgmt-row';
+  row.innerHTML = '<div class="recouv-mgmt-item"><i class="fas fa-user-tie" style="color:#6366f1;margin-right:4px;"></i>Resp: <strong>' + (resp ? resp.textContent : '--') + '</strong></div><div class="recouv-mgmt-item"><i class="fas fa-stethoscope" style="color:#6366f1;margin-right:4px;"></i>Dir. Med: <strong>' + (dir ? dir.textContent : '--') + '</strong></div>';
+  parent.appendChild(row);
+  // Force hide filters
+  ['filterApprocheContainer', 'filterPatientContainer'].forEach(function(id) { var el = document.getElementById(id); if (el) el.setAttribute('style', 'display:none!important'); });
+  // Modernize charts
+  modernizeRecouvCharts();
+}
+
+function modernizeRecouvCharts() {
+  var dk = document.body.classList.contains('dark-mode');
+  var FJ = "'Plus Jakarta Sans',sans-serif";
+  if (window.recouvChartBarInstance) {
+    try {
+      var ch = window.recouvChartBarInstance, ct = ch.ctx;
+      var gV = ct.createLinearGradient(0, 0, 0, 400); gV.addColorStop(0, '#6366f1'); gV.addColorStop(1, '#a78bfa');
+      ch.data.datasets.forEach(function(ds) {
+        ds.borderRadius = 10; ds.borderSkipped = false;
+        if (Array.isArray(ds.backgroundColor)) { ds.backgroundColor = ds.backgroundColor.map(function(c, i) { return window.REC_COLORS[i % window.REC_COLORS.length]; }); }
+        else { ds.backgroundColor = gV; }
+      });
+      if (ch.options.scales.y) ch.options.scales.y.display = false;
+      if (ch.options.scales.x) { ch.options.scales.x.grid = { display: false }; ch.options.scales.x.border = { display: false }; ch.options.scales.x.ticks = { color: dk ? '#64748b' : '#94a3b8', font: { size: 11, weight: '700', family: FJ }, padding: 8 }; }
+      ch.options.plugins = ch.options.plugins || {};
+      ch.options.plugins.legend = { display: false };
+      if (ch.options.plugins.datalabels) { ch.options.plugins.datalabels.color = dk ? '#e2e8f0' : '#1e293b'; ch.options.plugins.datalabels.font = { weight: '800', size: 11, family: FJ }; }
+      ch.options.layout = { padding: { top: 30, bottom: 5 } };
+      ch.update();
+    } catch (e) {}
+  }
+  if (window.recouvChartPieInstance) {
+    try {
+      var pc = window.recouvChartPieInstance;
+      pc.data.datasets.forEach(function(ds) { ds.backgroundColor = window.REC_COLORS; ds.borderWidth = 3; ds.borderColor = dk ? '#0f1423' : '#fff'; });
+      pc.options.plugins = pc.options.plugins || {};
+      pc.options.plugins.legend = { position: 'bottom', labels: { usePointStyle: true, pointStyle: 'circle', padding: 12, color: dk ? '#94a3b8' : '#64748b', font: { size: 10, weight: '700', family: FJ } } };
+      if (pc.options.plugins.datalabels) { pc.options.plugins.datalabels.color = '#fff'; pc.options.plugins.datalabels.font = { weight: '800', size: 12, family: FJ }; }
+      pc.update();
+    } catch (e) {}
+  }
+  if (window.natureChartPieInstance) {
+    try { var nc = window.natureChartPieInstance; nc.data.datasets.forEach(function(ds) { ds.backgroundColor = window.REC_COLORS; ds.borderWidth = 3; ds.borderColor = dk ? '#0f1423' : '#fff'; }); nc.update(); } catch (e) {}
+  }
+}
+
+/* ============================================================ */
+/* 5. HOOKS                                                      */
+/* ============================================================ */
+(function() {
+  var _origUpdate = window.updateRecouvDashboard;
+  window.updateRecouvDashboard = function() { if (_origUpdate) _origUpdate(); setTimeout(postRenderFixes, 600); };
+})();
+(function() {
+  var _origSwitch = window.switchFamily;
+  window.switchFamily = function(f, s, b) { if (_origSwitch) _origSwitch(f, s, b); setTimeout(postRenderFixes, 700); };
+})();
+
+/* ============================================================ */
+/* 6. TOPBAR NAVIGATION                                          */
+/* ============================================================ */
+window.switchRecouvSub = function(sub) {
+  if (typeof switchFamily === 'function') switchFamily('Recouvrement', sub, null);
+  document.querySelectorAll('.recouv-top-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.querySelectorAll('.recouv-top-btn').forEach(function(b) { if (b.getAttribute('data-sub') === sub) b.classList.add('active'); });
+};
+window.switchExpedSub = function(sub) {
+  if (typeof switchFamily === 'function') switchFamily('Expédition', sub, null);
+  document.querySelectorAll('.exped-top-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.querySelectorAll('.exped-top-btn').forEach(function(b) { if (b.getAttribute('data-sub') === sub) b.classList.add('active'); });
+};
+</script>

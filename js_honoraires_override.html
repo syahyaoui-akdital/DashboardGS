@@ -1,0 +1,189 @@
+<script>
+/* ============================================================ */
+/*  HONORAIRES OVERRIDE                                          */
+/*  Fix: entities, lazy load, modern charts, thousands sep        */
+/* ============================================================ */
+
+/* ============================================================ */
+/* 1. ENTITY ORDER                                               */
+/* ============================================================ */
+/* ============================================================ */
+/* 2. LAZY LOADING - only load when tab is opened                */
+/* ============================================================ */
+var _honoDataLoaded = false;
+var _origLoadHono = window.loadHonorairesData;
+
+window.loadHonorairesData = function() {
+  // Mark as loading
+  _honoDataLoaded = true;
+  if (_origLoadHono) _origLoadHono();
+};
+
+// Override the auto-load on DOMContentLoaded
+// The original has: setTimeout(loadHonorairesData, 1000)
+// We intercept by checking if we're on the honoraires tab
+(function() {
+  var _origSwitchTab = window.switchTab;
+  window.switchTab = function(tabName) {
+    if (_origSwitchTab) _origSwitchTab(tabName);
+    // Lazy load: only load honoraires data when user clicks the tab
+    if (tabName === 'honoraires' && !_honoDataLoaded) {
+      loadHonorairesData();
+    }
+  };
+})();
+
+
+/* ============================================================ */
+/* 6. CHART MODERNIZATION                                        */
+/* ============================================================ */
+function modernizeHonoCharts() {
+  var dk = document.body.classList.contains('dark-mode');
+  var FJ = "'Plus Jakarta Sans',sans-serif";
+  var COLS = ['#6366f1', '#f59e0b', '#10b981', '#8b5cf6', '#06b6d4', '#ec4899', '#ef4444', '#84cc16'];
+
+  // Bar chart
+  if (window.chartHonoEvolInstance) {
+    try {
+      var ch = window.chartHonoEvolInstance;
+      var ct = ch.ctx;
+      var gV = ct.createLinearGradient(0, 0, 0, 400);
+      gV.addColorStop(0, '#6366f1'); gV.addColorStop(1, '#a78bfa');
+      var gR = ct.createLinearGradient(0, 0, 0, 400);
+      gR.addColorStop(0, '#ef4444'); gR.addColorStop(1, '#fca5a5');
+
+      ch.data.datasets.forEach(function(ds) {
+        if (ds.type === 'line') {
+          ds.borderColor = '#f59e0b';
+          ds.backgroundColor = '#f59e0b';
+          ds.pointBackgroundColor = '#fff';
+          ds.pointBorderColor = '#f59e0b';
+          ds.pointBorderWidth = 2;
+          ds.pointRadius = 5;
+          ds.tension = 0.4;
+          if (ds.datalabels) {
+            ds.datalabels.color = '#f59e0b';
+            ds.datalabels.backgroundColor = dk ? '#1e293b' : '#fff';
+            ds.datalabels.borderRadius = 6;
+            ds.datalabels.font = { weight: '800', size: 10, family: FJ };
+          }
+        } else {
+          ds.borderRadius = 10; ds.borderSkipped = false;
+          if (ds.label && (ds.label.includes('Non') || ds.label.includes('non'))) {
+            ds.backgroundColor = gR;
+          } else if (ds.label && (ds.label.includes('Réglé') || ds.label.includes('regle'))) {
+            ds.backgroundColor = '#10b981';
+          } else {
+            ds.backgroundColor = gV;
+          }
+          if (ds.datalabels) {
+            ds.datalabels.color = '#fff';
+            ds.datalabels.font = { weight: '800', size: 10, family: FJ };
+            ds.datalabels.borderRadius = 0;
+            ds.datalabels.backgroundColor = 'transparent';
+          }
+        }
+      });
+      ch.options.scales = ch.options.scales || {};
+      if (ch.options.scales.y) ch.options.scales.y.display = false;
+      if (ch.options.scales.y1) ch.options.scales.y1.display = false;
+      if (ch.options.scales.x) {
+        ch.options.scales.x.grid = { display: false };
+        ch.options.scales.x.border = { display: false };
+        ch.options.scales.x.ticks = { color: dk ? '#64748b' : '#94a3b8', font: { size: 11, weight: '700', family: FJ }, padding: 8 };
+      }
+      ch.options.plugins = ch.options.plugins || {};
+      ch.options.plugins.legend = { display: true, position: 'top', align: 'end', labels: { usePointStyle: true, pointStyle: 'rectRounded', padding: 16, color: dk ? '#94a3b8' : '#64748b', font: { size: 11, weight: '700', family: FJ } } };
+      ch.options.layout = { padding: { top: 30, bottom: 5 } };
+      ch.update();
+    } catch (e) { console.error('Hono chart:', e); }
+  }
+
+  // Pie chart
+  if (window.chartHonoTypeOrgInstance) {
+    try {
+      var pc = window.chartHonoTypeOrgInstance;
+      pc.data.datasets.forEach(function(ds) {
+        ds.backgroundColor = COLS;
+        ds.borderWidth = 3; ds.borderColor = dk ? '#0f1423' : '#fff';
+      });
+      pc.options.plugins = pc.options.plugins || {};
+      pc.options.plugins.legend = { position: 'bottom', labels: { usePointStyle: true, pointStyle: 'circle', padding: 12, color: dk ? '#94a3b8' : '#64748b', font: { size: 10, weight: '700', family: FJ } } };
+      if (pc.options.plugins.datalabels) {
+        pc.options.plugins.datalabels.color = '#fff';
+        pc.options.plugins.datalabels.backgroundColor = 'transparent';
+        pc.options.plugins.datalabels.font = { weight: '800', size: 11, family: FJ };
+      }
+      pc.update();
+    } catch (e) {}
+  }
+}
+
+/* ============================================================ */
+/* 7. CSS                                                        */
+/* ============================================================ */
+(function() {
+  var s = document.createElement('style');
+  s.textContent = `
+    /* Header */
+    #view-honoraires > div:nth-child(3) { background: white !important; padding: 18px 22px !important; border-radius: 14px !important; border-left: 4px solid #6366f1 !important; box-shadow: 0 2px 12px rgba(99,102,241,0.06) !important; margin-bottom: 16px !important; }
+    #view-honoraires h2 { font-size: 1.3em !important; font-weight: 900 !important; color: #1e293b !important; font-family: 'Plus Jakarta Sans', sans-serif !important; }
+    #honorairesLastUpdate { font-size: 0.72em !important; color: #94a3b8 !important; font-style: normal !important; }
+    
+    /* Progress bar */
+    #honoProgressBar { background: linear-gradient(90deg, #6366f1, #a78bfa) !important; }
+    
+    /* Import */
+    #view-honoraires .action-btn { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; border-radius: 12px !important; box-shadow: 0 4px 12px rgba(99,102,241,0.3) !important; font-family: 'Plus Jakarta Sans', sans-serif !important; font-weight: 700 !important; }
+    
+    /* Filters */
+    #view-honoraires .sec-filter-group label { font-size: 0.68em !important; font-weight: 800 !important; color: #94a3b8 !important; text-transform: uppercase !important; font-family: 'Plus Jakarta Sans', sans-serif !important; }
+    #view-honoraires .sec-filter-group select { padding: 8px 12px !important; border: 1px solid #e8ecf4 !important; border-radius: 10px !important; background: #f8f9fd !important; font-family: 'Plus Jakarta Sans', sans-serif !important; font-weight: 600 !important; font-size: 0.85em !important; color: #1e293b !important; }
+    #view-honoraires .sec-filter-group select:focus { border-color: #6366f1 !important; box-shadow: 0 0 0 3px rgba(99,102,241,0.1) !important; }
+    
+    /* Cards */
+    #view-honoraires .stat-card { border-radius: 14px !important; border: 1px solid #e8ecf4 !important; box-shadow: 0 2px 8px rgba(0,0,0,0.03) !important; font-family: 'Plus Jakarta Sans', sans-serif !important; transition: transform 0.2s, box-shadow 0.2s !important; }
+    #view-honoraires .stat-card:hover { transform: translateY(-2px) !important; box-shadow: 0 6px 20px rgba(0,0,0,0.06) !important; }
+    #view-honoraires .stat-card[style*="border-top: 4px solid #2c3e50"] { border-top: 4px solid #6366f1 !important; }
+    #view-honoraires .stat-card[style*="border-top: 4px solid #d35400"] { border-top: 4px solid #f59e0b !important; }
+    #view-honoraires .stat-card[style*="border-top: 4px solid #c0392b"] { border-top: 4px solid #ef4444 !important; }
+    #view-honoraires .stat-card[style*="border-top: 4px solid #27ae60"] { border-top: 4px solid #10b981 !important; }
+    #view-honoraires .stat-card[style*="border-top: 4px solid #2980b9"] { border-top: 4px solid #06b6d4 !important; }
+    #view-honoraires .stat-card[style*="border-left: 4px solid #363795"] { border-left: 4px solid #6366f1 !important; }
+    #view-honoraires .stat-value { font-family: 'Plus Jakarta Sans', sans-serif !important; font-weight: 900 !important; }
+    #view-honoraires .stat-title { font-family: 'Plus Jakarta Sans', sans-serif !important; font-weight: 800 !important; }
+    
+    /* Clickable hint */
+    #view-honoraires .stat-card[onclick]::after { content: '↗ Voir detail'; position: absolute; bottom: 8px; right: 12px; font-size: 0.65em; color: #6366f1; font-weight: 700; opacity: 0; transition: opacity 0.2s; font-family: 'Plus Jakarta Sans', sans-serif; }
+    #view-honoraires .stat-card[onclick]:hover::after { opacity: 0.8; }
+    #view-honoraires .stat-card[onclick] { position: relative !important; }
+    
+    /* Charts */
+    #view-honoraires .chart-container { border-radius: 14px !important; border: 1px solid #e8ecf4 !important; box-shadow: 0 2px 8px rgba(0,0,0,0.03) !important; }
+    #view-honoraires canvas { border-radius: 14px !important; }
+    #view-honoraires .toggle-chart-btn { font-family: 'Plus Jakarta Sans', sans-serif !important; border-radius: 10px !important; font-weight: 700 !important; border: 1px solid #e8ecf4 !important; }
+    #view-honoraires .toggle-chart-btn.active, #view-honoraires button[style*="background:#2c3e50"], #view-honoraires button[style*="background: #2c3e50"] { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; color: white !important; border-color: #6366f1 !important; box-shadow: 0 4px 12px rgba(99,102,241,0.3) !important; border-radius: 10px !important; }
+    #view-honoraires h4 { font-family: 'Plus Jakarta Sans', sans-serif !important; font-weight: 800 !important; color: #1e293b !important; }
+    
+    /* Tables */
+    #view-honoraires .table-container { border-radius: 14px !important; border: 1px solid #e8ecf4 !important; overflow: hidden !important; }
+    #view-honoraires table th { background: #f8f9fd !important; font-family: 'Plus Jakarta Sans', sans-serif !important; font-weight: 800 !important; font-size: 0.7em !important; color: #94a3b8 !important; text-transform: uppercase !important; }
+    #view-honoraires table td { font-family: 'Plus Jakarta Sans', sans-serif !important; font-weight: 600 !important; }
+    #view-honoraires table tr:hover td { background: rgba(99,102,241,0.04) !important; }
+    
+    /* Modal */
+    #view-honoraires div[style*="background:#2c3e50"], #view-honoraires div[style*="background: #2c3e50"] { background: linear-gradient(135deg, #1e1b4b, #312e81) !important; }
+    
+    /* Tooltip */
+    #trendTooltip { border-radius: 16px !important; }
+    #trendTooltip h5 { color: #1e293b !important; }
+    #trendTooltip div[style*="color:#363795"] { color: #6366f1 !important; }
+    #trendTooltip div[style*="color:#2980b9"] { color: #8b5cf6 !important; }
+    
+    /* View buttons */
+    #view-honoraires button[style*="background:#363795"], #view-honoraires button[style*="background: #363795"] { background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; border-radius: 10px !important; box-shadow: 0 4px 12px rgba(99,102,241,0.3) !important; }
+  `;
+  document.head.appendChild(s);
+})();
+
+</script>

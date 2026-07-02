@@ -1,0 +1,130 @@
+<div id="view-achat" class="view-section export-section" data-export-title="Gestion des Achats">
+<style>
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.calc-card{background:#fff;border-radius:14px;padding:24px 28px;box-shadow:0 4px 20px rgba(0,0,0,.04);border:1px solid #e1e8ed;transition:all .2s}
+.calc-card:hover{box-shadow:0 8px 30px rgba(0,0,0,.08)}
+.calc-input{width:100%;border:2px solid #e2e8f0;border-radius:10px;padding:14px 18px;font-size:1.05em;font-weight:600;color:#1a202c;outline:none;box-sizing:border-box;transition:border-color .2s,box-shadow .2s}
+.calc-input:focus{border-color:#5a67d8;box-shadow:0 0 0 3px rgba(90,103,216,.15)}
+</style>
+<div id="achatDashboard" style="padding:0;">
+<div id="achatFilterDisplay" style="text-align:right;font-size:.78em;color:#a0aec0;padding:6px 0;">--</div>
+
+<!-- FILTRES COMMUNS -->
+<div style="background:#fff;border-radius:10px;padding:18px 20px;box-shadow:0 2px 10px rgba(0,0,0,.03);border:1px solid #e1e8ed;margin-bottom:20px;">
+<div style="display:flex;gap:16px;flex-wrap:wrap;">
+<div class="sec-filter-group"><label>Site</label><select id="achatFilterSite" onchange="updateAchatView()"><option value="">TOUT</option></select></div>
+<div class="sec-filter-group"><label>Année</label><select id="achatFilterAnnee" onchange="updateAchatView()"></select></div>
+<div class="sec-filter-group"><label>Trimestre</label><select id="achatFilterTrim" onchange="updateAchatMonthOptions();updateAchatView()"><option value="">TOUT</option><option value="T1">T1</option><option value="T2">T2</option><option value="T3">T3</option><option value="T4">T4</option></select></div>
+<div class="sec-filter-group"><label>Mois</label><select id="achatFilterMois" onchange="updateAchatView()"></select></div>
+</div>
+<div id="appExtraFilters" style="display:none;margin-top:12px;padding-top:12px;border-top:1px dashed #e2e8f0;">
+<div style="display:flex;gap:16px;flex-wrap:wrap;">
+<div class="sec-filter-group"><label>Famille</label><select id="achatFilterFamille" onchange="updateAppSectionOptions();updateAppFournisseurOptions();updateAchatView()"><option value="">TOUT</option></select></div>
+<div class="sec-filter-group"><label>Section</label><select id="achatFilterSection" onchange="updateAppFournisseurOptions();updateAchatView()"><option value="">TOUT</option></select></div>
+<div class="sec-filter-group"><label>Fournisseur</label><select id="achatFilterFournisseur" onchange="updateAchatView()"><option value="">TOUT</option></select></div>
+</div></div>
+</div>
+
+<!-- TABS -->
+<div style="display:flex;gap:10px;margin-bottom:24px;">
+<button id="btnTabSage" class="achat-tab-btn" onclick="setAchatTab('sage')" style="background:#1a202c;color:#fff;border:none;box-shadow:0 4px 6px rgba(0,0,0,.1);">📊 Consommation vs Budget</button>
+<button id="btnTabApp" class="achat-tab-btn" onclick="setAchatTab('app')" style="background:#fff;color:#4a5568;border:1px solid #e2e8f0;">📋 Suivi APP vs Objectif</button>
+<button id="btnTabCalc" class="achat-tab-btn" onclick="setAchatTab('calc')" style="background:#fff;color:#4a5568;border:1px solid #e2e8f0;">🧮 Pré-engagement BC</button>
+</div>
+
+<!-- ============= TAB 1 : SAGE ============= -->
+<div id="achatContentSage">
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:24px;">
+<div class="kpi-card"><div class="kpi-border" style="background:#1a202c"></div><div class="kpi-label"><span>Budget 2026</span></div><div id="sageKpiBudget" class="kpi-val" style="color:#1a202c">--</div></div>
+<div class="kpi-card"><div class="kpi-border" style="background:#805ad5"></div><div class="kpi-label"><span>Consommé</span><span style="background:#faf5ff;color:#805ad5;padding:2px 6px;border-radius:4px;font-size:.9em">SAGE</span></div><div id="sageKpiConso" class="kpi-val" style="color:#805ad5">--</div><div id="sageKpiConsoPct" class="kpi-sub" style="color:#553c9a">--</div></div>
+<div class="kpi-card"><div class="kpi-border" style="background:#dd6b20"></div><div class="kpi-label"><span>Engagé</span><span style="background:#fffaf0;color:#dd6b20;padding:2px 6px;border-radius:4px;font-size:.9em">APP</span></div><div id="sageKpiEngage" class="kpi-val" style="color:#dd6b20">--</div><div class="kpi-sub"><span id="sageKpiEngageNb" style="font-weight:700">0</span> BC</div></div>
+<div class="kpi-card"><div class="kpi-border" style="background:#3182ce"></div><div class="kpi-label"><span>Écart Budget</span></div><div id="sageKpiEcart" class="kpi-val" style="color:#3182ce">--</div><div id="sageKpiEcartPct" class="kpi-sub">--</div></div>
+<div class="kpi-card" style="background:#f8fafc"><div class="kpi-label"><span>Taux d'exécution</span></div><div id="sageKpiTaux" class="kpi-val" style="color:#1a202c">--</div><div style="margin-top:10px;background:#e2e8f0;height:6px;border-radius:3px;overflow:hidden"><div id="sageKpiTauxFill" style="width:0%;height:100%;transition:width .5s"></div></div></div>
+</div>
+<div id="sageInsight" style="margin-bottom:16px"></div>
+<div style="background:#fff;border-radius:12px;padding:24px;box-shadow:0 2px 10px rgba(0,0,0,.03);border:1px solid #e1e8ed;">
+<h3 style="margin:0 0 6px;color:#1a202c;font-size:1.15em;font-weight:800;">Consommation par Libellé</h3>
+<div style="font-size:.82em;color:#718096;margin-bottom:20px;display:flex;align-items:center;gap:12px;"><span style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;background:#805ad5;border-radius:3px"></div>Conso 2026</span><span style="display:flex;align-items:center;gap:5px"><div style="width:3px;height:12px;background:#6366f1;border-radius:1px"></div>Repère 2025</span></div>
+<div id="sageChartContainer" style="min-height:400px"></div>
+</div></div>
+
+<!-- ============= TAB 2 : APP ============= -->
+<div id="achatContentApp" style="display:none;">
+<!-- KPIs OPÉRATIONNELS (en premier) -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;">
+<div class="kpi-card kpi-op"><div style="background:#e6fffa;padding:12px;border-radius:50%;color:#319795;font-size:1.3em">📝</div><div><div style="color:#718096;font-size:.72em;text-transform:uppercase;font-weight:700">Délai Traitement Global</div><div id="appKpiDelaiDA" style="color:#319795;font-size:1.5em;font-weight:800;margin-top:2px">--</div></div></div>
+<div class="kpi-card kpi-op"><div style="background:#faf5ff;padding:12px;border-radius:50%;color:#805ad5;font-size:1.3em">⏳</div><div><div style="color:#718096;font-size:.72em;text-transform:uppercase;font-weight:700">Délai Traitement Acheteur</div><div id="appKpiDelaiAcheteur" style="color:#805ad5;font-size:1.5em;font-weight:800;margin-top:2px">--</div></div></div>
+<div class="kpi-card kpi-op"><div style="background:#fff7ed;padding:12px;border-radius:50%;color:#dd6b20;font-size:1.3em">✅</div><div><div style="color:#718096;font-size:.72em;text-transform:uppercase;font-weight:700">Délai Validation BC</div><div id="appKpiDelaiBC" style="color:#dd6b20;font-size:1.5em;font-weight:800;margin-top:2px">--</div></div></div>
+<div class="kpi-card kpi-op"><div style="background:#f0fff4;padding:12px;border-radius:50%;color:#38a169;font-size:1.3em">💰</div><div><div style="color:#718096;font-size:.72em;text-transform:uppercase;font-weight:700">Saving (Économies)</div><div id="appKpiSaving" style="color:#38a169;font-size:1.5em;font-weight:800;margin-top:2px">--</div><div id="appKpiSavingPct" style="color:#a0aec0;font-size:.72em">--</div></div></div>
+</div>
+<!-- KPIs FINANCIERS (en bas) -->
+<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:12px;margin-bottom:20px;">
+<div class="kpi-card"><div class="kpi-border" style="background:#1a202c"></div><div class="kpi-label"><span>Objectif</span></div><div id="appKpiObj" class="kpi-val" style="color:#1a202c">--</div></div>
+<div class="kpi-card"><div class="kpi-border" style="background:#319795"></div><div class="kpi-label"><span>Consommé 2026</span></div><div id="appKpiConso" class="kpi-val" style="color:#319795">--</div></div>
+<div class="kpi-card"><div class="kpi-border" style="background:#dd6b20"></div><div class="kpi-label"><span>Engagé</span></div><div id="appKpiEngage" class="kpi-val" style="color:#dd6b20">--</div><div class="kpi-sub"><span id="appKpiEngageNb">0</span> BC</div></div>
+<div class="kpi-card"><div class="kpi-border" style="background:#6366f1"></div><div class="kpi-label"><span>Consommé 2025</span></div><div id="appKpiConso25" class="kpi-val" style="color:#6366f1">--</div></div>
+<div class="kpi-card"><div class="kpi-border" style="background:#e53e3e"></div><div class="kpi-label"><span>Variation 26/25</span></div><div id="appKpiVariation" class="kpi-val" style="color:#a0aec0">--</div><div id="appKpiVariationSub" class="kpi-sub">--</div></div>
+<div class="kpi-card"><div class="kpi-border" style="background:#3182ce"></div><div class="kpi-label"><span>Écart Objectif</span></div><div id="appKpiEcart" class="kpi-val" style="color:#3182ce">--</div><div id="appKpiEcartPct" class="kpi-sub">--</div></div>
+<div class="kpi-card" style="background:#f8fafc"><div class="kpi-label"><span>Taux</span></div><div id="appKpiTaux" class="kpi-val" style="color:#1a202c">--</div><div style="margin-top:8px;background:#e2e8f0;height:6px;border-radius:3px;overflow:hidden"><div id="appKpiTauxFill" style="width:0%;height:100%;transition:width .5s"></div></div></div>
+</div>
+<div id="appInsight" style="margin-bottom:16px"></div>
+<div style="display:grid;grid-template-columns:2.5fr 1fr;gap:20px;">
+<div style="background:#fff;border-radius:12px;padding:24px;box-shadow:0 2px 10px rgba(0,0,0,.03);border:1px solid #e1e8ed;">
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;">
+<div><h3 id="appChartTitle" style="margin:0;color:#1a202c;font-size:1.15em;font-weight:800;">Consommation par Famille (hiérarchique)</h3>
+<div style="font-size:.82em;color:#718096;margin-top:8px;display:flex;align-items:center;gap:12px;"><span style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;background:#319795;border-radius:3px"></div>2026</span><span style="display:flex;align-items:center;gap:5px"><div style="width:3px;height:12px;background:#6366f1;border-radius:1px"></div>2025</span></div></div>
+<div style="display:flex;background:#edf2f7;padding:4px;border-radius:8px;">
+<button id="btnAppFamille" onclick="setAppChartMode('famille')" style="border:none;padding:8px 14px;border-radius:6px;font-weight:700;cursor:pointer;background:#fff;color:#1a202c;font-size:.82em;box-shadow:0 1px 3px rgba(0,0,0,.1)">Par Famille</button>
+<button id="btnAppSection" onclick="setAppChartMode('section')" style="border:none;padding:8px 14px;border-radius:6px;font-weight:600;cursor:pointer;background:transparent;color:#718096;font-size:.82em">Par Section</button>
+</div></div>
+<div id="appChartContainer" style="min-height:400px"></div>
+</div>
+<div style="background:#fff;border-radius:12px;padding:24px;box-shadow:0 2px 10px rgba(0,0,0,.03);border:1px solid #e1e8ed;overflow-y:auto;max-height:700px;">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h3 style="margin:0;color:#1a202c;font-size:1.1em;font-weight:800;">Fournisseurs</h3>
+<div style="display:flex;background:#edf2f7;padding:3px;border-radius:6px;"><button id="btnTop10" onclick="setAppTop10Mode('top10')" style="border:none;padding:5px 10px;border-radius:5px;font-weight:700;cursor:pointer;background:#fff;color:#1a202c;font-size:.75em;box-shadow:0 1px 2px rgba(0,0,0,.1)">Top 10</button><button id="btnTopAll" onclick="setAppTop10Mode('all')" style="border:none;padding:5px 10px;border-radius:5px;font-weight:600;cursor:pointer;background:transparent;color:#718096;font-size:.75em">Tous</button></div></div>
+<div id="topFournCount" style="font-size:.75em;color:#a0aec0;margin-bottom:12px">--</div>
+<div id="appTop10Leaderboard" style="display:flex;flex-direction:column;gap:6px"></div>
+</div></div>
+</div>
+
+<!-- ============= TAB 3 : SIMULATEUR (UX premium) ============= -->
+<div id="achatContentCalc" style="display:none;max-width:1050px;margin:0 auto;">
+<div style="text-align:center;margin-bottom:28px;animation:fadeIn .4s ease"><h2 style="margin:0 0 8px;color:#1a202c;font-size:1.6em;font-weight:800;letter-spacing:-.3px">🧮 Simulation de Pré-engagement</h2><div style="color:#718096;font-size:.95em">Objectif − Conso APP − Engagé APP</div></div>
+
+<!-- Recherche article -->
+<div class="calc-card" style="margin-bottom:20px;animation:fadeIn .4s ease .05s both">
+<label style="font-weight:800;font-size:.82em;color:#5a67d8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;display:block">🔍 Recherche Article</label>
+<input type="text" id="calcArticleCode" oninput="searchArticle()" placeholder="Tapez un code ou une désignation..." class="calc-input" style="border-color:#5a67d8">
+<div id="calcArticleSuggestions" style="margin-top:8px;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;max-height:320px;overflow-y:auto"></div>
+<div id="calcArticleInfo" style="margin-top:10px"></div>
+</div>
+
+<!-- Filtres + Montant -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;animation:fadeIn .4s ease .1s both">
+<div class="calc-card">
+<label style="font-weight:800;font-size:.82em;color:#1a202c;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;display:block">📋 Filtres</label>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+<div class="sec-filter-group"><label>Site</label><select id="calcFilterSite" onchange="runCalculator()" class="calc-input" style="padding:10px 14px;font-size:.92em"><option value="">TOUT</option></select></div>
+<div class="sec-filter-group"><label>Année</label><select id="calcFilterAnnee" onchange="runCalculator()" class="calc-input" style="padding:10px 14px;font-size:.92em"></select></div>
+<div class="sec-filter-group"><label>Période</label><select id="calcFilterMois" onchange="runCalculator()" class="calc-input" style="padding:10px 14px;font-size:.92em"></select></div>
+</div></div>
+<div class="calc-card">
+<label style="font-weight:800;font-size:.82em;color:#1a202c;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;display:block">💰 Montant BC (TTC)</label>
+<div style="position:relative"><input type="number" id="calcMontantBC" oninput="runCalculator()" placeholder="0.00" step="0.01" class="calc-input" style="font-size:1.4em;font-weight:800;padding-right:70px"><span style="position:absolute;right:18px;top:50%;transform:translateY(-50%);color:#a0aec0;font-weight:700;font-size:1.1em">MAD</span></div>
+</div></div>
+
+<!-- Résultat -->
+<div style="animation:fadeIn .4s ease .15s both"><div id="calcResultat"></div></div>
+<div style="animation:fadeIn .4s ease .2s both"><div id="calcDetailTable"></div></div>
+</div>
+
+<!-- MODAL -->
+<div id="achatDetailModal" style="display:none;position:fixed;inset:0;background:rgba(26,32,44,.6);z-index:9999;align-items:center;justify-content:center" onclick="closeAchatDetailModal(event)">
+<div style="background:#fff;border-radius:16px;padding:30px;max-width:1100px;width:95%;max-height:90vh;overflow-y:auto;box-shadow:0 25px 50px -12px rgba(0,0,0,.25);animation:fadeIn .25s ease" onclick="event.stopPropagation()">
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;border-bottom:1px solid #e2e8f0;padding-bottom:16px">
+<div><h3 id="modalTitle" style="margin:0;color:#1a202c;font-size:1.35em;font-weight:800">Détail</h3><div id="modalSubtitle" style="color:#718096;font-size:.9em;margin-top:6px"></div></div>
+<div style="display:flex;gap:10px"><button onclick="exportModalPDF()" style="background:#fff;border:1px solid #cbd5e0;padding:8px 16px;border-radius:8px;font-size:.85em;cursor:pointer;color:#4a5568;font-weight:700;transition:all .15s" onmouseover="this.style.background='#f7fafc'" onmouseout="this.style.background='#fff'">📄 PDF</button><button onclick="exportModalExcel()" style="background:#fff;border:1px solid #cbd5e0;padding:8px 16px;border-radius:8px;font-size:.85em;cursor:pointer;color:#4a5568;font-weight:700;transition:all .15s" onmouseover="this.style.background='#f7fafc'" onmouseout="this.style.background='#fff'">📊 Excel</button><button onclick="closeAchatDetailModal()" style="background:#edf2f7;border:none;width:36px;height:36px;border-radius:50%;cursor:pointer;color:#4a5568;font-size:1.2em;font-weight:bold;display:flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#edf2f7'">×</button></div>
+</div><div id="modalContent"></div>
+</div></div>
+</div>
+</div>

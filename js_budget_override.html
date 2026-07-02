@@ -1,0 +1,275 @@
+<script>
+/* ============================================================ */
+/*  BUDGET OVERRIDE V7 - ALL FIXES                               */
+/* ============================================================ */
+
+window.budgetViewMode = 'comparison';
+
+// Thousands separator helper
+function fmtN(v) { if (!v || isNaN(v)) return '0'; return Math.round(v).toLocaleString('fr-FR'); }
+function fmtK(v) { if (!v || isNaN(v)) return '0'; return (v / 1000).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' Kdh'; }
+function fmtKshort(v) { if (!v || isNaN(v)) return '0'; return (v / 1000).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+
+/* ============================================================ */
+/* FIX: Override formatMoney globally with thousands separator    */
+/* ============================================================ */
+window.formatMoney = function(v) {
+  if (v === undefined || v === null || isNaN(v)) return "0";
+  return Math.round(v).toLocaleString('fr-FR') + " ";
+};
+
+/* ============================================================ */
+/* OVERRIDE populateBudgetFilters - remove old entities           */
+/* ============================================================ */
+
+/* ============================================================ */
+/* OVERRIDE setBudgetMode                                        */
+/* ============================================================ */
+var origSetBudgetMode = window.setBudgetMode;
+window.setBudgetMode = function(mode) {
+  window.budgetViewMode = mode; // Variable pour l'override
+  if (origSetBudgetMode) origSetBudgetMode(mode); // Synchronise le fichier d'origine !
+  
+  document.querySelectorAll('.budget-nav-btn').forEach(function(b) { b.classList.remove('active'); });
+  var ab = document.getElementById(mode === 'trend' ? 'btnModeTrend' : 'btnModeComparison');
+  if (ab) ab.classList.add('active');
+  if (typeof updateCaBudgetView === 'function') updateCaBudgetView();
+};
+
+/* Default comparison */
+/* Default comparison */
+document.addEventListener('DOMContentLoaded', function() { 
+  setTimeout(function() { 
+    if (typeof setBudgetMode === 'function') {
+      // Appelle la fonction pour synchroniser les variables internes et d'override sur le même mode
+      setBudgetMode('comparison');
+    } else {
+      // Fallback de secours si la fonction n'est pas encore prête
+      var a = document.getElementById('btnModeTrend'), b = document.getElementById('btnModeComparison'); 
+      if (a) a.classList.remove('active'); 
+      if (b) b.classList.add('active'); 
+    }
+  }, 600); 
+});
+
+/* ============================================================ */
+/* CSS                                                           */
+/* ============================================================ */
+(function() { var s = document.createElement('style'); s.textContent = `
+#view-ca-budget > div > div:first-child { display: none !important; }
+#view-ca-budget > div { display: block !important; border: none !important; box-shadow: none !important; background: transparent !important; height: auto !important; min-height: auto !important; overflow: visible !important; border-radius: 0 !important; }
+#view-ca-budget > div > div:last-child { width: 100% !important; overflow: visible !important; }
+#view-ca-budget > div > div:last-child > div:first-child { background: white !important; padding: 18px 22px !important; border-radius: 14px !important; border-left: 4px solid #6366f1 !important; box-shadow: 0 2px 12px rgba(99,102,241,0.06) !important; margin-bottom: 16px !important; border-bottom: none !important; }
+#ctxBudgetTitle { font-size: 1.3em !important; font-weight: 900 !important; color: #1e293b !important; font-family: 'Plus Jakarta Sans', sans-serif !important; }
+#ctxBudgetSubtitle { font-size: 0.82em !important; color: #64748b !important; font-weight: 600 !important; font-family: 'Plus Jakarta Sans', sans-serif !important; }
+#view-ca-budget .sec-filter-group label { font-size: 0.68em !important; font-weight: 800 !important; color: #94a3b8 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; font-family: 'Plus Jakarta Sans', sans-serif !important; }
+#view-ca-budget .sec-filter-group select { padding: 8px 12px !important; border: 1px solid #e8ecf4 !important; border-radius: 10px !important; background: #f8f9fd !important; font-family: 'Plus Jakarta Sans', sans-serif !important; font-weight: 600 !important; font-size: 0.85em !important; color: #1e293b !important; }
+#view-ca-budget .sec-filter-group select:focus { border-color: #6366f1 !important; box-shadow: 0 0 0 3px rgba(99,102,241,0.1) !important; }
+.budget-mgmt-row { display: flex; gap: 16px; width: 100%; margin-top: 6px; }
+.budget-mgmt-item { font-size: 0.75em; color: #64748b; font-weight: 600; font-family: 'Plus Jakarta Sans', sans-serif; }
+.budget-mgmt-item strong { color: #1e293b; font-weight: 800; }
+#view-ca-budget .stat-card { border-radius: 14px !important; border: 1px solid #e8ecf4 !important; box-shadow: 0 2px 8px rgba(0,0,0,0.03) !important; }
+#view-ca-budget .stat-card:hover { transform: translateY(-2px) !important; box-shadow: 0 6px 20px rgba(0,0,0,0.06) !important; }
+#view-ca-budget .stat-card[style*="border-top: 4px solid #363795"] { border-top: 4px solid #6366f1 !important; }
+#view-ca-budget .stat-value, #view-ca-budget .stat-title { font-family: 'Plus Jakarta Sans', sans-serif !important; }
+#view-ca-budget .stat-value { font-weight: 900 !important; }
+#view-ca-budget .stat-title { font-weight: 800 !important; }
+#view-ca-budget #budgetChart { border-radius: 14px !important; border: 1px solid #e8ecf4 !important; }
+#view-ca-budget #budgetTable { border-radius: 14px !important; border: 1px solid #e8ecf4 !important; overflow: hidden !important; }
+#view-ca-budget #tableCaBudget th { background: #f8f9fd !important; font-family: 'Plus Jakarta Sans', sans-serif !important; font-weight: 800 !important; font-size: 0.7em !important; color: #94a3b8 !important; text-transform: uppercase !important; }
+#view-ca-budget #tableCaBudget td { font-family: 'Plus Jakarta Sans', sans-serif !important; font-weight: 600 !important; }
+#view-ca-budget #tableCaBudget tr:hover td { background: rgba(99,102,241,0.04) !important; }
+#view-ca-budget .badge-perf.green { background: rgba(16,185,129,0.12) !important; color: #059669 !important; border-radius: 8px !important; font-weight: 800 !important; }
+#view-ca-budget .badge-perf.red { background: rgba(239,68,68,0.12) !important; color: #dc2626 !important; border-radius: 8px !important; font-weight: 800 !important; }
+#analyseFinancierePanel { font-family: 'Plus Jakarta Sans', sans-serif; }
+@media(max-width:850px) { #analyseFinancierePanel div[style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; } }
+`; document.head.appendChild(s); })();
+
+/* ============================================================ */
+/* MANAGEMENT ROW                                                */
+/* ============================================================ */
+function addBudgetMgmtRow() {
+  var ex = document.getElementById('budgetMgmtRow'); if (ex) ex.remove();
+  var header = document.querySelector('#view-ca-budget > div > div:last-child > div:first-child > div:first-child');
+  if (!header) return;
+  var resp = document.getElementById('budgetResp'), dir = document.getElementById('budgetDirMed');
+  var row = document.createElement('div'); row.id = 'budgetMgmtRow'; row.className = 'budget-mgmt-row';
+  row.innerHTML = '<div class="budget-mgmt-item"><i class="fas fa-user-tie" style="color:#6366f1;margin-right:4px;"></i>Resp: <strong>' + (resp ? resp.textContent : '--') + '</strong></div><div class="budget-mgmt-item"><i class="fas fa-stethoscope" style="color:#6366f1;margin-right:4px;"></i>Dir. Med: <strong>' + (dir ? dir.textContent : '--') + '</strong></div>';
+  header.appendChild(row);
+}
+
+/* ============================================================ */
+/* ANALYSIS                                                      */
+/* ============================================================ */
+function computeAn(caData, am, yr) {
+  var nbM = am.length;
+  var ents = Object.keys(caData).filter(function(e) { var u = e.toUpperCase(); return !u.includes('TOTAL') && !u.includes('RÉGION') && !u.includes('REGION') && e !== 'Entité' && u !== 'HIA' && u !== 'CIOA' && !u.includes('HIKMA') && u !== 'CIT' && u !== 'CID' && u !== 'PIL' && u !== 'HPG'; });
+  
+  // Filter by selected entity
+  var selEnt = document.getElementById('localBudgetEntite') ? document.getElementById('localBudgetEntite').value : '';
+  if (selEnt) ents = ents.filter(function(e) { return e === selEnt; });
+  
+  var res = { entities: [], totals: {}, monthly: [] }, tBY = 0, tRY = 0, tBA = 0;
+  ents.forEach(function(ent) {
+    var d = caData[ent] && caData[ent][yr] ? caData[ent][yr] : null; if (!d) return;
+    var rY = 0, bA = d.budgetAnnuel || 0, bY = (bA / 12) * nbM, vs = [];
+    am.forEach(function(m) { var v = d.caMensuel ? (d.caMensuel[m] || 0) : 0; rY += v; if (v > 0) vs.push(v); });
+    var ec = rY - bY, tx = bY > 0 ? rY / bY : 0, cm = vs.length > 0 ? rY / vs.length : 0;
+    var pj = cm * 12, ep = pj - bA, tp = bA > 0 ? pj / bA : 0;
+    var mx = vs.length ? Math.max.apply(null, vs) : 0, mn = vs.length ? Math.min.apply(null, vs) : 0;
+    var et = 0; if (vs.length > 1) { var vr = vs.reduce(function(s, v) { return s + Math.pow(v - cm, 2); }, 0) / vs.length; et = Math.sqrt(vr); }
+    var cv = cm > 0 ? et / cm : 0, td = vs.length >= 2 ? (vs[vs.length - 1] - vs[0]) / vs[0] : 0;
+    tBY += bY; tRY += rY; tBA += bA;
+    res.entities.push({ name: ent, reelYTD: rY, budgetYTD: bY, ecart: ec, taux: tx, budgetAnnuel: bA, caMoyen: cm, projAnnuel: pj, ecartProj: ep, tauxProj: tp, caMax: mx, caMin: mn, coefVar: cv, tendance: td, poidsBudget: 0, poidsReel: 0, rang: 0 });
+  });
+  res.entities.forEach(function(e) { e.poidsBudget = tBY > 0 ? e.budgetYTD / tBY : 0; e.poidsReel = tRY > 0 ? e.reelYTD / tRY : 0; });
+  [].concat(res.entities).sort(function(a, b) { return b.taux - a.taux; }).forEach(function(e, i) { e.rang = i + 1; });
+  var tcm = tRY / (nbM || 1);
+  res.totals = { budgetYTD: tBY, reelYTD: tRY, ecart: tRY - tBY, taux: tBY > 0 ? tRY / tBY : 0, budgetAnnuel: tBA, caMoyen: tcm, projAnnuel: tcm * 12, tauxProj: tBA > 0 ? (tcm * 12) / tBA : 0 };
+  var cumR = 0;
+  am.forEach(function(m) { var bM2 = 0, rM2 = 0; ents.forEach(function(ent) { var d2 = caData[ent] && caData[ent][yr] ? caData[ent][yr] : null; if (!d2) return; bM2 += (d2.budgetAnnuel || 0) / 12; rM2 += d2.caMensuel ? (d2.caMensuel[m] || 0) : 0; }); cumR += rM2; res.monthly.push({ mois: m, budget: bM2, reel: rM2, ecart: rM2 - bM2, taux: bM2 > 0 ? rM2 / bM2 : 0, cumulReel: cumR }); });
+  return res;
+}
+
+function genSynth(an) { var t = an.totals, es = an.entities; var best = es.length ? es.reduce(function(a, b) { return a.taux > b.taux ? a : b; }) : null; var worst = es.length ? es.reduce(function(a, b) { return a.taux < b.taux ? a : b; }) : null; var above = es.filter(function(e) { return e.taux >= 1; }), below = es.filter(function(e) { return e.taux < 1; }); var l = [];
+l.push("📊 <b>Situation :</b> CA YTD a <b>" + (t.taux * 100).toFixed(1) + "%</b> du budget. " + (t.ecart >= 0 ? "Surplus <b>" + fmtK(t.ecart) + "</b>." : "Ecart <b>" + fmtK(Math.abs(t.ecart)) + "</b>."));
+if (best) l.push("🏆 <b>Top :</b> <b>" + best.name + "</b> a <b>" + (best.taux * 100).toFixed(0) + "%</b>.");
+if (worst && best && worst.name !== best.name) l.push("⚠️ <b>Vigilance :</b> <b>" + worst.name + "</b> a <b>" + (worst.taux * 100).toFixed(0) + "%</b>" + (worst.tendance < 0 ? " tendance ▼." : "."));
+if (above.length) l.push("✅ " + above.length + " entite(s) au-dessus : " + above.map(function(e) { return "<b>" + e.name + "</b>"; }).join(", "));
+if (below.length) l.push("🔴 " + below.length + " en dessous : " + below.map(function(e) { return "<b>" + e.name + "</b> (" + (e.taux * 100).toFixed(0) + "%)"; }).join(", "));
+l.push("🔮 <b>Projection :</b> <b>" + (t.tauxProj * 100).toFixed(1) + "%</b> du budget annuel" + (t.tauxProj >= 1 ? " ✓" : " - efforts necessaires."));
+return l.join("<br><br>"); }
+
+function renderAn(an) {
+  var c = document.getElementById('analyseFinancierePanel');
+  var anchor = document.getElementById('budgetKPIs');
+  if (!c) { if (!anchor) return; c = document.createElement('div'); c.id = 'analyseFinancierePanel'; anchor.parentNode.insertBefore(c, anchor.nextSibling); }
+  var t = an.totals, es = an.entities, mo = an.monthly, syn = genSynth(an);
+  var yr = document.getElementById('localBudgetAnnee') ? document.getElementById('localBudgetAnnee').value || '2026' : '2026';
+  var h = '';
+
+  // 1. KPIs
+  h += '<div style="margin:16px 0 12px;"><h3 style="font-weight:900;font-size:1em;color:#1e293b;margin:0;">1. Indicateurs cles de performance (Kdh)</h3></div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px;">';
+  h += '<div style="background:white;border-radius:14px;padding:15px;border:1px solid #e8ecf4;border-top:4px solid #6366f1;"><div style="font-size:0.6em;color:#94a3b8;font-weight:800;text-transform:uppercase;margin-bottom:6px;">CA REEL YTD</div><div style="font-size:1.35em;font-weight:900;color:#1e293b;">' + fmtK(t.reelYTD) + '</div><div style="font-size:0.7em;color:' + (t.ecart >= 0 ? '#059669' : '#dc2626') + ';font-weight:800;margin-top:3px;">' + (t.ecart >= 0 ? '▲' : '▼') + ' ' + (t.taux * 100).toFixed(1) + '% du budget</div></div>';
+  h += '<div style="background:white;border-radius:14px;padding:15px;border:1px solid #e8ecf4;border-top:4px solid #f59e0b;"><div style="font-size:0.6em;color:#94a3b8;font-weight:800;text-transform:uppercase;margin-bottom:6px;">BUDGET YTD</div><div style="font-size:1.35em;font-weight:900;color:#1e293b;">' + fmtK(t.budgetYTD) + '</div><div style="font-size:0.7em;color:#64748b;font-weight:600;margin-top:3px;">Annuel: ' + fmtK(t.budgetAnnuel) + '</div></div>';
+  h += '<div style="background:white;border-radius:14px;padding:15px;border:1px solid #e8ecf4;border-top:4px solid ' + (t.ecart >= 0 ? '#059669' : '#dc2626') + ';"><div style="font-size:0.6em;color:#94a3b8;font-weight:800;text-transform:uppercase;margin-bottom:6px;">ECART</div><div style="font-size:1.35em;font-weight:900;color:' + (t.ecart >= 0 ? '#059669' : '#dc2626') + ';">' + (t.ecart >= 0 ? '+' : '') + fmtK(t.ecart) + '</div><div style="font-size:0.7em;color:#64748b;margin-top:3px;">Moy: ' + fmtK(t.caMoyen) + '/mois</div></div>';
+  h += '<div style="background:white;border-radius:14px;padding:15px;border:1px solid #e8ecf4;border-top:4px solid #8b5cf6;"><div style="font-size:0.6em;color:#94a3b8;font-weight:800;text-transform:uppercase;margin-bottom:6px;">PROJECTION</div><div style="font-size:1.35em;font-weight:900;color:#1e293b;">' + fmtK(t.projAnnuel) + '</div><div style="font-size:0.7em;color:' + (t.tauxProj >= 1 ? '#059669' : '#dc2626') + ';font-weight:800;margin-top:3px;">' + (t.tauxProj * 100).toFixed(1) + '% du budget</div></div></div>';
+
+  // 2. MENSUEL
+  h += '<div style="background:white;border-radius:14px;border:1px solid #e8ecf4;overflow:hidden;margin-bottom:18px;"><div style="padding:11px 16px;background:#f8f9fd;border-bottom:1px solid #e8ecf4;"><h4 style="margin:0;font-size:0.78em;font-weight:800;color:#1e293b;">2. Analyse mensuelle - Ecart Budget vs Reel (Kdh)</h4></div><table style="width:100%;border-collapse:collapse;font-size:0.76em;"><thead><tr style="background:#f8f9fd;"><th style="padding:8px 12px;text-align:left;font-weight:800;color:#94a3b8;">Mois</th><th style="padding:8px;text-align:center;font-weight:800;color:#94a3b8;">Budget</th><th style="padding:8px;text-align:center;font-weight:800;color:#94a3b8;">Reel</th><th style="padding:8px;text-align:center;font-weight:800;color:#94a3b8;">Ecart</th><th style="padding:8px;text-align:center;font-weight:800;color:#94a3b8;">Taux</th><th style="padding:8px;text-align:center;font-weight:800;color:#94a3b8;">Cumul</th></tr></thead><tbody>';
+  mo.forEach(function(m) { h += '<tr style="border-bottom:1px solid #f3f4f8;"><td style="padding:8px 12px;font-weight:700;">' + m.mois + '</td><td style="padding:8px;text-align:center;color:#64748b;">' + fmtKshort(m.budget) + '</td><td style="padding:8px;text-align:center;font-weight:700;color:#6366f1;">' + fmtKshort(m.reel) + '</td><td style="padding:8px;text-align:center;font-weight:700;color:' + (m.ecart >= 0 ? '#059669' : '#dc2626') + ';">' + (m.ecart >= 0 ? '+' : '') + fmtKshort(m.ecart) + '</td><td style="padding:8px;text-align:center;"><span style="background:' + (m.taux >= 1 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)') + ';color:' + (m.taux >= 1 ? '#059669' : '#dc2626') + ';padding:2px 8px;border-radius:6px;font-weight:800;">' + (m.taux * 100).toFixed(0) + '%</span></td><td style="padding:8px;text-align:center;font-weight:700;">' + fmtKshort(m.cumulReel) + '</td></tr>'; });
+  h += '</tbody></table></div>';
+
+  // 3. POIDS + 4. PROJECTION
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">';
+  h += '<div style="background:white;border-radius:14px;border:1px solid #e8ecf4;overflow:hidden;"><div style="padding:11px 16px;background:#f8f9fd;border-bottom:1px solid #e8ecf4;"><h4 style="margin:0;font-size:0.78em;font-weight:800;">3. Analyse par entite - Poids et Performance</h4></div><table style="width:100%;border-collapse:collapse;font-size:0.76em;"><thead><tr style="background:#f8f9fd;"><th style="padding:8px 12px;text-align:left;font-weight:800;color:#94a3b8;">Entite</th><th style="padding:8px;text-align:center;color:#94a3b8;font-weight:800;">Poids</th><th style="padding:8px;text-align:center;color:#94a3b8;font-weight:800;">CA Moy</th><th style="padding:8px;text-align:center;color:#94a3b8;font-weight:800;">Taux</th><th style="padding:8px;text-align:center;color:#94a3b8;font-weight:800;">Rang</th></tr></thead><tbody>';
+  es.sort(function(a, b) { return a.rang - b.rang; }).forEach(function(e) { h += '<tr style="border-bottom:1px solid #f3f4f8;"><td style="padding:8px 12px;font-weight:700;">' + e.name + '</td><td style="padding:8px;text-align:center;color:#64748b;">' + (e.poidsReel * 100).toFixed(1) + '%</td><td style="padding:8px;text-align:center;font-weight:700;">' + fmtKshort(e.caMoyen) + '</td><td style="padding:8px;text-align:center;"><span style="background:' + (e.taux >= 1 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)') + ';color:' + (e.taux >= 1 ? '#059669' : '#dc2626') + ';padding:2px 8px;border-radius:6px;font-weight:800;">' + (e.taux * 100).toFixed(0) + '%</span></td><td style="padding:8px;text-align:center;font-weight:800;">' + (e.rang === 1 ? '🥇' : e.rang === 2 ? '🥈' : e.rang === 3 ? '🥉' : '#' + e.rang) + '</td></tr>'; });
+  h += '</tbody></table></div>';
+  h += '<div style="background:white;border-radius:14px;border:1px solid #e8ecf4;overflow:hidden;"><div style="padding:11px 16px;background:#f8f9fd;border-bottom:1px solid #e8ecf4;"><h4 style="margin:0;font-size:0.78em;font-weight:800;">4. Projection fin d\'annee (Kdh)</h4></div><table style="width:100%;border-collapse:collapse;font-size:0.76em;"><thead><tr style="background:#f8f9fd;"><th style="padding:8px 12px;text-align:left;color:#94a3b8;font-weight:800;">Entite</th><th style="padding:8px;text-align:center;color:#94a3b8;font-weight:800;">Proj.</th><th style="padding:8px;text-align:center;color:#94a3b8;font-weight:800;">Budget</th><th style="padding:8px;text-align:center;color:#94a3b8;font-weight:800;">Ecart</th><th style="padding:8px;text-align:center;color:#94a3b8;font-weight:800;">Taux</th></tr></thead><tbody>';
+  es.forEach(function(e) { h += '<tr style="border-bottom:1px solid #f3f4f8;"><td style="padding:8px 12px;font-weight:700;">' + e.name + '</td><td style="padding:8px;text-align:center;font-weight:700;color:#6366f1;">' + fmtKshort(e.projAnnuel) + '</td><td style="padding:8px;text-align:center;color:#64748b;">' + fmtKshort(e.budgetAnnuel) + '</td><td style="padding:8px;text-align:center;font-weight:700;color:' + (e.ecartProj >= 0 ? '#059669' : '#dc2626') + ';">' + (e.ecartProj >= 0 ? '+' : '') + fmtKshort(e.ecartProj) + '</td><td style="padding:8px;text-align:center;"><span style="background:' + (e.tauxProj >= 1 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)') + ';color:' + (e.tauxProj >= 1 ? '#059669' : '#dc2626') + ';padding:2px 8px;border-radius:6px;font-weight:800;">' + (e.tauxProj * 100).toFixed(0) + '%</span></td></tr>'; });
+  h += '</tbody></table></div></div>';
+
+  // 5. VOLATILITE
+  h += '<div style="background:white;border-radius:14px;border:1px solid #e8ecf4;overflow:hidden;margin-bottom:18px;"><div style="padding:11px 16px;background:#f8f9fd;border-bottom:1px solid #e8ecf4;"><h4 style="margin:0;font-size:0.78em;font-weight:800;">5. Volatilite et Tendance mensuelle (Kdh)</h4></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));">';
+  es.forEach(function(e) { h += '<div style="padding:14px 16px;border-right:1px solid #f3f4f8;border-bottom:1px solid #f3f4f8;"><div style="font-weight:800;margin-bottom:8px;font-size:0.85em;">' + e.name + '</div><div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:0.7em;color:#94a3b8;">CA Moyen</span><span style="font-weight:800;font-size:0.8em;">' + fmtKshort(e.caMoyen) + '</span></div><div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:0.7em;color:#94a3b8;">Max / Min</span><span style="font-size:0.8em;"><span style="color:#059669;font-weight:700;">' + fmtKshort(e.caMax) + '</span> / <span style="color:#dc2626;font-weight:700;">' + fmtKshort(e.caMin) + '</span></span></div><div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:0.7em;color:#94a3b8;">Coef. Variation</span><span style="font-weight:800;color:' + (e.coefVar > 0.1 ? '#dc2626' : '#059669') + ';font-size:0.8em;">' + (e.coefVar * 100).toFixed(1) + '%</span></div><div style="display:flex;justify-content:space-between;"><span style="font-size:0.7em;color:#94a3b8;">Tendance</span><span style="font-weight:800;color:' + (e.tendance >= 0 ? '#059669' : '#dc2626') + ';font-size:0.8em;">' + (e.tendance >= 0 ? '▲' : '▼') + ' ' + (Math.abs(e.tendance) * 100).toFixed(1) + '%</span></div></div>'; });
+  h += '</div></div>';
+
+  // SYNTHESE
+  h += '<div style="background:linear-gradient(135deg,#ede9fe,#f0f2ff);border-radius:14px;border:1px solid #c7d2fe;padding:16px 20px;margin-bottom:18px;"><h4 style="margin:0 0 8px;font-size:0.82em;font-weight:900;color:#4f46e5;"><i class="fas fa-robot" style="margin-right:6px;"></i>Synthese</h4><div style="font-size:0.78em;color:#1e293b;line-height:1.7;">' + syn + '</div></div>';
+
+  c.innerHTML = h;
+}
+
+/* ============================================================ */
+/* OVERRIDE updateCaBudgetView                                   */
+/* ============================================================ */
+(function() {
+  var orig = window.updateCaBudgetView;
+  window.updateCaBudgetView = function() {
+    if (orig) orig();
+    setTimeout(function() {
+      // Fix region IMMEDIATELY - no delay
+      var el = document.getElementById('ctxBudgetTitle');
+      if (el) el.textContent = el.textContent.replace(/Grand[- ]?Sud/gi, 'Grand-SUD');
+      addBudgetMgmtRow();
+
+      if (window.budgetViewMode === 'trend') {
+        // HIDE: KPI cards, chart, table (they exist in CA vs Budget)
+        var kpis = document.getElementById('budgetKPIs'); if (kpis) kpis.style.display = 'none';
+        var chart = document.getElementById('budgetChart'); if (chart) chart.style.display = 'none';
+        var table = document.getElementById('budgetTable'); if (table) table.style.display = 'none';
+        // Show analysis
+        try {
+          var caData = window.rawData ? window.rawData.caData : {};
+          var yr = document.getElementById('localBudgetAnnee') ? document.getElementById('localBudgetAnnee').value : '2026';
+          if (!yr || yr === '') yr = '2026';
+          var tr2 = document.getElementById('localBudgetTrimestre') ? document.getElementById('localBudgetTrimestre').value : '';
+          var mo2 = document.getElementById('localBudgetMois') ? document.getElementById('localBudgetMois').value : '';
+          var am = window.monthOrder;
+          if (mo2) am = [mo2]; else if (tr2 && window.quarters[tr2]) am = window.quarters[tr2];
+          else { var mwd = []; window.monthOrder.forEach(function(m) { var hd = Object.keys(caData).some(function(ent) { var d2 = caData[ent] && caData[ent][yr] ? caData[ent][yr] : null; return d2 && d2.caMensuel && d2.caMensuel[m] > 0; }); if (hd) mwd.push(m); }); if (mwd.length > 0) am = mwd; }
+          var an = computeAn(caData, am, yr);
+          renderAn(an);
+        } catch (e) { console.error('Analyse:', e); }
+      } else {
+        // SHOW: KPI cards, chart, table
+        var kpis = document.getElementById('budgetKPIs'); if (kpis) kpis.style.display = '';
+        var chart = document.getElementById('budgetChart'); if (chart) chart.style.display = '';
+        var table = document.getElementById('budgetTable'); if (table) table.style.display = '';
+        var panel = document.getElementById('analyseFinancierePanel'); if (panel) panel.innerHTML = '';
+      }
+    }, 300);
+  };
+})();
+
+/* ============================================================ */
+/* OVERRIDE drawBudgetChart - amounts only, no Kdh, with title   */
+/* ============================================================ */
+(function() {
+  var orig = window.drawBudgetChart;
+  window.drawBudgetChart = function(mr, ce, am, ic, ry, py) {
+    if (orig) orig(mr, ce, am, ic, ry, py);
+    setTimeout(function() {
+      if (!window.caChartInstance) return;
+      var ch = window.caChartInstance, ct = ch.ctx, dk = document.body.classList.contains('dark-mode');
+      var gV = ct.createLinearGradient(0, 0, 0, 400); gV.addColorStop(0, '#6366f1'); gV.addColorStop(1, '#a78bfa');
+      var gG = ct.createLinearGradient(0, 0, 0, 400); gG.addColorStop(0, '#f59e0b'); gG.addColorStop(1, '#fbbf24');
+      ch.data.datasets.forEach(function(ds) {
+        if (ds.type === 'bar' || !ds.type) {
+          ds.borderRadius = 10; ds.borderSkipped = false; ds.barPercentage = 0.55; ds.categoryPercentage = 0.75;
+          if (ds.label && (ds.label.includes('CA') || ds.label === ry || ds.label === '2026')) ds.backgroundColor = gV;
+          else if (ds.label && ds.label.includes('Budget')) ds.backgroundColor = gG;
+          else if (ds.label && (ds.label === py || ds.label === '2025')) ds.backgroundColor = '#e2e8f0';
+          ds.datalabels = ds.datalabels || {};
+          ds.datalabels.font = { weight: '800', size: 12, family: "'Plus Jakarta Sans',sans-serif" };
+          ds.datalabels.color = dk ? '#e2e8f0' : '#1e293b';
+          ds.datalabels.anchor = 'end'; ds.datalabels.align = 'top'; ds.datalabels.offset = 2;
+          ds.datalabels.formatter = function(val) { return val > 0 ? fmtKshort(val) : ''; };
+        }
+        if (ds.type === 'line') {
+          ds.borderColor = '#f59e0b';
+          ds.borderWidth = 2; ds.pointRadius = 5;
+          ds.pointBackgroundColor = '#fff'; ds.pointBorderColor = '#f59e0b'; ds.pointBorderWidth = 2; ds.tension = 0.4;
+          if (ds.datalabels) { 
+            ds.datalabels.font = { weight: '800', size: 11, family: "'Plus Jakarta Sans',sans-serif" }; 
+            ds.datalabels.backgroundColor = dk ? '#1e293b' : '#fff'; 
+            ds.datalabels.color = '#f59e0b'; 
+            ds.datalabels.borderRadius = 6;
+            ds.datalabels.align = 'bottom';
+            ds.datalabels.anchor = 'center';
+            ds.datalabels.offset = 8;
+          }
+        }
+      });
+      ch.options.scales.y = { display: false }; if (ch.options.scales.y1) ch.options.scales.y1.display = false;
+      ch.options.scales.x.grid = { display: false }; ch.options.scales.x.border = { display: false };
+      ch.options.scales.x.ticks = { color: dk ? '#64748b' : '#94a3b8', font: { size: 11, weight: '700', family: "'Plus Jakarta Sans',sans-serif" }, padding: 8 };
+      ch.options.plugins.legend = { display: true, position: 'top', align: 'end', labels: { usePointStyle: true, pointStyle: 'rectRounded', padding: 20, color: dk ? '#94a3b8' : '#64748b', font: { size: 12, weight: '700', family: "'Plus Jakarta Sans',sans-serif" } } };
+      ch.options.plugins.title = { display: true, text: 'Chiffre d\'affaire vs Budget (Kdh)', align: 'start', font: { size: 14, weight: '800', family: "'Plus Jakarta Sans',sans-serif" }, color: dk ? '#e2e8f0' : '#1e293b', padding: { bottom: 20 } };
+      ch.options.layout = { padding: { top: 35, bottom: 10 } };
+      ch.update();
+    }, 200);
+  };
+})();
+</script>
