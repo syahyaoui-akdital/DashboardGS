@@ -148,10 +148,12 @@ window.applyUserPermissions = function(role, entity, modules) {
           });
       }
 
-if (modules && modules !== 'ALL' && !isAdmin) {
+// =========================================================
+      // PARTIE 3 : FILTRAGE DES ONGLET PAR MODULES (Strict & Indépendant)
+      // =========================================================
+      if (modules && modules !== 'ALL' && !isAdmin) {
           const allowedModules = modules.split(',').map(m => m.trim().toUpperCase());
           
-          // 1. Filtrer les onglets principaux du Header
           const tabMapping = {
               'flash': 'FLASH',
               'ca-budget': 'BUDGET',
@@ -167,13 +169,23 @@ if (modules && modules !== 'ALL' && !isAdmin) {
               if (match) {
                   const tabId = match[1];
                   const moduleKey = tabMapping[tabId];
-                  // Si le module principal est autorisé (ex: RECOUVREMENT) ou un de ses sous-modules (ex: RECOUVREMENT_NON_SOLDES)
-                  const hasAccess = allowedModules.some(m => m === moduleKey || m.startsWith(moduleKey + '_') || m.startsWith('EXPEDITION_'));
+                  
+                  // Vérification ciblée et cloisonnée
+                  const hasAccess = allowedModules.some(m => {
+                      if (moduleKey === 'RECOUVREMENT') {
+                          // L'onglet Recouvrement/Expédition ne s'affiche QUE si mentionné
+                          return m === 'RECOUVREMENT' || m.startsWith('RECOUVREMENT_') || m === 'EXPEDITION' || m.startsWith('EXPEDITION_');
+                      } else {
+                          // Pour RH, DEPENSES, BUDGET, etc. : l'accès est 100% indépendant
+                          return m === moduleKey || m.startsWith(moduleKey + '_');
+                      }
+                  });
+                  
                   btn.style.display = hasAccess ? 'inline-block' : 'none';
               }
           });
 
-          // 2. Filtrer les sous-menus latéraux (Sidebar Recouvrement/Expédition)
+          // Filtrer les sous-menus latéraux de la Sidebar Recouvrement
           const subTabMapping = {
               "'Recouvrement', 'Dossiers non réglés'": "RECOUVREMENT_NON_REGLES",
               "'Recouvrement', 'Dossiers non soldés'": "RECOUVREMENT_NON_SOLDES",
@@ -190,13 +202,13 @@ if (modules && modules !== 'ALL' && !isAdmin) {
               }
               
               if (foundKey) {
-                  const isParentAllowed = allowedModules.includes(foundKey.split('_')[0]); // Si RECOUVREMENT ou EXPEDITION autorisé
+                  const isParentAllowed = allowedModules.includes(foundKey.split('_')[0]); 
                   const isSpecificAllowed = allowedModules.includes(foundKey);
                   btn.style.display = (isParentAllowed || isSpecificAllowed) ? 'block' : 'none';
               }
           });
           
-          // Masquer les titres "Recouvrement" et "Expédition" dans la sidebar si vide
+          // Masquer les titres de sections dans la sidebar si aucun droit dedans
           const recouvBtns = Array.from(document.querySelectorAll('.nav-sub-btn')).filter(b => b.getAttribute('onclick').includes('Recouvrement') && b.style.display === 'block');
           const expedBtns = Array.from(document.querySelectorAll('.nav-sub-btn')).filter(b => b.getAttribute('onclick').includes('Expédition') && b.style.display === 'block');
           
