@@ -10,7 +10,8 @@
 /* ============================================================ */
 window.formatMoney = function(v) {
   if (v === undefined || v === null || isNaN(v)) return "0";
-  return Math.round(v).toLocaleString('fr-FR');
+  // Convertit le nombre en texte et ajoute un espace tous les 3 chiffres
+  return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 };
 
 /* ============================================================ */
@@ -68,14 +69,6 @@ window.drawExpensesCharts = function(data, selectedYear) {
       chartData.labels = labelsX;
       var currentTotals = labelsX.map(function(m) { return data.filter(function(d) { return String(d.annee) === String(selectedYear) && d.mois === m; }).reduce(function(s, d) { return s + d.montant; }, 0); });
 
-      // Compute M vs M-1 variations
-      var variations = currentTotals.map(function(val, i) {
-        if (i === 0) return null;
-        var prev = currentTotals[i - 1];
-        if (prev === 0) return null;
-        return ((val - prev) / prev) * 100;
-      });
-
       chartData.datasets = [{
         type: 'bar', label: selectedYear, data: currentTotals,
         backgroundColor: gV, borderRadius: 10, borderSkipped: false, barPercentage: 0.5, categoryPercentage: 0.7,
@@ -100,44 +93,9 @@ window.drawExpensesCharts = function(data, selectedYear) {
     };
   }
 
-  // CREATE BAR CHART
-  window.expensesChartInstance = new Chart(ctxBar, {
-    type: 'bar', data: chartData,
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      layout: { padding: { top: 40, bottom: 10 } },
-      plugins: {
-        title: { display: true, text: dynamicTitle, align: 'start', font: { size: 14, weight: '800', family: FJ }, color: dk ? '#e2e8f0' : '#1e293b', padding: { bottom: 16 } },
-        legend: { display: chartData.datasets.length > 1, position: 'top', align: 'end', labels: { usePointStyle: true, pointStyle: 'rectRounded', padding: 16, color: dk ? '#94a3b8' : '#64748b', font: { size: 11, weight: '700', family: FJ } } },
-        datalabels: { display: true }
-      },
-      scales: {
-        y: { display: false, beginAtZero: true, grace: '15%' },
-        y1: { display: false },
-        x: { grid: { display: false }, border: { display: false }, ticks: { color: dk ? '#64748b' : '#94a3b8', font: { size: 11, weight: '700', family: FJ }, padding: 8 } }
-      },
-      onClick: function(e, elements) {
-        if (elements.length > 0) {
-          var idx = elements[0].index;
-          var label = chartData.labels[idx];
-          var subset = [];
-          if (depenseGraphMode === 'TIME') {
-            if (!selectedYear) subset = data.filter(function(d) { return d.mois === label; });
-            else subset = data.filter(function(d) { return d.mois === label; });
-          } else if (depenseGraphMode === 'ENTITY') subset = data.filter(function(d) { return d.entite === label; });
-          else subset = data.filter(function(d) { return d.categorie === label; });
-          if (typeof showExpenseDetails === 'function') showExpenseDetails(subset, 'Detail : ' + label);
-        }
-      }
-    }
-  });
-
-  // ADD VARIATION ANNOTATIONS between bars (single year only)
+  // --- CORRECTION MAJEURE ICI : INJECTION DU PLUGIN ---
+  var mesPlugins = [];
   if (depenseGraphMode === 'TIME' && selectedYear && selectedYear !== '') {
-    var chart = window.expensesChartInstance;
-    var origAfterDraw = chart.options.animation ? chart.options.animation.onComplete : null;
-    
-    // Custom plugin for drawing variations
     var variationPlugin = {
       id: 'depVariations',
       afterDraw: function(chart) {
@@ -167,12 +125,42 @@ window.drawExpensesCharts = function(data, selectedYear) {
         }
       }
     };
-    
-    // Register plugin for this chart
-    if (!chart.config.plugins) chart.config.plugins = [];
-    chart.config.plugins.push(variationPlugin);
-    chart.update();
+    mesPlugins.push(variationPlugin);
   }
+
+  // CREATE BAR CHART
+  window.expensesChartInstance = new Chart(ctxBar, {
+    type: 'bar', 
+    data: chartData,
+    plugins: mesPlugins, // Injection sécurisée du plugin
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 40, bottom: 10 } },
+      plugins: {
+        title: { display: true, text: dynamicTitle, align: 'start', font: { size: 14, weight: '800', family: FJ }, color: dk ? '#e2e8f0' : '#1e293b', padding: { bottom: 16 } },
+        legend: { display: chartData.datasets.length > 1, position: 'top', align: 'end', labels: { usePointStyle: true, pointStyle: 'rectRounded', padding: 16, color: dk ? '#94a3b8' : '#64748b', font: { size: 11, weight: '700', family: FJ } } },
+        datalabels: { display: true }
+      },
+      scales: {
+        y: { display: false, beginAtZero: true, grace: '15%' },
+        y1: { display: false },
+        x: { grid: { display: false }, border: { display: false }, ticks: { color: dk ? '#64748b' : '#94a3b8', font: { size: 11, weight: '700', family: FJ }, padding: 8 } }
+      },
+      onClick: function(e, elements) {
+        if (elements.length > 0) {
+          var idx = elements[0].index;
+          var label = chartData.labels[idx];
+          var subset = [];
+          if (depenseGraphMode === 'TIME') {
+            if (!selectedYear) subset = data.filter(function(d) { return d.mois === label; });
+            else subset = data.filter(function(d) { return d.mois === label; });
+          } else if (depenseGraphMode === 'ENTITY') subset = data.filter(function(d) { return d.entite === label; });
+          else subset = data.filter(function(d) { return d.categorie === label; });
+          if (typeof showExpenseDetails === 'function') showExpenseDetails(subset, 'Detail : ' + label);
+        }
+      }
+    }
+  });
 
   // PIE/DOUGHNUT CHART
   var pieAgg = {};

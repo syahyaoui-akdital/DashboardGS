@@ -15,7 +15,8 @@ function fmtKshort(v) { if (!v || isNaN(v)) return '0'; return (v / 1000).toFixe
 /* ============================================================ */
 window.formatMoney = function(v) {
   if (v === undefined || v === null || isNaN(v)) return "0";
-  return Math.round(v).toLocaleString('fr-FR') + " ";
+  // Convertit le nombre en texte et ajoute un espace tous les 3 chiffres
+  return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 };
 
 /* ============================================================ */
